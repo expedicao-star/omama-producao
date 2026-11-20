@@ -8,234 +8,282 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icone.svg" type="image/svg+xml">
 <style>
-:root{--bg:#1b1410;--card:#261c16;--card2:#30241c;--line:#3d2e24;--txt:#f3e9df;--mut:#b09c8c;--amb:#e9a23b;--ok:#5fbf7a;--bad:#e2604f;--mid:#e9c03b}
+:root{--bg:#1b1410;--card:#261c16;--card2:#30241c;--line:#3d2e24;--txt:#f3e9df;--mut:#b09c8c;--amb:#e9a23b;--ok:#5fbf7a;--bad:#e2604f;--mid:#e9c03b;--blue:#6fa8dc}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:84px}
-header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
-header h1{font-size:18px;margin:0;letter-spacing:.08em;font-weight:700}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:80px}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+header h1{font-size:17px;margin:0;letter-spacing:.08em}
 header h1 span{color:var(--amb)}
-header .data{margin-left:auto}
-main{max-width:980px;margin:0 auto;padding:16px}
+header .sp{flex:1}
+main{max-width:1200px;margin:0 auto;padding:14px}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#140f0c;border-top:1px solid var(--line);z-index:5}
-nav button{flex:1;background:none;border:0;color:var(--mut);padding:12px 4px 16px;font-size:13px;font-weight:600}
-nav button b{display:block;font-size:22px;line-height:1.1}
+nav button{flex:1;background:none;border:0;color:var(--mut);padding:10px 2px 14px;font-size:12px;font-weight:600}
+nav button b{display:block;font-size:20px;line-height:1.2}
 nav button.on{color:var(--amb)}
-h2{font-size:14px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin:22px 0 10px}
-h2:first-child{margin-top:4px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin:18px 0 8px}
+h2:first-child{margin-top:2px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
-.chip{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:12px;padding:14px 10px;font-size:16px;font-weight:600;text-align:center;cursor:pointer}
-.chip small{display:block;color:var(--mut);font-weight:500;font-size:12px;margin-top:2px}
+.chip{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:12px;padding:12px 10px;font-size:15px;font-weight:600;text-align:center;cursor:pointer}
+.chip small{display:block;color:var(--mut);font-weight:500;font-size:12px}
 .chip.on{border-color:var(--amb);background:#3a2a17;color:#ffd99a}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-input,select{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:10px;padding:12px;font-size:16px}
-.qtd{display:flex;align-items:center;gap:8px}
-.qtd button{width:56px;height:56px;border-radius:12px;border:0;background:var(--card2);color:var(--txt);font-size:28px;font-weight:700}
-.qtd input{width:96px;text-align:center;font-size:26px;font-weight:700;height:56px}
-.btn{background:var(--amb);color:#1b1410;border:0;border-radius:12px;padding:16px 22px;font-size:17px;font-weight:800;cursor:pointer}
+input,select,textarea{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:10px;padding:10px;font-size:15px;font-family:inherit}
+.btn{background:var(--amb);color:#1b1410;border:0;border-radius:10px;padding:12px 16px;font-size:15px;font-weight:800;cursor:pointer}
+.btn.sec{background:var(--card2);color:var(--txt)}.btn.ok{background:var(--ok);color:#0d1f12}.btn.bad{background:var(--bad);color:#fff}.btn.mid{background:var(--mid);color:#1b1410}
+.btn.sm{padding:8px 12px;font-size:13px}
 .btn:disabled{opacity:.4}
-.btn.sec{background:var(--card2);color:var(--txt)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
-.meta{color:var(--mut);font-size:14px}
-.meta b{color:var(--amb)}
-table{width:100%;border-collapse:collapse;font-size:15px}
-td,th{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left}
-th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
-.x{background:none;border:0;color:var(--bad);font-size:20px;cursor:pointer}
-.bar{height:10px;background:var(--card2);border-radius:6px;overflow:hidden;min-width:80px}
-.bar i{display:block;height:100%}
-.pct{font-weight:800}
-.ok{color:var(--ok)}.bad{color:var(--bad)}.mid{color:var(--mid)}
-.toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--ok);color:#0d1f12;padding:12px 20px;border-radius:12px;font-weight:700;display:none;z-index:9}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+.mut{color:var(--mut);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.t-pendente{background:#3a2f27;color:var(--mut)}.t-produzindo{background:#1f4a2c;color:#8fe0a6}.t-pausado{background:#4a3c12;color:#f5d36b}.t-finalizado{background:#1f3347;color:#9cc8f0}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.midc{color:var(--mid)}
+.kanban{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
+.col{min-width:250px;max-width:250px;background:#211813;border:1px solid var(--line);border-radius:14px;padding:8px}
+.col.vz{min-width:150px;max-width:150px;opacity:.6}
+.col h3{font-size:12px;margin:2px 4px 8px;color:var(--amb);text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between}
+.op{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px;margin-bottom:7px;cursor:pointer}
+.op b{display:block;font-size:14px}.op .mut{font-size:12px}
+.late{border-left:4px solid var(--bad)}
+.fila .card{margin-bottom:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.fila .info{flex:1;min-width:200px}
+.fila .info b{font-size:16px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ok);color:#0d1f12;padding:12px 20px;border-radius:12px;font-weight:700;display:none;z-index:30}
 .toast.err{background:var(--bad);color:#fff}
 .vazio{color:var(--mut);padding:20px;text-align:center}
-.setorbox{margin-bottom:18px}
-.setorbox h3{margin:0 0 6px;color:var(--amb);font-size:16px}
-.login{max-width:360px;margin:12vh auto;text-align:center}
-.login input{width:100%;margin:16px 0;text-align:center;font-size:22px;letter-spacing:.2em}
-.tog{display:flex;gap:6px}
-.tog button{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 14px;font-weight:600}
-.tog button.on{border-color:var(--amb);color:#ffd99a}
-.falta{opacity:.45;text-decoration:line-through}
+.modal{position:fixed;inset:0;background:#000a;z-index:20;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 10px}
+.modal>div{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:16px;width:100%;max-width:900px}
+.login{max-width:340px;margin:12vh auto;text-align:center}
+.login input{width:100%;margin:14px 0;text-align:center;font-size:22px;letter-spacing:.2em}
+.bar{height:8px;background:var(--card2);border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--amb)}
+.link{color:var(--amb);cursor:pointer;text-decoration:underline}
 </style>
 </head>
 <body>
-<header>
-  <h1>OMAMA <span>PRODUÇÃO</span></h1>
-  <input type="date" id="data" class="data">
-</header>
+<header><h1>OMAMA <span>PRODUÇÃO</span></h1><div class="sp"></div><span class="mut" id="relogio"></span></header>
 <main id="app"></main>
 <nav id="nav" style="display:none">
-  <button data-t="lancar" class="on"><b>＋</b>Lançar</button>
-  <button data-t="dia"><b>☰</b>Do dia</button>
-  <button data-t="painel"><b>▮▮</b>Painel</button>
-  <button data-t="equipe"><b>⚙</b>Cadastros</button>
+  <button data-t="fila" class="on"><b>⚒</b>Setores</button>
+  <button data-t="ops"><b>▦</b>OPs</button>
+  <button data-t="itens"><b>◫</b>Itens</button>
+  <button data-t="estoque"><b>▤</b>Estoque</button>
+  <button data-t="rel"><b>▮▮</b>Relatório</button>
 </nav>
 <div class="toast" id="toast"></div>
+<div id="modal"></div>
 <script>
-// ===== Configuração =====
 const API_PADRAO = 'https://omama-producao.expedicao-4e9.workers.dev';
 const ls = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}, del(k){try{localStorage.removeItem(k)}catch(e){}} };
 const API = () => ls.get('api') || API_PADRAO;
-let C = null; // cadastros
-const S = { tab:'lancar', setor:null, func:null, prod:null, qtd:1, pedido:'', todos:false, periodo:'semana' };
 const $ = s => document.querySelector(s), app = $('#app');
-const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
-$('#data').value = hoje();
-$('#data').onchange = () => render();
-const fmt = (n,d=1) => Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:d});
 const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = (n,d=1) => Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:d});
+const hojeISO = () => new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const brData = s => s ? new Date(s.slice(0,10)+'T12:00').toLocaleDateString('pt-BR') : '';
+const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
+const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
+let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana' };
 
-function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2600); }
-async function api(path, opt={}){
-  const r = await fetch(API()+path, {...opt, headers:{'Content-Type':'application/json','X-Codigo':ls.get('codigo')||'',...(opt.headers||{})}});
+function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
+async function api(path, body){
+  const r = await fetch(API()+path, body===undefined?{headers:{'X-Codigo':ls.get('codigo')||''}}:{method:'POST',headers:{'Content-Type':'application/json','X-Codigo':ls.get('codigo')||''},body:JSON.stringify(body)});
   const j = await r.json().catch(()=>({erro:'Resposta inválida do servidor'}));
   if (r.status===401){ ls.del('codigo'); telaLogin('Código inválido'); throw new Error('401'); }
   if (!r.ok) throw new Error(j.erro||'Erro');
   return j;
 }
+const tenta = fn => async (...a) => { try { await fn(...a); } catch(e){ if(e.message!=='401') toast(e.message,1); } };
+function modal(html){ $('#modal').innerHTML = html ? `<div class="modal" id="mbg"><div>${html}</div></div>` : ''; if(html) $('#mbg').onclick=e=>{ if(e.target.id==='mbg') modal(''); }; }
+function escolher(titulo, opcoes){ // opcoes: [{id,nome,sub}]
+  return new Promise(res=>{
+    modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(titulo)}</h2><button class="btn sec sm" id="mx">Fechar</button></div><br>
+      <div class="grid">${opcoes.map(o=>`<div class="chip" data-id="${o.id}">${esc(o.nome)}${o.sub?`<small>${esc(o.sub)}</small>`:''}</div>`).join('')}</div>`);
+    $('#mx').onclick=()=>{modal('');res(null)};
+    document.querySelectorAll('#modal [data-id]').forEach(c=>c.onclick=()=>{modal('');res(+c.dataset.id)});
+  });
+}
+const pessoas = setor_id => [...B.funcionarios].sort((a,b)=>(b.setor_id===setor_id)-(a.setor_id===setor_id)||a.nome.localeCompare(b.nome)).map(f=>({id:f.id,nome:f.nome,sub:(B.setores.find(s=>s.id===f.setor_id)||{}).nome}));
 
-// ===== Login =====
+// ===== login
 function telaLogin(msg){
   $('#nav').style.display='none';
-  app.innerHTML = `<div class="login"><h2>Código de acesso</h2>
-    <input id="cod" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
-    <button class="btn" id="entrar" style="width:100%">Entrar</button>
-    <p class="bad">${esc(msg||'')}</p>
-    <details style="margin-top:30px;color:var(--mut)"><summary>Servidor</summary>
-      <input id="apiurl" value="${esc(API())}" style="font-size:13px;letter-spacing:0"></details></div>`;
-  $('#entrar').onclick = async () => {
-    ls.set('codigo', $('#cod').value.trim());
-    const u=$('#apiurl').value.trim(); if(u && u!==API_PADRAO) ls.set('api',u.replace(/\/$/,''));
-    await iniciar();
-  };
-  $('#cod').onkeydown = e => { if(e.key==='Enter') $('#entrar').click(); };
+  app.innerHTML = `<div class="login"><h2>Código de acesso</h2><input id="cod" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
+    <button class="btn" id="entrar" style="width:100%">Entrar</button><p class="bad">${esc(msg||'')}</p></div>`;
+  $('#entrar').onclick = async()=>{ ls.set('codigo',$('#cod').value.trim()); await iniciar(); };
+  $('#cod').onkeydown = e=>{ if(e.key==='Enter') $('#entrar').click(); };
 }
 async function iniciar(){
-  if (!ls.get('codigo')) return telaLogin();
-  try { C = await api('/api/cadastros'); }
-  catch(e){ if(e.message!=='401') telaLogin('Não consegui falar com o servidor ('+e.message+')'); return; }
+  if(!ls.get('codigo')) return telaLogin();
+  try{ B = await api('/api/base'); }catch(e){ if(e.message!=='401') telaLogin('Não consegui falar com o servidor ('+e.message+')'); return; }
   $('#nav').style.display='flex'; render();
 }
-document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
-  S.tab=b.dataset.t; document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b)); render();
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{ S.tab=b.dataset.t; document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b)); render(); });
+function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, itens:tItens, estoque:tEstoque, rel:tRel})[S.tab](); }
+setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
+
+// ===== ações de operação (usadas na fila e na OP)
+const acao = tenta(async (o, tipo, depois) => {
+  let funcionario_id = null;
+  const precisa = o.setor_id && !o.funcionario_id && (tipo==='iniciar'||tipo==='finalizar');
+  if (tipo==='iniciar' && o.setor_id || precisa) {
+    funcionario_id = await escolher(tipo==='iniciar'?'Quem vai fazer?':'Quem fez?', pessoas(o.setor_id));
+    if (!funcionario_id) return;
+  }
+  if (tipo==='reabrir' && !confirm('Reabrir essa operação?')) return;
+  await api(`/api/operacoes/${o.id}/${tipo}`, {funcionario_id});
+  toast({iniciar:'▶ Iniciada',pausar:'⏸ Pausada',finalizar:'✓ Finalizada',reabrir:'Reaberta'}[tipo]);
+  depois();
 });
-const metaDe = (prod, etapa) => (C.roteiro.find(r=>r.produto_id===prod && r.etapa_id===etapa)||{}).meta_dia_pessoa;
-const etapaDoSetor = setor => (C.etapas.find(e=>e.setor_id===setor)||{}).id;
+const botoes = o => o.status==='finalizado' ? `<button class="btn sec sm" data-a="reabrir">Reabrir</button>`
+  : o.status==='produzindo' ? `<button class="btn mid sm" data-a="pausar">⏸ Pausar</button> <button class="btn ok sm" data-a="finalizar">✓ Finalizar</button>`
+  : `<button class="btn sm" data-a="iniciar">▶ Iniciar</button> <button class="btn sec sm" data-a="finalizar">✓ Finalizar</button>`;
+const tag = s => `<span class="tag t-${s}">${s}</span>`;
 
-function render(){ if(!C) return; ({lancar:tLancar, dia:tDia, painel:tPainel, equipe:tEquipe})[S.tab](); }
+// ===== fila por setor (tela principal do líder)
+async function tFila(){
+  const abas = [...B.setores.map(s=>({id:s.id,nome:s.nome})), {id:0,nome:'Estufa / espera'}];
+  app.innerHTML = `<div class="grid">${abas.map(s=>`<div class="chip ${S.setor===s.id?'on':''}" data-s="${s.id}">${esc(s.nome)}</div>`).join('')}</div><h2>Fila do setor</h2><div class="fila" id="fila"><div class="vazio">Carregando…</div></div>`;
+  app.querySelectorAll('[data-s]').forEach(c=>c.onclick=()=>{S.setor=+c.dataset.s; tFila();});
+  const l = await api('/api/fila?setor_id='+S.setor);
+  const t = (B.tipos.find(x=>x.setor_id===S.setor)||{});
+  $('#fila').innerHTML = l.length ? l.map((o,i)=>`<div class="card ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-i="${i}">
+      <div class="info"><b>${esc(o.operacao)}</b> ${tag(o.status)}<br>
+        <span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.item_nome)} · <b>${fmt(o.qtd)} un</b><br>
+        <span class="mut">${o.funcionario?'👤 '+esc(o.funcionario)+' · ':''}tempo <span data-tempo='${JSON.stringify({minutos:o.minutos,status:o.status,inicio_atual:o.inicio_atual})}'>${dur(decorrido(o))}</span> / padrão ${dur(o.tempo_unit_min*o.qtd)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</span></div>
+      <div>${botoes(o)}</div></div>`).join('') : '<div class="vazio">Nada na fila desse setor agora.</div>';
+  $('#fila').querySelectorAll('[data-i]').forEach(c=>{ const o=l[+c.dataset.i]; c.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>acao(o,b.dataset.a,tFila)); });
+  $('#fila').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
+}
 
-// ===== Lançar =====
-function tLancar(){
-  const etapa = S.setor && etapaDoSetor(S.setor);
-  const funcs = C.funcionarios.filter(f => S.todos || !S.setor || f.setor_id===S.setor);
-  const prods = C.produtos.filter(p => !etapa || S.todos || metaDe(p.id, etapa));
-  const meta = S.prod && etapa ? metaDe(S.prod, etapa) : null;
-  app.innerHTML = `
-    <h2>1. Setor</h2>
-    <div class="grid">${C.setores.map(s=>`<div class="chip ${S.setor===s.id?'on':''}" data-setor="${s.id}">${esc(s.nome)}</div>`).join('')}</div>
-    <h2>2. Quem fez</h2>
-    <div class="grid">${funcs.map(f=>`<div class="chip ${S.func===f.id?'on':''}" data-func="${f.id}">${esc(f.nome)}</div>`).join('')||'<div class="vazio">Escolha o setor</div>'}</div>
-    <h2>3. Peça</h2>
-    <div class="grid">${prods.map(p=>{const m=etapa&&metaDe(p.id,etapa);return `<div class="chip ${S.prod===p.id?'on':''}" data-prod="${p.id}">${esc(p.nome)}${m?`<small>meta ${fmt(m)}/dia</small>`:''}</div>`}).join('')}</div>
-    <label class="row meta" style="margin-top:10px"><input type="checkbox" id="todos" ${S.todos?'checked':''} style="width:22px;height:22px"> mostrar todas as pessoas e peças</label>
-    <h2>4. Quantidade</h2>
-    <div class="row">
-      <div class="qtd"><button id="menos">−</button><input id="qtd" type="number" min="0" step="0.5" value="${S.qtd}"><button id="mais">+</button></div>
-      <select id="pedido"><option value="">Pedido (opcional)</option>${C.pedidos.map(p=>`<option value="${p.id}" ${S.pedido==p.id?'selected':''}>${esc(p.numero)} ${esc(p.cliente||'')}</option>`).join('')}</select>
-    </div>
-    <p class="meta">${meta?`Meta por pessoa: <b>${fmt(meta)} por dia</b> nesse setor.`:(S.prod&&S.setor?'Sem meta cadastrada para essa peça nesse setor.':'')}</p>
-    <button class="btn" id="salvar" style="width:100%;margin-top:8px" ${S.setor&&S.func&&S.prod?'':'disabled'}>Lançar produção de ${new Date($('#data').value+'T12:00').toLocaleDateString('pt-BR')}</button>`;
-  app.querySelectorAll('[data-setor]').forEach(e=>e.onclick=()=>{S.setor=+e.dataset.setor;S.func=null;S.prod=null;render()});
-  app.querySelectorAll('[data-func]').forEach(e=>e.onclick=()=>{S.func=+e.dataset.func;render()});
-  app.querySelectorAll('[data-prod]').forEach(e=>e.onclick=()=>{S.prod=+e.dataset.prod;render()});
-  $('#todos').onchange=e=>{S.todos=e.target.checked;render()};
-  $('#qtd').oninput=e=>S.qtd=parseFloat(e.target.value)||0;
-  $('#menos').onclick=()=>{S.qtd=Math.max(0,S.qtd-1);$('#qtd').value=S.qtd};
-  $('#mais').onclick=()=>{S.qtd+=1;$('#qtd').value=S.qtd};
-  $('#pedido').onchange=e=>S.pedido=e.target.value;
-  $('#salvar').onclick=async()=>{
-    if(!(S.qtd>0)) return toast('Coloque a quantidade',1);
-    try{
-      await api('/api/apontamentos',{method:'POST',body:JSON.stringify({data:$('#data').value,funcionario_id:S.func,etapa_id:etapa,produto_id:S.prod,pedido_id:S.pedido||null,qtd:S.qtd})});
-      const f=C.funcionarios.find(x=>x.id===S.func), p=C.produtos.find(x=>x.id===S.prod);
-      toast(`✓ ${f.nome}: ${fmt(S.qtd)} ${p.nome}`);
-      S.func=null;S.prod=null;S.qtd=1;S.pedido='';render();
-    }catch(e){ if(e.message!=='401') toast(e.message,1); }
+// ===== OPs (kanban por estágio)
+async function tOps(){
+  app.innerHTML = `<div class="row"><input id="busca" placeholder="Buscar OP ou item" value="${esc(S.busca)}" style="flex:1;min-width:180px"><button class="btn" id="nova">+ Nova OP</button></div><br><div id="kb" class="vazio">Carregando…</div>`;
+  $('#nova').onclick=novaOp;
+  const ops = await api('/api/ops');
+  const desenha = ()=>{
+    const b=S.busca.toLowerCase(), f=ops.filter(o=>!b||String(o.codigo).includes(b)||o.item_nome.toLowerCase().includes(b));
+    $('#kb').className='kanban';
+    $('#kb').innerHTML = B.estagios.filter(e=>e.ordem<12).map(e=>{ const l=f.filter(o=>o.estagio_id===e.id);
+      return `<div class="col ${l.length?'':'vz'}"><h3><span>${esc(e.nome)}</span><span>${l.length}</span></h3>${l.map(o=>{ const a=(o.atual||'').split('|');
+        return `<div class="op ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-op="${o.codigo}"><b>OP ${o.codigo} · ${fmt(o.qtd)} un</b>${esc(o.item_nome)}
+          <div class="mut">${a[0]?esc(a[0])+' · '+a[1]+(a[2]?' · '+esc(a[2]):''):''}${o.previsao_fim?'<br>entrega '+brData(o.previsao_fim):''}</div></div>`}).join('')||'<div class="mut" style="padding:6px">—</div>'}</div>`}).join('');
+    $('#kb').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
   };
+  $('#busca').oninput=e=>{S.busca=e.target.value; desenha();};
+  desenha();
 }
+const novaOp = tenta(async ()=>{
+  modal(`<h2 style="margin-top:0">Nova OP</h2><input id="ib" placeholder="Buscar item (nome ou código)" style="width:100%"><div id="il" class="grid" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+    <div id="sel" class="mut" style="margin:10px 0">Nenhum item escolhido</div>
+    <div class="row"><label>Qtd <input id="nq" type="number" min="1" value="1" style="width:90px"></label><label>Entrega <input id="nf" type="date"></label><label>Pedido <input id="np" style="width:120px"></label></div><br>
+    <div class="row"><button class="btn" id="cria" disabled>Criar OP</button><button class="btn sec" id="mx">Cancelar</button></div>`);
+  $('#mx').onclick=()=>modal('');
+  let item=null, t;
+  const busca = async ()=>{ const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent($('#ib').value)); $('#il').innerHTML=l.filter(i=>i.ativo).slice(0,60).map(i=>`<div class="chip" data-id="${i.id}" data-n="${esc(i.nome)}" data-r="${i.n_rot}">${esc(i.nome)}<small>${i.codigo}${i.n_rot?'':' · sem roteiro'}</small></div>`).join('');
+    $('#il').querySelectorAll('[data-id]').forEach(c=>c.onclick=()=>{ item=+c.dataset.id; $('#sel').innerHTML='Item: <b>'+c.dataset.n+'</b>'+(+c.dataset.r?'':' <span class="bad">(sem roteiro no sistema)</span>'); $('#cria').disabled=false; $('#il').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c)); }); };
+  $('#ib').oninput=()=>{clearTimeout(t); t=setTimeout(busca,300)}; busca();
+  $('#cria').onclick=tenta(async()=>{ const r=await api('/api/ops',{item_id:item,qtd:+$('#nq').value,previsao_fim:$('#nf').value||null,pedido:$('#np').value||null}); toast('OP '+r.codigo+' criada'); modal(''); abrirOp(r.codigo); });
+});
 
-// ===== Do dia =====
-async function tDia(){
-  app.innerHTML='<div class="vazio">Carregando…</div>';
-  const d=$('#data').value;
-  const [ap, pres] = await Promise.all([api('/api/apontamentos?data='+d), api('/api/presenca?data='+d)]);
-  const falta = new Set(pres.filter(p=>p.falta).map(p=>p.funcionario_id));
-  app.innerHTML = `<h2>Lançamentos de ${new Date(d+'T12:00').toLocaleDateString('pt-BR')}</h2>
-    ${ap.length?`<div class="card"><table><tr><th>Pessoa</th><th>Setor</th><th>Peça</th><th class="n">Qtd</th><th></th></tr>
-      ${ap.map(a=>`<tr><td>${esc(a.funcionario)}</td><td>${esc(a.etapa)}</td><td>${esc(a.produto)}${a.pedido?` <span class="meta">· ${esc(a.pedido)}</span>`:''}</td><td class="n">${fmt(a.qtd)}</td><td class="n"><button class="x" data-del="${a.id}" title="Apagar">✕</button></td></tr>`).join('')}</table></div>`
-      :'<div class="vazio">Nada lançado nesse dia.</div>'}
-    <h2>Faltas do dia <span class="meta">(toque para marcar)</span></h2>
-    <div class="grid">${C.funcionarios.map(f=>`<div class="chip ${falta.has(f.id)?'on falta':''}" data-falta="${f.id}">${esc(f.nome)}</div>`).join('')}</div>`;
-  app.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
-    if(!confirm('Apagar esse lançamento?')) return;
-    await api('/api/apontamentos/'+b.dataset.del,{method:'DELETE'}); toast('Apagado'); tDia();
-  });
-  app.querySelectorAll('[data-falta]').forEach(b=>b.onclick=async()=>{
-    const id=+b.dataset.falta; await api('/api/presenca',{method:'POST',body:JSON.stringify({data:d,funcionario_id:id,falta:!falta.has(id)})}); tDia();
-  });
-}
+// ===== detalhe da OP
+const abrirOp = tenta(async codigo=>{
+  const o = await api('/api/ops/'+codigo);
+  const est = B.estagios.find(e=>e.id===o.estagio_id)||{};
+  const fe = o.operacoes.filter(x=>x.status==='finalizado').length;
+  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">OP ${o.codigo}${o.origem==='sensio'?' · veio do Sensio':''}</h2>
+      <div style="font-size:20px;font-weight:800">${esc(o.item_nome)}</div><div class="mut">${o.item_codigo} · ${fmt(o.qtd)} un${o.pedido?' · pedido '+esc(o.pedido):''} · início ${brData(o.previsao_inicio)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</div></div>
+      <button class="btn sec sm" id="mx">Fechar</button></div>
+    <br><div class="row"><span class="mut">Estágio</span>
+      ${o.status==='aberta'?`<select id="est">${B.estagios.filter(e=>e.ordem<12).map(e=>`<option value="${e.id}" ${e.id===o.estagio_id?'selected':''}>${esc(e.nome)}</option>`).join('')}</select>`:`<b>${esc(est.nome)}</b> (${o.status})`}
+      <span class="mut">${fe}/${o.operacoes.length} operações</span></div>
+    <div class="bar" style="margin:8px 0"><i style="width:${o.operacoes.length?fe/o.operacoes.length*100:0}%"></i></div>
+    <h2>Roteiro</h2><div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Operação</th><th>Status</th><th>Quem</th><th class="n">Real</th><th class="n">Padrão</th><th>Início / fim</th><th></th></tr>
+      ${o.operacoes.map((x,i)=>`<tr><td>${x.ordem}</td><td>${esc(x.nome)}</td><td>${tag(x.status)}</td><td>${esc(x.funcionario||'')}</td>
+        <td class="n">${x.status!=='produzindo'&&!x.minutos?'–':dur(decorrido(x))}</td><td class="n">${dur(x.tempo_unit_min*o.qtd)}</td>
+        <td class="mut">${brHora(x.inicio)}${x.fim?' → '+brHora(x.fim):''}</td><td style="white-space:nowrap" data-i="${i}">${o.status==='aberta'?botoes(x):''}</td></tr>`).join('')||'<tr><td colspan=8 class="vazio">Item sem roteiro cadastrado.</td></tr>'}</table></div>
+    <h2>Materiais (sai do Pátio ao finalizar)</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio</th></tr>
+      ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<m.total?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>
+    <h2>Eventos</h2><div class="card">${o.eventos.map(e=>`<div><span class="mut">${brHora(e.data)}</span> · ${esc(e.texto)}</div>`).join('')}</div>
+    ${o.status==='aberta'?'<br><button class="btn bad sm" id="canc">Cancelar OP</button>':''}`);
+  $('#mx').onclick=()=>{ modal(''); render(); };
+  const re=()=>abrirOp(codigo);
+  document.querySelectorAll('#modal td[data-i]').forEach(td=>{ const x=o.operacoes[+td.dataset.i]; td.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>acao(x,b.dataset.a,re)); });
+  if($('#est')) $('#est').onchange=tenta(async e=>{ await api(`/api/ops/${codigo}/estagio`,{estagio_id:+e.target.value}); toast('Estágio alterado'); re(); });
+  if($('#canc')) $('#canc').onclick=tenta(async()=>{ const m=prompt('Motivo do cancelamento da OP '+codigo+':'); if(m===null) return; await api(`/api/ops/${codigo}/cancelar`,{motivo:m}); toast('OP cancelada'); modal(''); render(); });
+});
 
-// ===== Painel =====
-function periodo(){
-  const d=new Date($('#data').value+'T12:00'), iso=x=>x.toISOString().slice(0,10);
-  if(S.periodo==='dia') return [iso(d),iso(d)];
-  if(S.periodo==='semana'){ const s=new Date(d); s.setDate(d.getDate()-((d.getDay()+6)%7)); const e=new Date(s); e.setDate(s.getDate()+6); return [iso(s),iso(e)]; }
-  return [iso(new Date(d.getFullYear(),d.getMonth(),1,12)), iso(new Date(d.getFullYear(),d.getMonth()+1,0,12))];
+// ===== itens
+async function tItens(){
+  app.innerHTML = `<div class="row"><input id="ib" placeholder="Buscar item (nome ou código)" value="${esc(S.bi||'')}" style="flex:1"></div><br><div class="card" id="il">Carregando…</div>`;
+  let t; const busca=async()=>{ S.bi=$('#ib').value; const l=await api('/api/itens?q='+encodeURIComponent(S.bi));
+    $('#il').innerHTML=`<table><tr><th>Código</th><th>Nome</th><th>Tipo</th><th class="n">Roteiro</th><th class="n">P.A.</th><th class="n">Pátio</th></tr>${l.map(i=>`<tr data-id="${i.id}" style="cursor:pointer;${i.ativo?'':'opacity:.5'}"><td>${i.codigo}</td><td>${esc(i.nome)}</td><td class="mut">${i.tipo}</td><td class="n">${i.n_rot||'–'}</td><td class="n">${i.saldo_pa?fmt(i.saldo_pa,3):''}</td><td class="n">${i.saldo_patio?fmt(i.saldo_patio,3):''}</td></tr>`).join('')}</table>`;
+    $('#il').querySelectorAll('[data-id]').forEach(r=>r.onclick=()=>abrirItem(+r.dataset.id)); };
+  $('#ib').oninput=()=>{clearTimeout(t);t=setTimeout(busca,300)}; busca();
 }
-async function tPainel(){
+const abrirItem = tenta(async id=>{
+  const i = await api('/api/itens/'+id); const tot=i.roteiro.filter(r=>!r.espera).reduce((a,r)=>a+r.tempo_min,0);
+  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">${i.codigo} · ${i.tipo}</h2><div style="font-size:20px;font-weight:800">${esc(i.nome)}</div>${i.preco?`<div class="mut">Preço R$ ${fmt(i.preco,2)}</div>`:''}</div><button class="btn sec sm" id="mx">Fechar</button></div>
+    <h2>Composição</h2><div class="card">${i.composicao.map(c=>`<div>${c.codigo} · ${esc(c.nome)} — <b>${fmt(c.qtd,3)}</b></div>`).join('')||'<span class="mut">Sem composição.</span>'}</div>
+    <h2>Roteiro de produção <span class="mut">(toque no tempo para mudar · ${dur(tot)} de mão de obra por peça)</span></h2><div class="card"><table><tr><th>#</th><th>Operação</th><th class="n">Tempo por peça</th></tr>
+      ${i.roteiro.map(r=>`<tr><td>${r.ordem}</td><td>${esc(r.nome)}${r.espera?' <span class="mut">(espera)</span>':''}</td><td class="n"><span class="link" data-o="${r.ordem}" data-t="${r.tempo_min}">${fmt(r.tempo_min,0)} min</span></td></tr>`).join('')||'<tr><td colspan=3 class="mut">Sem roteiro.</td></tr>'}</table></div>
+    <h2>Estoque</h2><div class="card">${i.estoque.map(e=>`<div>${esc(e.nome)}: <b>${fmt(e.saldo,3)}</b></div>`).join('')||'<span class="mut">Sem saldo.</span>'}</div>`);
+  $('#mx').onclick=()=>modal('');
+  document.querySelectorAll('#modal [data-o]').forEach(s=>s.onclick=tenta(async()=>{ const v=prompt('Tempo por peça em minutos:',s.dataset.t); if(v===null) return; const n=parseFloat(v.replace(',','.')); if(!(n>=0)) return toast('Número inválido',1);
+    await api(`/api/itens/${id}/roteiro`,{ordem:+s.dataset.o,tempo_min:n}); toast('Tempo atualizado (vale para OPs novas)'); abrirItem(id); }));
+});
+
+// ===== estoque
+async function tEstoque(){
+  app.innerHTML = `<div class="row"><select id="dep">${B.depositos.map(d=>`<option value="${d.id}" ${d.id===S.dep?'selected':''}>${esc(d.nome)}</option>`).join('')}</select><button class="btn sec" id="mov">Movimentar</button><button class="btn sec" id="hist">Últimas movimentações</button></div><br><div class="card" id="el">Carregando…</div>`;
+  $('#dep').onchange=e=>{S.dep=+e.target.value; tEstoque();};
+  $('#mov').onclick=movimentar; $('#hist').onclick=historico;
+  const l = await api('/api/estoque?deposito_id='+S.dep);
+  $('#el').innerHTML = l.length?`<table><tr><th>Código</th><th>Item</th><th class="n">Saldo</th></tr>${l.map(i=>`<tr><td>${i.codigo}</td><td>${esc(i.nome)}</td><td class="n ${i.saldo<0?'bad':''}">${fmt(i.saldo,3)}</td></tr>`).join('')}</table>`:'<div class="vazio">Nenhum saldo nesse depósito.</div>';
+}
+const movimentar = tenta(async()=>{
+  modal(`<h2 style="margin-top:0">Movimentar estoque</h2><input id="ib" placeholder="Buscar item" style="width:100%"><div id="il" class="grid" style="margin-top:8px;max-height:35vh;overflow:auto"></div><div id="sel" class="mut" style="margin:10px 0">Nenhum item escolhido</div>
+    <div class="row"><select id="md">${B.depositos.map(d=>`<option value="${d.id}" ${d.id===S.dep?'selected':''}>${esc(d.nome)}</option>`).join('')}</select>
+    <select id="mt"><option value="1">Entrada</option><option value="-1">Saída</option></select><input id="mq" type="number" step="0.001" placeholder="Qtd" style="width:100px"><input id="mm" placeholder="Motivo / NF" style="flex:1"></div><br>
+    <div class="row"><button class="btn" id="ok" disabled>Salvar</button><button class="btn sec" id="mx">Cancelar</button></div>`);
+  $('#mx').onclick=()=>modal(''); let item=null,t;
+  const busca=async()=>{ const l=await api('/api/itens?q='+encodeURIComponent($('#ib').value)); $('#il').innerHTML=l.slice(0,60).map(i=>`<div class="chip" data-id="${i.id}" data-n="${esc(i.codigo+' · '+i.nome)}">${esc(i.nome)}<small>${i.codigo}</small></div>`).join('');
+    $('#il').querySelectorAll('[data-id]').forEach(c=>c.onclick=()=>{ item=+c.dataset.id; $('#sel').innerHTML='Item: <b>'+c.dataset.n+'</b>'; $('#ok').disabled=false; }); };
+  $('#ib').oninput=()=>{clearTimeout(t);t=setTimeout(busca,300)}; busca();
+  $('#ok').onclick=tenta(async()=>{ const q=parseFloat(($('#mq').value||'').replace(',','.')); if(!(q>0)) return toast('Coloque a quantidade',1);
+    await api('/api/estoque/mov',{item_id:item,deposito_id:+$('#md').value,qtd:q*+$('#mt').value,motivo:$('#mm').value}); toast('Movimentação salva'); modal(''); tEstoque(); });
+});
+const historico = tenta(async()=>{ const l=await api('/api/estoque/movs');
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Últimas movimentações</h2><button class="btn sec sm" id="mx">Fechar</button></div><br><div class="card"><table><tr><th>Quando</th><th>Item</th><th>Depósito</th><th class="n">Qtd</th><th>Motivo</th></tr>
+    ${l.map(m=>`<tr><td class="mut">${brHora(m.data)}</td><td>${m.codigo} · ${esc(m.nome)}</td><td>${esc(m.deposito)}</td><td class="n ${m.qtd<0?'bad':'ok'}">${fmt(m.qtd,3)}</td><td class="mut">${esc(m.motivo||'')}</td></tr>`).join('')}</table></div>`);
+  $('#mx').onclick=()=>modal(''); });
+
+// ===== relatório de produção
+function periodo(){ const d=new Date(hojeISO()+'T12:00'), iso=x=>x.toISOString().slice(0,10);
+  if(S.per==='dia') return [iso(d),iso(d)];
+  if(S.per==='semana'){ const s=new Date(d); s.setDate(d.getDate()-((d.getDay()+6)%7)); return [iso(s),iso(d)]; }
+  return [iso(new Date(d.getFullYear(),d.getMonth(),1,12)),iso(d)]; }
+async function tRel(){
   const [de,ate]=periodo();
-  app.innerHTML='<div class="vazio">Carregando…</div>';
-  const r = await api(`/api/painel?de=${de}&ate=${ate}`);
-  const cor = p => p>=100?'var(--ok)':p>=80?'var(--mid)':'var(--bad)';
-  const porSetor = {}; r.resumo.forEach(x=>(porSetor[x.setor]??=[]).push(x));
-  const br = s=>new Date(s+'T12:00').toLocaleDateString('pt-BR');
-  app.innerHTML = `<div class="row" style="justify-content:space-between">
-      <h2 style="margin:0">Meta x realizado · ${br(de)}${de!==ate?' a '+br(ate):''}</h2>
-      <div class="tog">${['dia','semana','mes'].map(p=>`<button data-p="${p}" class="${S.periodo===p?'on':''}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div>
-    <p class="meta">Cada peça vale 1/meta de um dia. 100% = bateu a meta em todos os dias com lançamento.</p>
-    ${Object.keys(porSetor).length?Object.entries(porSetor).map(([s,l])=>{
-      const tot=l.reduce((a,x)=>a+x.dias_meta,0), dias=l.reduce((a,x)=>a+x.dias,0), ps=dias?tot/dias*100:0;
-      return `<div class="card setorbox"><h3>${esc(s)} <span class="pct" style="color:${cor(ps)};float:right">${fmt(ps,0)}%</span></h3>
-      <table><tr><th>Pessoa</th><th class="n">Peças</th><th class="n">Dias</th><th>Eficiência</th><th class="n">%</th></tr>
-      ${l.map(x=>{const p=x.dias?x.dias_meta/x.dias*100:0;return `<tr><td>${esc(x.funcionario)}${x.sem_meta?` <span class="meta" title="peças sem meta cadastrada">(${fmt(x.sem_meta)} s/ meta)</span>`:''}</td><td class="n">${fmt(x.pecas)}</td><td class="n">${x.dias}</td>
-        <td style="width:30%"><div class="bar"><i style="width:${Math.min(p,150)/1.5}%;background:${cor(p)}"></i></div></td><td class="n pct" style="color:${cor(p)}">${fmt(p,0)}%</td></tr>`}).join('')}</table></div>`}).join('')
-      :'<div class="vazio">Sem lançamentos nesse período.</div>'}
-    ${r.detalhe.length?`<details><summary class="meta" style="cursor:pointer;padding:10px 0">Ver detalhe por dia</summary><div class="card"><table>
-      <tr><th>Dia</th><th>Pessoa</th><th>Setor</th><th>Peça</th><th class="n">Qtd</th><th class="n">Meta</th></tr>
-      ${r.detalhe.map(x=>`<tr><td>${br(x.data)}</td><td>${esc(x.funcionario)}</td><td>${esc(x.etapa)}</td><td>${esc(x.produto)}</td><td class="n">${fmt(x.qtd)}</td><td class="n">${x.meta?fmt(x.meta):'–'}</td></tr>`).join('')}
-    </table></div></details>`:''}`;
-  app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.periodo=b.dataset.p;tPainel()});
-}
-
-// ===== Cadastros =====
-function tEquipe(){
-  app.innerHTML = `<h2>Equipe</h2>
-    ${C.setores.map(s=>`<div class="card setorbox"><h3>${esc(s.nome)}</h3>${C.funcionarios.filter(f=>f.setor_id===s.id).map(f=>esc(f.nome)).join(' · ')||'<span class="meta">ninguém</span>'}</div>`).join('')}
-    <div class="row"><input id="nnome" placeholder="Nome"><select id="nsetor">${C.setores.map(s=>`<option value="${s.id}">${esc(s.nome)}</option>`).join('')}</select><button class="btn sec" id="nadd">Adicionar pessoa</button></div>
-    <h2>Metas por pessoa por dia <span class="meta">(toque no número para mudar)</span></h2>
-    <div class="card" style="overflow-x:auto"><table><tr><th>Peça</th>${C.etapas.map(e=>`<th class="n">${esc(e.nome)}</th>`).join('')}</tr>
-    ${C.produtos.map(p=>`<tr><td>${esc(p.nome)}</td>${C.etapas.map(e=>{const m=metaDe(p.id,e.id);return `<td class="n"><span data-meta="${p.id},${e.id}" style="cursor:pointer;${m?'':'color:var(--mut)'}">${m?fmt(m):'–'}</span></td>`}).join('')}</tr>`).join('')}
-    </table></div>
-    <h2>Acesso</h2><button class="btn sec" id="sair">Sair deste aparelho</button>`;
-  $('#nadd').onclick=async()=>{const n=$('#nnome').value.trim(); if(!n) return;
-    await api('/api/funcionarios',{method:'POST',body:JSON.stringify({nome:n,setor_id:+$('#nsetor').value})}); C=await api('/api/cadastros'); toast('✓ '+n+' adicionado'); tEquipe();};
-  app.querySelectorAll('[data-meta]').forEach(el=>el.onclick=async()=>{
-    const [pid,eid]=el.dataset.meta.split(',').map(Number), atual=metaDe(pid,eid);
-    const v=prompt('Nova meta por pessoa por dia:', atual??''); if(v===null||v.trim()==='') return;
-    const n=parseFloat(v.replace(',','.')); if(!(n>0)) return toast('Número inválido',1);
-    await api('/api/meta',{method:'POST',body:JSON.stringify({produto_id:pid,etapa_id:eid,meta:n})}); C=await api('/api/cadastros'); toast('Meta atualizada'); tEquipe();});
-  $('#sair').onclick=()=>{ls.del('codigo');C=null;telaLogin();};
+  app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Produção · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2>
+    <div class="row">${['dia','semana','mes'].map(p=>`<button class="btn ${S.per===p?'':'sec'} sm" data-p="${p}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div>
+    <p class="mut">Eficiência = tempo padrão do roteiro ÷ tempo real cronometrado (só operações com pelo menos 1 minuto cronometrado). Acima de 100% = mais rápido que o padrão.</p><div id="rl" class="vazio">Carregando…</div>`;
+  app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.per=b.dataset.p; tRel();});
+  const r=await api(`/api/relatorio?de=${de}&ate=${ate}`);
+  const cor=p=>p>=100?'ok':p>=80?'midc':'bad';
+  $('#rl').className='';
+  $('#rl').innerHTML=`<div class="card" style="overflow-x:auto"><table><tr><th>Pessoa</th><th>Setor</th><th class="n">Operações</th><th class="n">Peças</th><th class="n">Tempo real</th><th class="n">Tempo padrão</th><th class="n">Eficiência</th></tr>
+    ${r.porPessoa.map(p=>{ const e=p.minutos_medidos>0?p.padrao_medido/p.minutos_medidos*100:null; return `<tr><td>${esc(p.funcionario)}</td><td class="mut">${esc(p.setor||'')}</td><td class="n">${p.operacoes}</td><td class="n">${fmt(p.pecas)}</td><td class="n">${dur(p.minutos_reais)}</td><td class="n">${dur(p.minutos_padrao)}</td><td class="n ${e===null?'':cor(e)}"><b>${e===null?'–':fmt(e,0)+'%'}</b></td></tr>`}).join('')||'<tr><td colspan=7 class="vazio">Nenhuma operação finalizada no período.</td></tr>'}</table></div>
+    <h2>OPs finalizadas (${r.finalizadas.length})</h2><div class="card">${r.finalizadas.map(o=>`<div><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.item)} · ${fmt(o.qtd)} un <span class="mut">· ${brHora(o.finalizado_em)}</span></div>`).join('')||'<span class="mut">Nenhuma.</span>'}</div>
+    <h2>Operações finalizadas</h2><div class="card" style="overflow-x:auto"><table><tr><th>Quando</th><th>Pessoa</th><th>Operação</th><th>OP</th><th class="n">Real</th><th class="n">Padrão</th></tr>
+    ${r.detalhe.map(d=>`<tr><td class="mut">${brHora(d.fim)}</td><td>${esc(d.funcionario||'')}</td><td>${esc(d.operacao)}</td><td>${d.codigo} · ${esc(d.item)}</td><td class="n">${d.minutos?dur(d.minutos):'–'}</td><td class="n">${dur(d.padrao)}</td></tr>`).join('')}</table></div>
+    <h2>Equipe</h2><div class="row"><input id="nn" placeholder="Nome"><select id="ns">${B.setores.map(s=>`<option value="${s.id}">${esc(s.nome)}</option>`).join('')}</select><button class="btn sec" id="na">Adicionar pessoa</button><button class="btn sec" id="sair">Sair deste aparelho</button></div>`;
+  $('#rl').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
+  $('#na').onclick=tenta(async()=>{ const n=$('#nn').value.trim(); if(!n) return; await api('/api/funcionarios',{nome:n,setor_id:+$('#ns').value}); B=await api('/api/base'); toast(n+' adicionado'); });
+  $('#sair').onclick=()=>{ ls.del('codigo'); B=null; telaLogin(); };
 }
 iniciar();
 </script>
