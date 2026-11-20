@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OMAMA Produção</title>
+<meta name="theme-color" content="#1b1410">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<style>
+:root{--bg:#1b1410;--card:#261c16;--card2:#30241c;--line:#3d2e24;--txt:#f3e9df;--mut:#b09c8c;--amb:#e9a23b;--ok:#5fbf7a;--bad:#e2604f;--mid:#e9c03b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:84px}
+header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+header h1{font-size:18px;margin:0;letter-spacing:.08em;font-weight:700}
+header h1 span{color:var(--amb)}
+header .data{margin-left:auto}
+main{max-width:980px;margin:0 auto;padding:16px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#140f0c;border-top:1px solid var(--line);z-index:5}
+nav button{flex:1;background:none;border:0;color:var(--mut);padding:12px 4px 16px;font-size:13px;font-weight:600}
+nav button b{display:block;font-size:22px;line-height:1.1}
+nav button.on{color:var(--amb)}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin:22px 0 10px}
+h2:first-child{margin-top:4px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.chip{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:12px;padding:14px 10px;font-size:16px;font-weight:600;text-align:center;cursor:pointer}
+.chip small{display:block;color:var(--mut);font-weight:500;font-size:12px;margin-top:2px}
+.chip.on{border-color:var(--amb);background:#3a2a17;color:#ffd99a}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+input,select{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:10px;padding:12px;font-size:16px}
+.qtd{display:flex;align-items:center;gap:8px}
+.qtd button{width:56px;height:56px;border-radius:12px;border:0;background:var(--card2);color:var(--txt);font-size:28px;font-weight:700}
+.qtd input{width:96px;text-align:center;font-size:26px;font-weight:700;height:56px}
+.btn{background:var(--amb);color:#1b1410;border:0;border-radius:12px;padding:16px 22px;font-size:17px;font-weight:800;cursor:pointer}
+.btn:disabled{opacity:.4}
+.btn.sec{background:var(--card2);color:var(--txt)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.meta{color:var(--mut);font-size:14px}
+.meta b{color:var(--amb)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td,th{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.x{background:none;border:0;color:var(--bad);font-size:20px;cursor:pointer}
+.bar{height:10px;background:var(--card2);border-radius:6px;overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%}
+.pct{font-weight:800}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.mid{color:var(--mid)}
+.toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--ok);color:#0d1f12;padding:12px 20px;border-radius:12px;font-weight:700;display:none;z-index:9}
+.toast.err{background:var(--bad);color:#fff}
+.vazio{color:var(--mut);padding:20px;text-align:center}
+.setorbox{margin-bottom:18px}
+.setorbox h3{margin:0 0 6px;color:var(--amb);font-size:16px}
+.login{max-width:360px;margin:12vh auto;text-align:center}
+.login input{width:100%;margin:16px 0;text-align:center;font-size:22px;letter-spacing:.2em}
+.tog{display:flex;gap:6px}
+.tog button{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 14px;font-weight:600}
+.tog button.on{border-color:var(--amb);color:#ffd99a}
+.falta{opacity:.45;text-decoration:line-through}
+</style>
+</head>
+<body>
+<header>
+  <h1>OMAMA <span>PRODUÇÃO</span></h1>
+  <input type="date" id="data" class="data">
+</header>
+<main id="app"></main>
+<nav id="nav" style="display:none">
+  <button data-t="lancar" class="on"><b>＋</b>Lançar</button>
+  <button data-t="dia"><b>☰</b>Do dia</button>
+  <button data-t="painel"><b>▮▮</b>Painel</button>
+  <button data-t="equipe"><b>⚙</b>Cadastros</button>
+</nav>
+<div class="toast" id="toast"></div>
+<script>
+// ===== Configuração =====
+const API_PADRAO = 'https://omama-producao.expedicao-4e9.workers.dev';
+const ls = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}, del(k){try{localStorage.removeItem(k)}catch(e){}} };
+const API = () => ls.get('api') || API_PADRAO;
+let C = null; // cadastros
+const S = { tab:'lancar', setor:null, func:null, prod:null, qtd:1, pedido:'', todos:false, periodo:'semana' };
+const $ = s => document.querySelector(s), app = $('#app');
+const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+$('#data').value = hoje();
+$('#data').onchange = () => render();
+const fmt = (n,d=1) => Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:d});
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2600); }
+async function api(path, opt={}){
+  const r = await fetch(API()+path, {...opt, headers:{'Content-Type':'application/json','X-Codigo':ls.get('codigo')||'',...(opt.headers||{})}});
+  const j = await r.json().catch(()=>({erro:'Resposta inválida do servidor'}));
+  if (r.status===401){ ls.del('codigo'); telaLogin('Código inválido'); throw new Error('401'); }
+  if (!r.ok) throw new Error(j.erro||'Erro');
+  return j;
+}
+
+// ===== Login =====
+function telaLogin(msg){
+  $('#nav').style.display='none';
+  app.innerHTML = `<div class="login"><h2>Código de acesso</h2>
+    <input id="cod" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
+    <button class="btn" id="entrar" style="width:100%">Entrar</button>
+    <p class="bad">${esc(msg||'')}</p>
+    <details style="margin-top:30px;color:var(--mut)"><summary>Servidor</summary>
+      <input id="apiurl" value="${esc(API())}" style="font-size:13px;letter-spacing:0"></details></div>`;
+  $('#entrar').onclick = async () => {
+    ls.set('codigo', $('#cod').value.trim());
+    const u=$('#apiurl').value.trim(); if(u && u!==API_PADRAO) ls.set('api',u.replace(/\/$/,''));
+    await iniciar();
+  };
+  $('#cod').onkeydown = e => { if(e.key==='Enter') $('#entrar').click(); };
+}
+async function iniciar(){
+  if (!ls.get('codigo')) return telaLogin();
+  try { C = await api('/api/cadastros'); }
+  catch(e){ if(e.message!=='401') telaLogin('Não consegui falar com o servidor ('+e.message+')'); return; }
+  $('#nav').style.display='flex'; render();
+}
+document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
+  S.tab=b.dataset.t; document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b)); render();
+});
+const metaDe = (prod, etapa) => (C.roteiro.find(r=>r.produto_id===prod && r.etapa_id===etapa)||{}).meta_dia_pessoa;
+const etapaDoSetor = setor => (C.etapas.find(e=>e.setor_id===setor)||{}).id;
+
+function render(){ if(!C) return; ({lancar:tLancar, dia:tDia, painel:tPainel, equipe:tEquipe})[S.tab](); }
+
+// ===== Lançar =====
+function tLancar(){
+  const etapa = S.setor && etapaDoSetor(S.setor);
+  const funcs = C.funcionarios.filter(f => S.todos || !S.setor || f.setor_id===S.setor);
+  const prods = C.produtos.filter(p => !etapa || S.todos || metaDe(p.id, etapa));
+  const meta = S.prod && etapa ? metaDe(S.prod, etapa) : null;
+  app.innerHTML = `
+    <h2>1. Setor</h2>
+    <div class="grid">${C.setores.map(s=>`<div class="chip ${S.setor===s.id?'on':''}" data-setor="${s.id}">${esc(s.nome)}</div>`).join('')}</div>
+    <h2>2. Quem fez</h2>
+    <div class="grid">${funcs.map(f=>`<div class="chip ${S.func===f.id?'on':''}" data-func="${f.id}">${esc(f.nome)}</div>`).join('')||'<div class="vazio">Escolha o setor</div>'}</div>
+    <h2>3. Peça</h2>
+    <div class="grid">${prods.map(p=>{const m=etapa&&metaDe(p.id,etapa);return `<div class="chip ${S.prod===p.id?'on':''}" data-prod="${p.id}">${esc(p.nome)}${m?`<small>meta ${fmt(m)}/dia</small>`:''}</div>`}).join('')}</div>
+    <label class="row meta" style="margin-top:10px"><input type="checkbox" id="todos" ${S.todos?'checked':''} style="width:22px;height:22px"> mostrar todas as pessoas e peças</label>
+    <h2>4. Quantidade</h2>
+    <div class="row">
+      <div class="qtd"><button id="menos">−</button><input id="qtd" type="number" min="0" step="0.5" value="${S.qtd}"><button id="mais">+</button></div>
+      <select id="pedido"><option value="">Pedido (opcional)</option>${C.pedidos.map(p=>`<option value="${p.id}" ${S.pedido==p.id?'selected':''}>${esc(p.numero)} ${esc(p.cliente||'')}</option>`).join('')}</select>
+    </div>
+    <p class="meta">${meta?`Meta por pessoa: <b>${fmt(meta)} por dia</b> nesse setor.`:(S.prod&&S.setor?'Sem meta cadastrada para essa peça nesse setor.':'')}</p>
+    <button class="btn" id="salvar" style="width:100%;margin-top:8px" ${S.setor&&S.func&&S.prod?'':'disabled'}>Lançar produção de ${new Date($('#data').value+'T12:00').toLocaleDateString('pt-BR')}</button>`;
+  app.querySelectorAll('[data-setor]').forEach(e=>e.onclick=()=>{S.setor=+e.dataset.setor;S.func=null;S.prod=null;render()});
+  app.querySelectorAll('[data-func]').forEach(e=>e.onclick=()=>{S.func=+e.dataset.func;render()});
+  app.querySelectorAll('[data-prod]').forEach(e=>e.onclick=()=>{S.prod=+e.dataset.prod;render()});
+  $('#todos').onchange=e=>{S.todos=e.target.checked;render()};
+  $('#qtd').oninput=e=>S.qtd=parseFloat(e.target.value)||0;
+  $('#menos').onclick=()=>{S.qtd=Math.max(0,S.qtd-1);$('#qtd').value=S.qtd};
+  $('#mais').onclick=()=>{S.qtd+=1;$('#qtd').value=S.qtd};
+  $('#pedido').onchange=e=>S.pedido=e.target.value;
+  $('#salvar').onclick=async()=>{
+    if(!(S.qtd>0)) return toast('Coloque a quantidade',1);
+    try{
+      await api('/api/apontamentos',{method:'POST',body:JSON.stringify({data:$('#data').value,funcionario_id:S.func,etapa_id:etapa,produto_id:S.prod,pedido_id:S.pedido||null,qtd:S.qtd})});
+      const f=C.funcionarios.find(x=>x.id===S.func), p=C.produtos.find(x=>x.id===S.prod);
+      toast(`✓ ${f.nome}: ${fmt(S.qtd)} ${p.nome}`);
+      S.func=null;S.prod=null;S.qtd=1;S.pedido='';render();
+    }catch(e){ if(e.message!=='401') toast(e.message,1); }
+  };
+}
+
+// ===== Do dia =====
+async function tDia(){
+  app.innerHTML='<div class="vazio">Carregando…</div>';
+  const d=$('#data').value;
+  const [ap, pres] = await Promise.all([api('/api/apontamentos?data='+d), api('/api/presenca?data='+d)]);
+  const falta = new Set(pres.filter(p=>p.falta).map(p=>p.funcionario_id));
+  app.innerHTML = `<h2>Lançamentos de ${new Date(d+'T12:00').toLocaleDateString('pt-BR')}</h2>
+    ${ap.length?`<div class="card"><table><tr><th>Pessoa</th><th>Setor</th><th>Peça</th><th class="n">Qtd</th><th></th></tr>
+      ${ap.map(a=>`<tr><td>${esc(a.funcionario)}</td><td>${esc(a.etapa)}</td><td>${esc(a.produto)}${a.pedido?` <span class="meta">· ${esc(a.pedido)}</span>`:''}</td><td class="n">${fmt(a.qtd)}</td><td class="n"><button class="x" data-del="${a.id}" title="Apagar">✕</button></td></tr>`).join('')}</table></div>`
+      :'<div class="vazio">Nada lançado nesse dia.</div>'}
+    <h2>Faltas do dia <span class="meta">(toque para marcar)</span></h2>
+    <div class="grid">${C.funcionarios.map(f=>`<div class="chip ${falta.has(f.id)?'on falta':''}" data-falta="${f.id}">${esc(f.nome)}</div>`).join('')}</div>`;
+  app.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Apagar esse lançamento?')) return;
+    await api('/api/apontamentos/'+b.dataset.del,{method:'DELETE'}); toast('Apagado'); tDia();
+  });
+  app.querySelectorAll('[data-falta]').forEach(b=>b.onclick=async()=>{
+    const id=+b.dataset.falta; await api('/api/presenca',{method:'POST',body:JSON.stringify({data:d,funcionario_id:id,falta:!falta.has(id)})}); tDia();
+  });
+}
+
+// ===== Painel =====
+function periodo(){
+  const d=new Date($('#data').value+'T12:00'), iso=x=>x.toISOString().slice(0,10);
+  if(S.periodo==='dia') return [iso(d),iso(d)];
+  if(S.periodo==='semana'){ const s=new Date(d); s.setDate(d.getDate()-((d.getDay()+6)%7)); const e=new Date(s); e.setDate(s.getDate()+6); return [iso(s),iso(e)]; }
+  return [iso(new Date(d.getFullYear(),d.getMonth(),1,12)), iso(new Date(d.getFullYear(),d.getMonth()+1,0,12))];
+}
+async function tPainel(){
+  const [de,ate]=periodo();
+  app.innerHTML='<div class="vazio">Carregando…</div>';
+  const r = await api(`/api/painel?de=${de}&ate=${ate}`);
+  const cor = p => p>=100?'var(--ok)':p>=80?'var(--mid)':'var(--bad)';
+  const porSetor = {}; r.resumo.forEach(x=>(porSetor[x.setor]??=[]).push(x));
+  const br = s=>new Date(s+'T12:00').toLocaleDateString('pt-BR');
+  app.innerHTML = `<div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Meta x realizado · ${br(de)}${de!==ate?' a '+br(ate):''}</h2>
+      <div class="tog">${['dia','semana','mes'].map(p=>`<button data-p="${p}" class="${S.periodo===p?'on':''}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div>
+    <p class="meta">Cada peça vale 1/meta de um dia. 100% = bateu a meta em todos os dias com lançamento.</p>
+    ${Object.keys(porSetor).length?Object.entries(porSetor).map(([s,l])=>{
+      const tot=l.reduce((a,x)=>a+x.dias_meta,0), dias=l.reduce((a,x)=>a+x.dias,0), ps=dias?tot/dias*100:0;
+      return `<div class="card setorbox"><h3>${esc(s)} <span class="pct" style="color:${cor(ps)};float:right">${fmt(ps,0)}%</span></h3>
+      <table><tr><th>Pessoa</th><th class="n">Peças</th><th class="n">Dias</th><th>Eficiência</th><th class="n">%</th></tr>
+      ${l.map(x=>{const p=x.dias?x.dias_meta/x.dias*100:0;return `<tr><td>${esc(x.funcionario)}${x.sem_meta?` <span class="meta" title="peças sem meta cadastrada">(${fmt(x.sem_meta)} s/ meta)</span>`:''}</td><td class="n">${fmt(x.pecas)}</td><td class="n">${x.dias}</td>
+        <td style="width:30%"><div class="bar"><i style="width:${Math.min(p,150)/1.5}%;background:${cor(p)}"></i></div></td><td class="n pct" style="color:${cor(p)}">${fmt(p,0)}%</td></tr>`}).join('')}</table></div>`}).join('')
+      :'<div class="vazio">Sem lançamentos nesse período.</div>'}
+    ${r.detalhe.length?`<details><summary class="meta" style="cursor:pointer;padding:10px 0">Ver detalhe por dia</summary><div class="card"><table>
+      <tr><th>Dia</th><th>Pessoa</th><th>Setor</th><th>Peça</th><th class="n">Qtd</th><th class="n">Meta</th></tr>
+      ${r.detalhe.map(x=>`<tr><td>${br(x.data)}</td><td>${esc(x.funcionario)}</td><td>${esc(x.etapa)}</td><td>${esc(x.produto)}</td><td class="n">${fmt(x.qtd)}</td><td class="n">${x.meta?fmt(x.meta):'–'}</td></tr>`).join('')}
+    </table></div></details>`:''}`;
+  app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.periodo=b.dataset.p;tPainel()});
+}
+
+// ===== Cadastros =====
+function tEquipe(){
+  app.innerHTML = `<h2>Equipe</h2>
+    ${C.setores.map(s=>`<div class="card setorbox"><h3>${esc(s.nome)}</h3>${C.funcionarios.filter(f=>f.setor_id===s.id).map(f=>esc(f.nome)).join(' · ')||'<span class="meta">ninguém</span>'}</div>`).join('')}
+    <div class="row"><input id="nnome" placeholder="Nome"><select id="nsetor">${C.setores.map(s=>`<option value="${s.id}">${esc(s.nome)}</option>`).join('')}</select><button class="btn sec" id="nadd">Adicionar pessoa</button></div>
+    <h2>Metas por pessoa por dia <span class="meta">(toque no número para mudar)</span></h2>
+    <div class="card" style="overflow-x:auto"><table><tr><th>Peça</th>${C.etapas.map(e=>`<th class="n">${esc(e.nome)}</th>`).join('')}</tr>
+    ${C.produtos.map(p=>`<tr><td>${esc(p.nome)}</td>${C.etapas.map(e=>{const m=metaDe(p.id,e.id);return `<td class="n"><span data-meta="${p.id},${e.id}" style="cursor:pointer;${m?'':'color:var(--mut)'}">${m?fmt(m):'–'}</span></td>`}).join('')}</tr>`).join('')}
+    </table></div>
+    <h2>Acesso</h2><button class="btn sec" id="sair">Sair deste aparelho</button>`;
+  $('#nadd').onclick=async()=>{const n=$('#nnome').value.trim(); if(!n) return;
+    await api('/api/funcionarios',{method:'POST',body:JSON.stringify({nome:n,setor_id:+$('#nsetor').value})}); C=await api('/api/cadastros'); toast('✓ '+n+' adicionado'); tEquipe();};
+  app.querySelectorAll('[data-meta]').forEach(el=>el.onclick=async()=>{
+    const [pid,eid]=el.dataset.meta.split(',').map(Number), atual=metaDe(pid,eid);
+    const v=prompt('Nova meta por pessoa por dia:', atual??''); if(v===null||v.trim()==='') return;
+    const n=parseFloat(v.replace(',','.')); if(!(n>0)) return toast('Número inválido',1);
+    await api('/api/meta',{method:'POST',body:JSON.stringify({produto_id:pid,etapa_id:eid,meta:n})}); C=await api('/api/cadastros'); toast('Meta atualizada'); tEquipe();});
+  $('#sair').onclick=()=>{ls.del('codigo');C=null;telaLogin();};
+}
+iniciar();
+</script>
+</body>
+</html>
