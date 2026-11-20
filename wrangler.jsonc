@@ -1,0 +1,8 @@
+{
+  "name": "omama-producao",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-01",
+  "d1_databases": [
+    { "binding": "DB", "database_name": "omama-producao", "database_id": "aeff0cad-3be4-4fc0-a963-5e02a880f5c4" }
+  ]
+}
