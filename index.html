@@ -189,7 +189,14 @@ const novaOp = tenta(async ()=>{
   $('#mx').onclick=()=>modal('');
   let item=null, t;
   const busca = async ()=>{ const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent($('#ib').value)); $('#il').innerHTML=l.filter(i=>i.ativo).slice(0,60).map(i=>`<div class="chip" data-id="${i.id}" data-n="${esc(i.nome)}" data-r="${i.n_rot}">${esc(i.nome)}<small>${i.codigo}${i.n_rot?'':' · sem roteiro'}</small></div>`).join('');
-    $('#il').querySelectorAll('[data-id]').forEach(c=>c.onclick=()=>{ item=+c.dataset.id; $('#sel').innerHTML='Item: <b>'+c.dataset.n+'</b>'+(+c.dataset.r?'':' <span class="bad">(sem roteiro no sistema)</span>'); $('#cria').disabled=false; $('#il').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c)); }); };
+    $('#il').querySelectorAll('[data-id]').forEach(c=>c.onclick=async()=>{ item=+c.dataset.id; $('#il').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c)); const d=await api('/api/itens/'+item); comp=d.composicao;
+      $('#sel').innerHTML='Item: <b>'+c.dataset.n+'</b>'+(+c.dataset.r?'':' <span class="bad">(sem roteiro no sistema)</span>')+'<div id="blk"></div>'; confere(); }); };
+  let comp=[];
+  const confere=()=>{ if(!item) return; const q=+$('#nq').value||0;
+    const max=comp.length?Math.floor(Math.min(...comp.map(c=>c.saldo_patio/c.qtd))+1e-9):null;
+    $('#blk').innerHTML=comp.length?comp.map(c=>`<div>${esc(c.nome)}: precisa <b>${fmt(c.qtd*q,3)}</b> · tem no Pátio <b class="${c.saldo_patio+1e-9<c.qtd*q?'bad':'ok'}">${fmt(c.saldo_patio,3)}</b></div>`).join('')+`<div>Dá para fazer até <b>${Math.max(0,max)}</b> peça(s) com o bloco do Pátio.</div>`:'<div>Sem composição de bloco cadastrada.</div>';
+    $('#cria').disabled = !(q>0) || (max!==null && q>max); };
+  $('#nq').oninput=confere;
   $('#ib').oninput=()=>{clearTimeout(t); t=setTimeout(busca,300)}; busca();
   $('#cria').onclick=tenta(async()=>{ const r=await api('/api/ops',{item_id:item,qtd:+$('#nq').value,previsao_fim:$('#nf').value||null,pedido:$('#np').value||null}); toast('OP '+r.codigo+' criada · blocos baixados do Pátio'); modal(''); abrirOp(r.codigo); });
 });
