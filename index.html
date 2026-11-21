@@ -191,7 +191,7 @@ const novaOp = tenta(async ()=>{
   const busca = async ()=>{ const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent($('#ib').value)); $('#il').innerHTML=l.filter(i=>i.ativo).slice(0,60).map(i=>`<div class="chip" data-id="${i.id}" data-n="${esc(i.nome)}" data-r="${i.n_rot}">${esc(i.nome)}<small>${i.codigo}${i.n_rot?'':' · sem roteiro'}</small></div>`).join('');
     $('#il').querySelectorAll('[data-id]').forEach(c=>c.onclick=()=>{ item=+c.dataset.id; $('#sel').innerHTML='Item: <b>'+c.dataset.n+'</b>'+(+c.dataset.r?'':' <span class="bad">(sem roteiro no sistema)</span>'); $('#cria').disabled=false; $('#il').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c)); }); };
   $('#ib').oninput=()=>{clearTimeout(t); t=setTimeout(busca,300)}; busca();
-  $('#cria').onclick=tenta(async()=>{ const r=await api('/api/ops',{item_id:item,qtd:+$('#nq').value,previsao_fim:$('#nf').value||null,pedido:$('#np').value||null}); toast('OP '+r.codigo+' criada'); modal(''); abrirOp(r.codigo); });
+  $('#cria').onclick=tenta(async()=>{ const r=await api('/api/ops',{item_id:item,qtd:+$('#nq').value,previsao_fim:$('#nf').value||null,pedido:$('#np').value||null}); toast('OP '+r.codigo+' criada · blocos baixados do Pátio'); modal(''); abrirOp(r.codigo); });
 });
 
 // ===== detalhe da OP
@@ -210,8 +210,8 @@ const abrirOp = tenta(async codigo=>{
       ${o.operacoes.map((x,i)=>`<tr><td>${x.ordem}</td><td>${esc(x.nome)}</td><td>${tag(x.status)}</td><td>${esc(x.funcionario||'')}</td>
         <td class="n">${x.status!=='produzindo'&&!x.minutos?'–':dur(decorrido(x))}</td><td class="n">${dur(x.tempo_unit_min*o.qtd)}</td>
         <td class="mut">${brHora(x.inicio)}${x.fim?' → '+brHora(x.fim):''}</td><td style="white-space:nowrap" data-i="${i}">${o.status==='aberta'?botoes(x):''}</td></tr>`).join('')||'<tr><td colspan=8 class="vazio">Item sem roteiro cadastrado.</td></tr>'}</table></div>
-    <h2>Materiais (sai do Pátio ao finalizar)</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio</th></tr>
-      ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<m.total?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>
+    <h2>Blocos ${o.origem==='sensio'?'(OP veio do Sensio: blocos não baixados aqui)':'(baixados do Pátio na criação da OP)'}</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio agora</th></tr>
+      ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<0?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>
     <h2>Eventos</h2><div class="card">${o.eventos.map(e=>`<div><span class="mut">${brHora(e.data)}</span> · ${esc(e.texto)}</div>`).join('')}</div>
     ${o.status==='aberta'?'<br><button class="btn bad sm" id="canc">Cancelar OP</button>':''}`);
   $('#mx').onclick=()=>{ modal(''); render(); };
