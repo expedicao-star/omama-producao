@@ -11,8 +11,8 @@
 <style>
 :root{--bg:#f8f6ff;--card:#ffffff;--card2:#efeaff;--line:#e2daf7;--txt:#241d33;--mut:#766f8a;--amb:#7c55e0;--lil:#9f76ff;--ok:#2f9e5b;--bad:#d2453b;--mid:#d49a1f;--blue:#6fa8dc}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 "Rethink Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:80px}
-header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--lil);color:#fff;z-index:5}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 "Rethink Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:40px}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--lil);color:#fff;z-index:16}
 header .logo{height:22px;width:auto;display:block}
 header .sub{font-size:13px;letter-spacing:.25em;font-weight:600;color:#fff;opacity:.85;border-left:1px solid #ffffff80;padding-left:12px}
 header h1{font-size:17px;margin:0;letter-spacing:.08em}
@@ -20,10 +20,22 @@ header h1 span{color:#e6d4f2;font-weight:500}
 header .mut{color:#fff;opacity:.85}
 header .sp{flex:1}
 main{max-width:1200px;margin:0 auto;padding:14px}
-nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);box-shadow:0 -2px 12px #7c55e014;z-index:5}
-nav button{flex:1;background:none;border:0;color:var(--mut);padding:10px 2px 14px;font-size:12px;font-weight:600}
-nav button b{display:block;font-size:20px;line-height:1.2}
-nav button.on{color:var(--amb)}
+#hamb{background:none;border:0;color:#fff;font-size:24px;line-height:1;padding:0 4px;cursor:pointer;display:none}
+body.logado #hamb{display:block}
+#pg{font-weight:700;font-size:15px}
+#side{display:none;position:fixed;top:0;left:0;bottom:0;width:240px;background:#fff;border-right:1px solid var(--line);overflow:auto;z-index:15;padding:58px 8px 20px;transform:translateX(-100%);transition:transform .2s;box-shadow:2px 0 16px #7c55e01a}
+body.logado #side{display:block}body.menu #side{transform:none}
+#sideBg{display:none;position:fixed;inset:0;background:#2b1f3340;z-index:14}body.menu #sideBg{display:block}
+.gh{display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:0;padding:10px 10px;font:inherit;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);cursor:pointer;border-radius:8px}
+.gh:hover{background:var(--card2)}.gh i{font-style:normal;transition:transform .15s}.gh.fechado i{transform:rotate(-90deg)}
+.gi{display:block;width:100%;text-align:left;background:none;border:0;padding:9px 12px 9px 18px;font:inherit;font-size:15px;font-weight:600;color:var(--txt);cursor:pointer;border-radius:8px}
+.gi b{display:inline-block;width:24px;color:var(--lil)}.gi:hover{background:var(--card2)}.gi.on{background:var(--amb);color:#fff}.gi.on b{color:#fff}
+@media(min-width:1000px){body.logado #side{transform:none;box-shadow:none}body.logado main{margin-left:240px}#sideBg{display:none!important}body.logado #hamb{display:none}}
+.t-blue{background:#e1eefb;color:#2d6aa3}
+@media(max-width:600px){header .sub{display:none}}
+.st{border:2px solid var(--line);background:#fff;border-radius:20px;padding:5px 10px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;color:var(--mut)}
+.st.on.ok{background:var(--ok);border-color:var(--ok);color:#fff}.st.on.bad{background:var(--bad);border-color:var(--bad);color:#fff}.st.on.midc{background:var(--mid);border-color:var(--mid);color:#fff}.st.on.blue{background:var(--blue);border-color:var(--blue);color:#fff}.st.on.mut{background:var(--mut);border-color:var(--mut);color:#fff}
+.pess{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line)}.pess:last-child{border:0}.pess .nm{flex:1;min-width:140px;font-weight:700}
 h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin:18px 0 8px}
 h2:first-child{margin-top:2px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -56,7 +68,7 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;lett
 .fila .card{margin-bottom:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .fila .info{flex:1;min-width:200px}
 .fila .info b{font-size:16px}
-.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;display:none;z-index:30}
+.toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:var(--ok);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;display:none;z-index:30}
 .toast.err{background:var(--bad);color:#fff}
 .vazio{color:var(--mut);padding:20px;text-align:center}
 .modal{position:fixed;inset:0;background:#2b1f3366;z-index:20;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 10px}
@@ -71,16 +83,9 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;lett
 </style>
 </head>
 <body>
-<header><svg class="logo" viewBox="0 0 1401 298" fill="currentColor" aria-label="OMAMA"><path d="M185.928 217.413C172.656 233.476 154.074 241.475 135.988 241.475C117.902 241.475 99.2459 233.476 85.8371 217.413C72.4284 201.351 65.724 178.546 65.724 148.926C65.724 119.306 72.4284 96.5013 85.8371 80.4389C99.2459 64.3765 117.891 56.3769 135.988 56.3769C154.084 56.3769 172.656 64.4399 185.854 80.5762C199.051 96.6386 205.692 119.443 205.692 148.926C205.692 178.409 199.125 201.351 186.002 217.413H185.928ZM227.695 32.8857C205.692 10.9901 177.608 0 135.988 0C94.368 0 66.2836 10.9901 44.2805 32.8857C14.7391 58.6806 0 97.4101 0 149C0 200.59 14.7391 238.273 44.2805 265.114C66.2836 287.02 94.3575 298 135.988 298C177.618 298 205.692 287.084 227.695 265.114C257.026 238.273 271.342 199.544 271.342 149C271.342 98.4562 257.026 58.7546 227.695 32.8857Z"/><path id="lm" d="M496.186 12.5646L448.379 188.712C447.893 190.519 445.243 190.519 444.758 188.712L396.951 12.5646C396.328 10.1975 394.09 8.52783 391.587 8.52783H293.809C290.747 8.52783 288.234 10.9689 288.234 13.9595V285.171C288.234 288.162 290.747 290.603 293.809 290.603H346.705C349.767 290.603 352.28 288.162 352.28 285.171V72.8092C352.28 71.837 353.114 71.0022 354.159 71.0022H357.369C358.203 71.0022 358.973 71.5622 359.185 72.397L415.216 286.503C415.839 288.87 418.078 290.613 420.58 290.613H472.642C475.218 290.613 477.382 288.944 478.005 286.503L534.037 72.397C534.248 71.6256 535.008 71.0022 535.853 71.0022H539.062C540.108 71.0022 540.942 71.837 540.942 72.8092V285.171C540.942 288.162 543.455 290.603 546.516 290.603H599.412C602.474 290.603 604.987 288.162 604.987 285.171V13.8855C604.987 10.8949 602.474 8.45386 599.412 8.45386H501.634C499.121 8.45386 496.894 10.1235 496.271 12.4906L496.197 12.5646H496.186Z"/><path id="la" d="M754.132 183.989H703.021C701.838 183.989 700.993 183.017 701.205 181.896L718.446 72.4924C718.583 71.5836 719.354 70.9602 720.262 70.9602H736.806C737.714 70.9602 738.548 71.5836 738.622 72.4924L755.864 181.896C756.001 183.017 755.167 183.989 754.048 183.989H754.122H754.132ZM784.149 8.4541H674.535C673.627 8.4541 672.856 9.07758 672.719 9.9124L620.847 288.511C620.636 289.631 621.544 290.603 622.663 290.603H682.432C683.34 290.603 684.111 289.98 684.248 289.071L692.906 234.226C693.043 233.317 693.814 232.694 694.722 232.694H762.304C763.212 232.694 764.046 233.317 764.12 234.226L772.778 289.071C772.915 289.98 773.686 290.603 774.594 290.603H834.363C835.545 290.603 836.39 289.557 836.179 288.511L784.149 8.4541Z"/><use href="#lm" x="563.8"/><use href="#la" x="563.8"/></svg><span class="sub">PRODUÇÃO</span><div class="sp"></div><span class="mut" id="relogio"></span></header>
+<header><button id="hamb" aria-label="Menu">☰</button><svg class="logo" viewBox="0 0 1401 298" fill="currentColor" aria-label="OMAMA"><path d="M185.928 217.413C172.656 233.476 154.074 241.475 135.988 241.475C117.902 241.475 99.2459 233.476 85.8371 217.413C72.4284 201.351 65.724 178.546 65.724 148.926C65.724 119.306 72.4284 96.5013 85.8371 80.4389C99.2459 64.3765 117.891 56.3769 135.988 56.3769C154.084 56.3769 172.656 64.4399 185.854 80.5762C199.051 96.6386 205.692 119.443 205.692 148.926C205.692 178.409 199.125 201.351 186.002 217.413H185.928ZM227.695 32.8857C205.692 10.9901 177.608 0 135.988 0C94.368 0 66.2836 10.9901 44.2805 32.8857C14.7391 58.6806 0 97.4101 0 149C0 200.59 14.7391 238.273 44.2805 265.114C66.2836 287.02 94.3575 298 135.988 298C177.618 298 205.692 287.084 227.695 265.114C257.026 238.273 271.342 199.544 271.342 149C271.342 98.4562 257.026 58.7546 227.695 32.8857Z"/><path id="lm" d="M496.186 12.5646L448.379 188.712C447.893 190.519 445.243 190.519 444.758 188.712L396.951 12.5646C396.328 10.1975 394.09 8.52783 391.587 8.52783H293.809C290.747 8.52783 288.234 10.9689 288.234 13.9595V285.171C288.234 288.162 290.747 290.603 293.809 290.603H346.705C349.767 290.603 352.28 288.162 352.28 285.171V72.8092C352.28 71.837 353.114 71.0022 354.159 71.0022H357.369C358.203 71.0022 358.973 71.5622 359.185 72.397L415.216 286.503C415.839 288.87 418.078 290.613 420.58 290.613H472.642C475.218 290.613 477.382 288.944 478.005 286.503L534.037 72.397C534.248 71.6256 535.008 71.0022 535.853 71.0022H539.062C540.108 71.0022 540.942 71.837 540.942 72.8092V285.171C540.942 288.162 543.455 290.603 546.516 290.603H599.412C602.474 290.603 604.987 288.162 604.987 285.171V13.8855C604.987 10.8949 602.474 8.45386 599.412 8.45386H501.634C499.121 8.45386 496.894 10.1235 496.271 12.4906L496.197 12.5646H496.186Z"/><path id="la" d="M754.132 183.989H703.021C701.838 183.989 700.993 183.017 701.205 181.896L718.446 72.4924C718.583 71.5836 719.354 70.9602 720.262 70.9602H736.806C737.714 70.9602 738.548 71.5836 738.622 72.4924L755.864 181.896C756.001 183.017 755.167 183.989 754.048 183.989H754.122H754.132ZM784.149 8.4541H674.535C673.627 8.4541 672.856 9.07758 672.719 9.9124L620.847 288.511C620.636 289.631 621.544 290.603 622.663 290.603H682.432C683.34 290.603 684.111 289.98 684.248 289.071L692.906 234.226C693.043 233.317 693.814 232.694 694.722 232.694H762.304C763.212 232.694 764.046 233.317 764.12 234.226L772.778 289.071C772.915 289.98 773.686 290.603 774.594 290.603H834.363C835.545 290.603 836.39 289.557 836.179 288.511L784.149 8.4541Z"/><use href="#lm" x="563.8"/><use href="#la" x="563.8"/></svg><span class="sub">PRODUÇÃO</span><span id="pg"></span><div class="sp"></div><span class="mut" id="relogio"></span></header>
 <main id="app"></main>
-<nav id="nav" style="display:none">
-  <button data-t="fila" class="on"><b>⚒</b>Setores</button>
-  <button data-t="ops"><b>▦</b>OPs</button>
-  <button data-t="ped"><b>✉</b>Pedidos</button>
-  <button data-t="itens"><b>◫</b>Itens</button>
-  <button data-t="estoque"><b>▤</b>Estoque</button>
-  <button data-t="rel"><b>▮▮</b>Relatório</button>
-</nav>
+<aside id="side"></aside><div id="sideBg"></div>
 <div class="toast" id="toast"></div>
 <div id="modal"></div>
 <script>
@@ -95,7 +100,8 @@ const brData = s => s ? new Date(s.slice(0,10)+'T12:00').toLocaleDateString('pt-
 const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
-let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana' };
+let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
+try{ const a=localStorage.getItem('aba'); if(['fila','ops','ped','itens','estoque','defeitos','func','assid','rel'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -119,7 +125,7 @@ const pessoas = setor_id => [...B.funcionarios].sort((a,b)=>(b.setor_id===setor_
 
 // ===== login
 function telaLogin(msg){
-  $('#nav').style.display='none';
+  document.body.classList.remove('logado','menu');
   app.innerHTML = `<div class="login"><h2>Código de acesso</h2><input id="cod" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
     <button class="btn" id="entrar" style="width:100%">Entrar</button><p class="bad">${esc(msg||'')}</p></div>`;
   $('#entrar').onclick = async()=>{ ls.set('codigo',$('#cod').value.trim()); await iniciar(); };
@@ -128,10 +134,23 @@ function telaLogin(msg){
 async function iniciar(){
   if(!ls.get('codigo')) return telaLogin();
   try{ B = await api('/api/base'); }catch(e){ if(e.message!=='401') telaLogin('Não consegui falar com o servidor ('+e.message+')'); return; }
-  $('#nav').style.display='flex'; render();
+  document.body.classList.add('logado'); menu(); render();
 }
-document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{ S.tab=b.dataset.t; document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b)); render(); });
-function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, ped:tPedidos, itens:tItens, estoque:tEstoque, rel:tRel})[S.tab](); }
+// ===== menu lateral em grupos que abrem e fecham (igual Sensio)
+const MENU=[['Produção',[['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos']]],['Estoque',[['estoque','▤','Estoque'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção']]]];
+let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
+function menu(){
+  $('#side').innerHTML=MENU.map(([g,its])=>`<button class="gh ${fechados.includes(g)?'fechado':''}" data-g="${g}">${g}<i>▾</i></button>
+    <div ${fechados.includes(g)?'style="display:none"':''}>${its.map(([t,ic,n])=>`<button class="gi ${S.tab===t?'on':''}" data-t="${t}"><b>${ic}</b>${n}</button>`).join('')}</div>`).join('')
+    +`<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px"><button class="gi" id="sair" style="color:var(--mut)"><b>⏻</b>Sair deste aparelho</button></div>`;
+  $('#side').querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{ const g=b.dataset.g; fechados=fechados.includes(g)?fechados.filter(x=>x!==g):[...fechados,g]; ls.set('menuFechado',JSON.stringify(fechados)); menu(); });
+  $('#side').querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{ S.tab=b.dataset.t; ls.set('aba',S.tab); document.body.classList.remove('menu'); menu(); render(); });
+  $('#sair').onclick=()=>{ ls.del('codigo'); B=null; telaLogin(); };
+  const at=MENU.flatMap(x=>x[1]).find(x=>x[0]===S.tab); $('#pg').textContent=at?at[2]:'';
+}
+$('#hamb').onclick=()=>document.body.classList.toggle('menu');
+$('#sideBg').onclick=()=>document.body.classList.remove('menu');
+function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, ped:tPedidos, itens:tItens, estoque:tEstoque, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -231,7 +250,8 @@ const abrirOp = tenta(async codigo=>{
     <h2>Blocos ${o.origem==='sensio'?'(OP veio do Sensio: blocos não baixados aqui)':'(baixados do Pátio na criação da OP)'}</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio agora</th></tr>
       ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<0?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>
     <h2>Eventos</h2><div class="card">${o.eventos.map(e=>`<div><span class="mut">${brHora(e.data)}</span> · ${esc(e.texto)}</div>`).join('')}</div>
-    ${o.status==='aberta'?'<br><button class="btn bad sm" id="canc">Cancelar OP</button>':''}`);
+    <br><div class="row"><button class="btn mid sm" id="def">Registrar defeito</button>${o.status==='aberta'?'<button class="btn bad sm" id="canc">Cancelar OP</button>':''}</div>`);
+  $('#def').onclick=()=>registrarDefeito({op_codigo:o.codigo,item_id:o.item_id,item_nome:o.item_nome,depois:()=>abrirOp(codigo)});
   $('#mx').onclick=()=>{ modal(''); render(); };
   const re=()=>abrirOp(codigo); ligaPed($('#modal'));
   if($('#vinc')) $('#vinc').onclick=tenta(async()=>{ const pis=await api('/api/pedido-itens?item_id='+o.item_id);
@@ -353,11 +373,124 @@ async function tRel(){
     <h2>OPs finalizadas (${r.finalizadas.length})</h2><div class="card">${r.finalizadas.map(o=>`<div><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.item)} · ${fmt(o.qtd)} un <span class="mut">· ${brHora(o.finalizado_em)}</span></div>`).join('')||'<span class="mut">Nenhuma.</span>'}</div>
     <h2>Operações finalizadas</h2><div class="card" style="overflow-x:auto"><table><tr><th>Quando</th><th>Pessoa</th><th>Operação</th><th>OP</th><th class="n">Real</th><th class="n">Padrão</th></tr>
     ${r.detalhe.map(d=>`<tr><td class="mut">${brHora(d.fim)}</td><td>${esc(d.funcionario||'')}</td><td>${esc(d.operacao)}</td><td>${d.codigo} · ${esc(d.item)}</td><td class="n">${d.minutos?dur(d.minutos):'–'}</td><td class="n">${dur(d.padrao)}</td></tr>`).join('')}</table></div>
-    <h2>Equipe</h2><div class="row"><input id="nn" placeholder="Nome"><select id="ns">${B.setores.map(s=>`<option value="${s.id}">${esc(s.nome)}</option>`).join('')}</select><button class="btn sec" id="na">Adicionar pessoa</button><button class="btn sec" id="sair">Sair deste aparelho</button></div>`;
+`;
   $('#rl').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
-  $('#na').onclick=tenta(async()=>{ const n=$('#nn').value.trim(); if(!n) return; await api('/api/funcionarios',{nome:n,setor_id:+$('#ns').value}); B=await api('/api/base'); toast(n+' adicionado'); });
-  $('#sair').onclick=()=>{ ls.del('codigo'); B=null; telaLogin(); };
 }
+
+// ===== defeitos
+const MOTIVOS=['Rachadura / fissura','Trinca na estufa','Defeito de torno','Acabamento','Madeira (nó, broca, mancha)','Quebra no transporte','Outro'];
+const SIT={em_defeito:['Em defeito','t-pausado'],recuperado:['Recuperada → P.A.','t-produzindo'],retrabalho:['Foi p/ Retrabalho','t-finalizado'],descartado:['Descartada (perda)','t-pendente']};
+async function tDefeitos(){
+  const [de,ate]=periodo();
+  app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Estoque de defeito</h2><button class="btn" id="nd">+ Registrar defeito</button></div>
+    <p class="mut">Peça com defeito entra no depósito Defeito. Daqui ela pode ser recuperada (volta pro P.A.), ir pro Retrabalho ou ser descartada (perda).</p><div id="dl" class="vazio">Carregando…</div>
+    <div class="row" style="justify-content:space-between;margin-top:18px"><h2 style="margin:0">Resumo · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2><div class="row">${['dia','semana','mes'].map(p=>`<button class="btn ${S.per===p?'':'sec'} sm" data-p="${p}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div><div id="dr" class="vazio">Carregando…</div>`;
+  $('#nd').onclick=()=>registrarDefeito({});
+  app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.per=b.dataset.p; tDefeitos();});
+  const [l,r,h]=await Promise.all([api('/api/defeitos'),api(`/api/defeitos/resumo?de=${de}&ate=${ate}`),api(`/api/defeitos?situacao=todos&de=${de}&ate=${ate}`)]);
+  const porItem={}; l.forEach(d=>{ (porItem[d.item_id]=porItem[d.item_id]||{item:d.item,codigo:d.codigo,qtd:0,regs:[]}); porItem[d.item_id].qtd+=d.qtd; porItem[d.item_id].regs.push(d); });
+  const its=Object.values(porItem).sort((a,b)=>b.qtd-a.qtd);
+  $('#dl').className='';
+  $('#dl').innerHTML=its.length?`<div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Quando</th><th>Motivo</th><th>Onde / quem</th><th></th></tr>
+    ${its.map(it=>it.regs.map((d,i)=>`<tr>${i===0?`<td rowspan="${it.regs.length}"><b>${esc(it.item)}</b><br><span class="mut">${it.codigo} · total ${fmt(it.qtd)} em defeito</span></td>`:''}
+      <td class="n"><b>${fmt(d.qtd)}</b></td><td class="mut">${brHora(d.data)}</td><td>${esc(d.motivo)}${d.obs?`<br><span class="mut">${esc(d.obs)}</span>`:''}</td>
+      <td class="mut">${[d.op_codigo?'OP '+d.op_codigo:'',d.origem==='pa'?'veio do P.A.':'',d.setor,d.funcionario].filter(Boolean).map(esc).join(' · ')}</td>
+      <td style="white-space:nowrap"><button class="btn ok sm" data-r="${d.id}" data-a="recuperar">Recuperar</button> <button class="btn mid sm" data-r="${d.id}" data-a="retrabalho">Retrabalho</button> <button class="btn bad sm" data-r="${d.id}" data-a="descartar">Descartar</button></td></tr>`).join('')).join('')}</table></div>`
+    :'<div class="card vazio">Nenhuma peça em defeito agora.</div>';
+  $('#dl').querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>resolverDefeito(l.find(d=>d.id===+b.dataset.r),b.dataset.a));
+  const tot=x=>x.reduce((s,y)=>s+y.qtd,0);
+  const lista=(x,k)=>x.length?`<table>${x.map(y=>`<tr><td>${esc(y[k])}</td><td class="n"><b>${fmt(y.qtd)}</b></td></tr>`).join('')}</table>`:'<span class="mut">Nada no período.</span>';
+  $('#dr').className='';
+  $('#dr').innerHTML=`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))"><div class="card"><b>Por motivo</b> <span class="mut">(${fmt(tot(r.porMotivo))} peças)</span>${lista(r.porMotivo,'motivo')}</div>
+    <div class="card"><b>Por setor</b>${lista(r.porSetor,'setor')}</div><div class="card"><b>Destino</b>${lista(r.porSituacao.map(s=>({...s,nome:(SIT[s.situacao]||[s.situacao])[0]})),'nome')}</div></div>
+    <h2>Histórico do período (${h.length})</h2><div class="card" style="overflow-x:auto">${h.length?`<table><tr><th>Quando</th><th>Peça</th><th class="n">Qtd</th><th>Motivo</th><th>Onde / quem</th><th>Situação</th></tr>${h.map(d=>`<tr><td class="mut">${brHora(d.data)}</td><td>${esc(d.item)}</td><td class="n">${fmt(d.qtd)}</td><td>${esc(d.motivo)}</td><td class="mut">${[d.op_codigo?'OP '+d.op_codigo:'',d.setor,d.funcionario].filter(Boolean).map(esc).join(' · ')}</td><td><span class="tag ${(SIT[d.situacao]||[])[1]||''}">${esc((SIT[d.situacao]||[d.situacao])[0])}</span>${d.resolvido_em?`<br><span class="mut">${brHora(d.resolvido_em)}</span>`:''}</td></tr>`).join('')}</table>`:'<span class="mut">Nenhum defeito registrado no período.</span>'}</div>`;
+}
+const resolverDefeito=tenta(async(d,a)=>{
+  const txt={recuperar:`Recuperar ${fmt(d.qtd)} × ${d.item}? Volta pro estoque P.A.`,retrabalho:`Mandar ${fmt(d.qtd)} × ${d.item} pro depósito Retrabalho?`,descartar:`Descartar ${fmt(d.qtd)} × ${d.item}? Conta como perda e sai do estoque.`}[a];
+  modal(`<h2 style="margin-top:0">${a==='recuperar'?'Recuperar peça':a==='retrabalho'?'Mandar pro retrabalho':'Descartar peça'}</h2><p>${esc(txt)}</p>
+    <input id="ro" placeholder="Observação (opcional)" style="width:100%"><br><br><div class="row"><button class="btn ${a==='descartar'?'bad':a==='retrabalho'?'mid':'ok'}" id="rc">Confirmar</button><button class="btn sec" id="rx">Voltar</button></div>`);
+  $('#rx').onclick=()=>modal('');
+  $('#rc').onclick=tenta(async()=>{ await api(`/api/defeitos/${d.id}/${a}`,{obs:$('#ro').value.trim()||null}); toast('Pronto'); modal(''); if(S.tab==='defeitos') tDefeitos(); });
+});
+function registrarDefeito(pre){
+  let item=pre.item_id?{id:pre.item_id,nome:pre.item_nome}:null, motivo=null, origem='producao';
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Registrar defeito</h2><button class="btn sec sm" id="mx">Fechar</button></div><br>
+    <div class="mut">Peça</div><div id="dit"></div>
+    <div class="row" style="margin-top:10px"><div><div class="mut">Quantidade</div><input id="dq" type="number" min="1" step="1" value="1" style="width:110px"></div>
+      <div><div class="mut">De onde veio</div><div class="row"><button class="st on midc" data-o="producao">Da produção</button><button class="st" data-o="pa">Do estoque P.A.</button></div></div>
+      <div><div class="mut">OP (se tiver)</div><input id="dop" inputmode="numeric" value="${esc(pre.op_codigo||'')}" style="width:110px"></div></div>
+    <div class="mut" style="margin-top:10px">Motivo</div><div class="row" id="dm">${MOTIVOS.map(m=>`<button class="st" data-m="${esc(m)}">${esc(m)}</button>`).join('')}</div>
+    <div class="row" style="margin-top:10px"><div><div class="mut">Setor onde deu</div><select id="ds"><option value="">—</option>${B.setores.map(s=>`<option value="${s.id}" ${pre.setor_id===s.id?'selected':''}>${esc(s.nome)}</option>`).join('')}</select></div>
+      <div><div class="mut">Quem</div><select id="df"><option value="">—</option>${B.funcionarios.map(f=>`<option value="${f.id}">${esc(f.nome)}</option>`).join('')}</select></div>
+      <div style="flex:1;min-width:200px"><div class="mut">Observação</div><input id="dob" style="width:100%"></div></div>
+    <br><button class="btn" id="dsv">Registrar defeito</button>`);
+  $('#mx').onclick=()=>modal('');
+  const pintaItem=()=>{ if(item){ $('#dit').innerHTML=`<div class="row"><b>${esc(item.nome)}</b> <span class="link" id="dtr">trocar</span></div>`; $('#dtr').onclick=()=>{item=null;pintaItem();}; return; }
+    $('#dit').innerHTML=`<input id="dib" placeholder="Buscar peça (nome ou código)" style="width:100%"><div id="dir"></div>`;
+    let t; $('#dib').oninput=()=>{ clearTimeout(t); t=setTimeout(tenta(async()=>{ const q=$('#dib').value.trim(); if(q.length<2) return $('#dir').innerHTML=''; const l=await api('/api/itens?q='+encodeURIComponent(q));
+      $('#dir').innerHTML=l.filter(i=>i.tipo!=='Matéria-prima').slice(0,12).map(i=>`<div class="link" data-i="${i.id}" style="padding:4px 0">${i.codigo} · ${esc(i.nome)}</div>`).join('')||'<span class="mut">Nada encontrado.</span>';
+      $('#dir').querySelectorAll('[data-i]').forEach(x=>x.onclick=()=>{ const it=l.find(i=>i.id===+x.dataset.i); item={id:it.id,nome:it.nome}; pintaItem(); }); }),300); }; $('#dib').focus(); };
+  pintaItem();
+  $('#modal').querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{ origem=b.dataset.o; $('#modal').querySelectorAll('[data-o]').forEach(x=>x.className='st'+(x===b?' on midc':'')); });
+  $('#dm').querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{ motivo=b.dataset.m; $('#dm').querySelectorAll('[data-m]').forEach(x=>x.className='st'+(x===b?' on bad':'')); });
+  $('#dsv').onclick=tenta(async()=>{
+    if(!item) throw new Error('Escolha a peça'); if(!motivo) throw new Error('Escolha o motivo');
+    const qtd=+$('#dq').value; if(!(qtd>0)) throw new Error('Quantidade inválida');
+    await api('/api/defeitos',{item_id:item.id,qtd,origem,op_codigo:$('#dop').value.trim()||null,motivo,setor_id:+$('#ds').value||null,funcionario_id:+$('#df').value||null,obs:$('#dob').value.trim()||null});
+    toast('Defeito registrado'); modal(''); if(pre.depois) pre.depois(); else if(S.tab==='defeitos') tDefeitos();
+  });
+}
+
+// ===== funcionários
+async function tFuncionarios(){
+  app.innerHTML=`<h2>Adicionar pessoa</h2><div class="row"><input id="nn" placeholder="Nome"><select id="ns">${B.setores.map(s=>`<option value="${s.id}">${esc(s.nome)}</option>`).join('')}</select><button class="btn" id="na">Adicionar</button></div>
+    <h2>Equipe</h2><div class="card" id="fl">Carregando…</div>`;
+  $('#na').onclick=tenta(async()=>{ const n=$('#nn').value.trim(); if(!n) throw new Error('Escreva o nome'); await api('/api/funcionarios',{nome:n,setor_id:+$('#ns').value}); B=await api('/api/base'); toast(n+' adicionado'); tFuncionarios(); });
+  const l=await api('/api/funcionarios');
+  $('#fl').innerHTML=`<table><tr><th>Nome</th><th>Setor</th><th>Situação</th><th></th></tr>${l.map(f=>`<tr style="${f.ativo?'':'opacity:.5'}"><td><b>${esc(f.nome)}</b></td><td>${esc(f.setor||'—')}</td><td>${f.ativo?'<span class="tag t-produzindo">Ativo</span>':'<span class="tag t-pendente">Inativo</span>'}</td><td class="n"><button class="btn sec sm" data-f="${f.id}">Editar</button></td></tr>`).join('')}</table>`;
+  $('#fl').querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ const f=l.find(x=>x.id===+b.dataset.f);
+    modal(`<h2 style="margin-top:0">Editar ${esc(f.nome)}</h2><div class="row"><input id="en" value="${esc(f.nome)}"><select id="es"><option value="">Sem setor</option>${B.setores.map(s=>`<option value="${s.id}" ${s.id===f.setor_id?'selected':''}>${esc(s.nome)}</option>`).join('')}</select>
+      <label class="row" style="gap:4px"><input type="checkbox" id="ea" ${f.ativo?'checked':''}> Ativo</label></div><p class="mut">Inativo some das listas de quem faz operação e da assiduidade, mas o histórico fica guardado.</p>
+      <div class="row"><button class="btn" id="eg">Salvar</button><button class="btn sec" id="ex">Voltar</button></div>`);
+    $('#ex').onclick=()=>modal('');
+    $('#eg').onclick=tenta(async()=>{ await api('/api/funcionarios/'+f.id,{nome:$('#en').value,setor_id:+$('#es').value||null,ativo:$('#ea').checked}); B=await api('/api/base'); toast('Salvo'); modal(''); tFuncionarios(); }); });
+}
+
+// ===== assiduidade
+const PRES={presente:['Presente','ok'],falta_justificada:['Falta justificada','midc'],falta_injustificada:['Falta não justificada','bad'],atestado:['Atestado','blue'],atraso:['Atraso / saída cedo','midc'],folga:['Folga / férias','mut']};
+async function tAssid(){
+  const dia=S.dia||hojeISO(); S.dia=dia;
+  const mes=dia.slice(0,7), de=mes+'-01', ate=new Date(+mes.slice(0,4),+mes.slice(5,7),0,12).toISOString().slice(0,10);
+  const mv=n=>{ const d=new Date(dia+'T12:00'); d.setDate(d.getDate()+n); S.dia=d.toISOString().slice(0,10); tAssid(); };
+  app.innerHTML=`<div class="row"><button class="btn sec sm" id="ap">◀</button><input type="date" id="ad" value="${dia}"><button class="btn sec sm" id="an">▶</button>
+    <b>${new Date(dia+'T12:00').toLocaleDateString('pt-BR',{weekday:'long'})}</b>${dia===hojeISO()?' <span class="mut">(hoje)</span>':''}</div>
+    <p class="mut">Todo mundo começa como presente. Marque só quem faltou, chegou atrasado, saiu cedo ou estava de folga.</p><div class="card" id="al">Carregando…</div>
+    <h2>Resumo de ${new Date(de+'T12:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</h2><div class="card" id="ar" style="overflow-x:auto">Carregando…</div>`;
+  $('#ap').onclick=()=>mv(-1); $('#an').onclick=()=>mv(1); $('#ad').onchange=e=>{ if(e.target.value){ S.dia=e.target.value; tAssid(); } };
+  const [reg,res]=await Promise.all([api('/api/presenca?data='+dia),api(`/api/presenca/resumo?de=${de}&ate=${ate}`)]);
+  const por={}; reg.forEach(r=>por[r.funcionario_id]=r);
+  const grupos=B.setores.map(s=>[s.nome,B.funcionarios.filter(f=>f.setor_id===s.id)]).concat([['Sem setor',B.funcionarios.filter(f=>!f.setor_id)]]).filter(g=>g[1].length);
+  $('#al').innerHTML=grupos.map(([g,fs])=>`<h2>${esc(g)}</h2>${fs.map(f=>{ const r=por[f.id], st=r?r.status:'presente';
+    return `<div class="pess"><div class="nm">${esc(f.nome)}${r&&(r.minutos||r.obs)?`<br><span class="mut" style="font-weight:500">${r.minutos?r.minutos+' min':''}${r.minutos&&r.obs?' · ':''}${esc(r.obs||'')}</span>`:''}</div>
+      <div class="row" style="gap:5px">${Object.entries(PRES).map(([k,[n,c]])=>`<button class="st ${c} ${st===k?'on':''}" data-f="${f.id}" data-s="${k}">${n}</button>`).join('')}</div></div>`}).join('')}`).join('');
+  $('#al').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>marcar(dia,B.funcionarios.find(f=>f.id===+b.dataset.f),b.dataset.s,por[+b.dataset.f]));
+  $('#ar').innerHTML=`<table><tr><th>Pessoa</th><th>Setor</th><th class="n">Falta just.</th><th class="n">Falta não just.</th><th class="n">Atestado</th><th class="n">Atrasos / saídas</th><th class="n">Folga / férias</th></tr>
+    ${res.map(p=>`<tr><td>${esc(p.nome)}</td><td class="mut">${esc(p.setor||'')}</td><td class="n">${p.falta_just||''}</td><td class="n ${p.falta_injust?'bad':''}"><b>${p.falta_injust||''}</b></td><td class="n">${p.atestado||''}</td><td class="n">${p.atrasos?p.atrasos+' ('+dur(p.min_atraso)+')':''}</td><td class="n">${p.folgas||''}</td></tr>`).join('')}</table>
+    <p class="mut">Folga e férias não contam como falta.</p>`;
+}
+const marcar=tenta(async(dia,f,st,atual)=>{
+  const salva=async(extra={})=>{ await api('/api/presenca',{data:dia,funcionario_id:f.id,status:st,...extra}); toast(f.nome+': '+PRES[st][0]); tAssid(); };
+  if(st==='presente') return salva();
+  const pedeMin=st==='atraso', pedeObs=st!=='presente';
+  modal(`<h2 style="margin-top:0">${esc(f.nome)} · ${PRES[st][0]}</h2><div class="mut">${brData(dia)}</div><br>
+    ${pedeMin?`<div class="mut">Quantos minutos? (atraso ou saída mais cedo)</div><input id="mm" type="number" min="1" inputmode="numeric" value="${atual&&atual.status==='atraso'&&atual.minutos||''}" style="width:120px"><br><br>`:''}
+    <div class="mut">${st==='falta_justificada'?'Motivo da falta':st==='atestado'?'Observação (ex.: dias de atestado)':'Observação (opcional)'}</div><input id="mo" value="${esc(atual&&atual.status===st&&atual.obs||'')}" style="width:100%"><br><br>
+    <div class="row"><button class="btn" id="mg">Salvar</button><button class="btn sec" id="mx">Voltar</button></div>`);
+  $('#mx').onclick=()=>modal(''); (pedeMin?$('#mm'):$('#mo')).focus();
+  $('#mg').onclick=tenta(async()=>{ const minutos=pedeMin?+$('#mm').value:null; if(pedeMin&&!(minutos>0)) throw new Error('Informe os minutos');
+    const obs=$('#mo').value.trim(); if(st==='falta_justificada'&&!obs) throw new Error('Escreva o motivo da falta');
+    modal(''); await salva({minutos,obs:obs||null}); });
+});
 iniciar();
 </script>
 </body>
