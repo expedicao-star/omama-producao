@@ -4,21 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>OMAMA Produção</title>
-<meta name="theme-color" content="#7b3b94">
+<meta name="theme-color" content="#9f76ff">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Rethink+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icone.svg" type="image/svg+xml">
 <style>
-:root{--bg:#f7f3fa;--card:#ffffff;--card2:#efe6f5;--line:#e3d7ec;--txt:#2b1f33;--mut:#7f7189;--amb:#7b3b94;--lil:#b89bd0;--ok:#2f9e5b;--bad:#d2453b;--mid:#d49a1f;--blue:#6fa8dc}
+:root{--bg:#f8f6ff;--card:#ffffff;--card2:#efeaff;--line:#e2daf7;--txt:#241d33;--mut:#766f8a;--amb:#7c55e0;--lil:#9f76ff;--ok:#2f9e5b;--bad:#d2453b;--mid:#d49a1f;--blue:#6fa8dc}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 "Rethink Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:80px}
-header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--amb);color:#fff;z-index:5}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--lil);color:#fff;z-index:5}
+header .logo{height:22px;width:auto;display:block}
+header .sub{font-size:13px;letter-spacing:.25em;font-weight:600;color:#fff;opacity:.85;border-left:1px solid #ffffff80;padding-left:12px}
 header h1{font-size:17px;margin:0;letter-spacing:.08em}
 header h1 span{color:#e6d4f2;font-weight:500}
-header .mut{color:#e6d4f2}
+header .mut{color:#fff;opacity:.85}
 header .sp{flex:1}
 main{max-width:1200px;margin:0 auto;padding:14px}
-nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);box-shadow:0 -2px 12px #7b3b9414;z-index:5}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);box-shadow:0 -2px 12px #7c55e014;z-index:5}
 nav button{flex:1;background:none;border:0;color:var(--mut);padding:10px 2px 14px;font-size:12px;font-weight:600}
 nav button b{display:block;font-size:20px;line-height:1.2}
 nav button.on{color:var(--amb)}
@@ -29,26 +31,26 @@ h2:first-child{margin-top:2px}
 .chip{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:12px;padding:12px 10px;font-size:15px;font-weight:600;text-align:center;cursor:pointer}
 .chip small{display:block;color:var(--mut);font-weight:500;font-size:12px}
 .chip.on{border-color:var(--amb);background:var(--amb);color:#fff}
-.chip.on small{color:#e6d4f2}
+.chip.on small{color:#e9e1ff}
 input,select,textarea{background:var(--card);border:2px solid var(--line);color:var(--txt);border-radius:10px;padding:10px;font-size:15px;font-family:inherit}
 .btn{background:var(--amb);color:#fff;border:0;border-radius:10px;padding:12px 16px;font-size:15px;font-weight:800;cursor:pointer}
 .btn.sec{background:var(--card2);color:var(--txt)}.btn.ok{background:var(--ok);color:#fff}.btn.bad{background:var(--bad);color:#fff}.btn.mid{background:var(--mid);color:#fff}
 .btn.sm{padding:8px 12px;font-size:13px}
 .btn:disabled{opacity:.4}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:0 1px 3px #7b3b940f}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:0 1px 3px #7c55e00f}
 .mut{color:var(--mut);font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
 th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .n{text-align:right;font-variant-numeric:tabular-nums}
 .tag{display:inline-block;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-.t-pendente{background:#efe9f3;color:var(--mut)}.t-produzindo{background:#dcf3e4;color:#1f7a44}.t-pausado{background:#fbefd3;color:#94690d}.t-finalizado{background:#eadcf3;color:#6a2f82}
+.t-pendente{background:#f0edf7;color:var(--mut)}.t-produzindo{background:#dcf3e4;color:#1f7a44}.t-pausado{background:#fbefd3;color:#94690d}.t-finalizado{background:#ece4ff;color:#5b3cc4}
 .ok{color:var(--ok)}.bad{color:var(--bad)}.midc{color:var(--mid)}
 .kanban{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
 .col{min-width:250px;max-width:250px;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:8px}
 .col.vz{min-width:150px;max-width:150px;opacity:.6}
 .col h3{font-size:12px;margin:2px 4px 8px;color:var(--amb);text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between}
-.op{background:var(--card);border:1px solid var(--line);box-shadow:0 1px 2px #7b3b940f;border-radius:10px;padding:9px;margin-bottom:7px;cursor:pointer}
+.op{background:var(--card);border:1px solid var(--line);box-shadow:0 1px 2px #7c55e00f;border-radius:10px;padding:9px;margin-bottom:7px;cursor:pointer}
 .op b{display:block;font-size:14px}.op .mut{font-size:12px}
 .late{border-left:4px solid var(--bad)}
 .fila .card{margin-bottom:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -66,7 +68,7 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;lett
 </style>
 </head>
 <body>
-<header><h1>OMAMA <span>PRODUÇÃO</span></h1><div class="sp"></div><span class="mut" id="relogio"></span></header>
+<header><svg class="logo" viewBox="0 0 1401 298" fill="currentColor" aria-label="OMAMA"><path d="M185.928 217.413C172.656 233.476 154.074 241.475 135.988 241.475C117.902 241.475 99.2459 233.476 85.8371 217.413C72.4284 201.351 65.724 178.546 65.724 148.926C65.724 119.306 72.4284 96.5013 85.8371 80.4389C99.2459 64.3765 117.891 56.3769 135.988 56.3769C154.084 56.3769 172.656 64.4399 185.854 80.5762C199.051 96.6386 205.692 119.443 205.692 148.926C205.692 178.409 199.125 201.351 186.002 217.413H185.928ZM227.695 32.8857C205.692 10.9901 177.608 0 135.988 0C94.368 0 66.2836 10.9901 44.2805 32.8857C14.7391 58.6806 0 97.4101 0 149C0 200.59 14.7391 238.273 44.2805 265.114C66.2836 287.02 94.3575 298 135.988 298C177.618 298 205.692 287.084 227.695 265.114C257.026 238.273 271.342 199.544 271.342 149C271.342 98.4562 257.026 58.7546 227.695 32.8857Z"/><path id="lm" d="M496.186 12.5646L448.379 188.712C447.893 190.519 445.243 190.519 444.758 188.712L396.951 12.5646C396.328 10.1975 394.09 8.52783 391.587 8.52783H293.809C290.747 8.52783 288.234 10.9689 288.234 13.9595V285.171C288.234 288.162 290.747 290.603 293.809 290.603H346.705C349.767 290.603 352.28 288.162 352.28 285.171V72.8092C352.28 71.837 353.114 71.0022 354.159 71.0022H357.369C358.203 71.0022 358.973 71.5622 359.185 72.397L415.216 286.503C415.839 288.87 418.078 290.613 420.58 290.613H472.642C475.218 290.613 477.382 288.944 478.005 286.503L534.037 72.397C534.248 71.6256 535.008 71.0022 535.853 71.0022H539.062C540.108 71.0022 540.942 71.837 540.942 72.8092V285.171C540.942 288.162 543.455 290.603 546.516 290.603H599.412C602.474 290.603 604.987 288.162 604.987 285.171V13.8855C604.987 10.8949 602.474 8.45386 599.412 8.45386H501.634C499.121 8.45386 496.894 10.1235 496.271 12.4906L496.197 12.5646H496.186Z"/><path id="la" d="M754.132 183.989H703.021C701.838 183.989 700.993 183.017 701.205 181.896L718.446 72.4924C718.583 71.5836 719.354 70.9602 720.262 70.9602H736.806C737.714 70.9602 738.548 71.5836 738.622 72.4924L755.864 181.896C756.001 183.017 755.167 183.989 754.048 183.989H754.122H754.132ZM784.149 8.4541H674.535C673.627 8.4541 672.856 9.07758 672.719 9.9124L620.847 288.511C620.636 289.631 621.544 290.603 622.663 290.603H682.432C683.34 290.603 684.111 289.98 684.248 289.071L692.906 234.226C693.043 233.317 693.814 232.694 694.722 232.694H762.304C763.212 232.694 764.046 233.317 764.12 234.226L772.778 289.071C772.915 289.98 773.686 290.603 774.594 290.603H834.363C835.545 290.603 836.39 289.557 836.179 288.511L784.149 8.4541Z"/><use href="#lm" x="563.8"/><use href="#la" x="563.8"/></svg><span class="sub">PRODUÇÃO</span><div class="sp"></div><span class="mut" id="relogio"></span></header>
 <main id="app"></main>
 <nav id="nav" style="display:none">
   <button data-t="fila" class="on"><b>⚒</b>Setores</button>
