@@ -101,7 +101,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['fila','ops','ped','exp','itens','estoque','defeitos','func','assid','rel'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['fila','ops','ped','exp','itens','estoque','inv','defeitos','func','assid','rel'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -137,7 +137,7 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição']]],['Estoque',[['estoque','▤','Estoque'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção']]]];
+const MENU=[['Produção',[['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição']]],['Estoque',[['estoque','▤','Estoque'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 function menu(){
   $('#side').innerHTML=MENU.map(([g,its])=>`<button class="gh ${fechados.includes(g)?'fechado':''}" data-g="${g}">${g}<i>▾</i></button>
@@ -150,7 +150,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
+function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -354,6 +354,56 @@ const historico = tenta(async()=>{ const l=await api('/api/estoque/movs');
   modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Últimas movimentações</h2><button class="btn sec sm" id="mx">Fechar</button></div><br><div class="card"><table><tr><th>Quando</th><th>Item</th><th>Depósito</th><th class="n">Qtd</th><th>Motivo</th></tr>
     ${l.map(m=>`<tr><td class="mut">${brHora(m.data)}</td><td>${m.codigo} · ${esc(m.nome)}</td><td>${esc(m.deposito)}</td><td class="n ${m.qtd<0?'bad':'ok'}">${fmt(m.qtd,3)}</td><td class="mut">${esc(m.motivo||'')}</td></tr>`).join('')}</table></div>`);
   $('#mx').onclick=()=>modal(''); });
+
+// ===== inventário
+async function tInvent(){
+  app.innerHTML=`<h2>Novo inventário</h2><div class="row"><select id="vd">${B.depositos.map(d=>`<option value="${d.id}" ${d.id===11?'selected':''}>${esc(d.nome)}</option>`).join('')}</select><input id="vo" placeholder="Observação (opcional)" style="flex:1;min-width:180px"><button class="btn" id="vn">Começar contagem</button></div>
+    <p class="mut">O sistema lista os itens do depósito com o saldo de hoje. Vocês contam, digitam a quantidade e, ao fechar, o saldo é corrigido pela diferença.</p>
+    <h2>Inventários</h2><div class="card" id="vl">Carregando…</div>`;
+  $('#vn').onclick=tenta(async()=>{ const r=await api('/api/inventarios',{deposito_id:+$('#vd').value,obs:$('#vo').value.trim()||null}); if(r.ja_aberto) toast('Já tem um inventário aberto desse depósito'); abrirInv(r.id); });
+  const l=await api('/api/inventarios');
+  $('#vl').innerHTML=l.length?`<table><tr><th>Nº</th><th>Depósito</th><th>Aberto em</th><th>Situação</th><th class="n">Contados</th><th class="n">Com diferença</th><th></th></tr>${l.map(v=>`<tr><td>${v.id}</td><td><b>${esc(v.deposito)}</b>${v.obs?`<br><span class="mut">${esc(v.obs)}</span>`:''}</td><td class="mut">${brHora(v.criado_em)}</td>
+    <td>${v.status==='aberto'?'<span class="tag t-pausado">Em contagem</span>':`<span class="tag t-produzindo">Fechado</span><br><span class="mut">${brHora(v.fechado_em)}</span>`}</td><td class="n">${v.contados}/${v.itens}</td><td class="n">${v.status==='fechado'?v.com_ajuste:'–'}</td>
+    <td class="n"><button class="btn ${v.status==='aberto'?'':'sec'} sm" data-v="${v.id}">${v.status==='aberto'?'Continuar':'Ver'}</button></td></tr>`).join('')}</table>`:'<div class="vazio">Nenhum inventário ainda.</div>';
+  $('#vl').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>abrirInv(+b.dataset.v));
+}
+const abrirInv=tenta(async id=>{
+  const v=await api('/api/inventarios/'+id), ab=v.status==='aberto';
+  let filtro='', so=ab?'todos':'dif';
+  const dif=it=>it.contado===null?null:Math.round((it.contado-(ab?it.saldo_atual:it.contado-it.ajuste))*1000)/1000;
+  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Inventário nº ${v.id} · ${esc(v.deposito)}</h2><div class="mut">${ab?'Em contagem':'Fechado em '+brHora(v.fechado_em)} · aberto em ${brHora(v.criado_em)}${v.obs?' · '+esc(v.obs):''}</div></div><button class="btn sec sm" id="mx">Fechar</button></div><br>
+    <div class="row"><input id="vf" placeholder="Filtrar item" style="flex:1;min-width:160px"><select id="vs"><option value="todos">Todos</option><option value="falta">Falta contar</option><option value="dif">Com diferença</option></select>
+      ${ab?'<button class="btn sec" id="vp">Imprimir folha</button><button class="btn" id="vc">Fechar inventário</button><button class="btn bad sm" id="vx">Cancelar</button>':''}</div>
+    <div class="mut" id="vr" style="margin:8px 0"></div><div class="card" style="overflow-x:auto;max-height:60vh;overflow-y:auto" id="vt"></div>`);
+  $('#vs').value=so;
+  $('#mx').onclick=()=>{ modal(''); if(S.tab==='inv') tInvent(); };
+  const resumo=()=>{ const c=v.itens.filter(i=>i.contado!==null), d=c.filter(i=>Math.abs(dif(i))>0.0001); $('#vr').textContent=`${c.length} de ${v.itens.length} itens contados · ${d.length} com diferença`; };
+  const linha=it=>{ const d=dif(it); return `<td>${it.codigo}</td><td>${esc(it.nome)}</td><td class="n">${fmt(ab?it.saldo_atual:it.contado-it.ajuste,3)}</td>
+    <td class="n">${ab?`<input type="number" min="0" step="any" inputmode="decimal" data-c="${it.item_id}" value="${it.contado??''}" style="width:90px;text-align:right">`:fmt(it.contado,3)}</td>
+    <td class="n ${d===null?'':d<0?'bad':d>0?'ok':''}"><b>${d===null?'':(d>0?'+':'')+fmt(d,3)}</b></td>`; };
+  const desenha=()=>{ const f=filtro.toLowerCase(); const l=v.itens.filter(i=>(!f||(i.nome+' '+i.codigo).toLowerCase().includes(f))&&(so==='todos'||(so==='falta'?i.contado===null:i.contado!==null&&Math.abs(dif(i))>0.0001)));
+    $('#vt').innerHTML=`<table><tr><th>Código</th><th>Item</th><th class="n">${ab?'Sistema':'Antes'}</th><th class="n">Contado</th><th class="n">Diferença</th></tr>${l.map(it=>`<tr data-r="${it.item_id}">${linha(it)}</tr>`).join('')||'<tr><td colspan=5 class="vazio">Nada aqui.</td></tr>'}</table>`;
+    $('#vt').querySelectorAll('[data-c]').forEach(inp=>{ inp.onchange=tenta(async()=>{ const it=v.itens.find(i=>i.item_id===+inp.dataset.c); const val=inp.value.trim()===''?null:parseFloat(inp.value.replace(',','.'));
+      await api(`/api/inventarios/${v.id}/contagem`,{item_id:it.item_id,contado:val}); it.contado=val; const tr=inp.closest('tr'); tr.lastElementChild.outerHTML=linha(it).split('</td>').slice(-2)[0]+'</td>'; resumo(); });
+      inp.onkeydown=e=>{ if(e.key==='Enter'){ const all=[...$('#vt').querySelectorAll('[data-c]')]; const n=all[all.indexOf(inp)+1]; inp.blur(); if(n) n.focus(); } }; });
+    resumo(); };
+  desenha();
+  $('#vf').oninput=e=>{ filtro=e.target.value; desenha(); }; $('#vs').onchange=e=>{ so=e.target.value; desenha(); };
+  if(!ab) return;
+  $('#vp').onclick=()=>{ const w=window.open('','_blank'); if(!w) return toast('O navegador bloqueou a impressão',1);
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Inventário ${v.id}</title><style>@page{size:A4;margin:12mm}body{font-family:Helvetica,Arial,sans-serif;font-size:11px}h1{font-size:16px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:10px}td,th{border:1px solid #999;padding:5px 6px;text-align:left}th{background:#eee}td.c{width:90px}</style></head><body>
+      <h1>OMAMA · Inventário nº ${v.id} · ${esc(v.deposito)}</h1><div>Data: ____/____/______ &nbsp;&nbsp; Contado por: ______________________________</div>
+      <table><tr><th>Código</th><th>Item</th><th>Contado</th></tr>${v.itens.map(i=>`<tr><td>${i.codigo}</td><td>${esc(i.nome)}</td><td class="c"></td></tr>`).join('')}</table><script>setTimeout(()=>print(),300)<\/script></body></html>`); w.document.close(); };
+  $('#vx').onclick=tenta(async()=>{ if(!confirm('Cancelar o inventário nº '+v.id+'? Nada no estoque muda.')) return; await api(`/api/inventarios/${v.id}/cancelar`,{}); toast('Inventário cancelado'); modal(''); tInvent(); });
+  $('#vc').onclick=()=>{ const c=v.itens.filter(i=>i.contado!==null), d=c.filter(i=>Math.abs(dif(i))>0.0001), falta=v.itens.length-c.length;
+    modal(`<h2 style="margin-top:0">Fechar inventário nº ${v.id} · ${esc(v.deposito)}</h2>
+      <p>${c.length} itens contados, <b>${d.length} com diferença</b>. O saldo desses itens vai ser corrigido para o que foi contado.</p>
+      ${d.length?`<div class="card" style="max-height:40vh;overflow:auto"><table><tr><th>Item</th><th class="n">Sistema</th><th class="n">Contado</th><th class="n">Ajuste</th></tr>${d.map(i=>`<tr><td>${esc(i.nome)}</td><td class="n">${fmt(i.saldo_atual,3)}</td><td class="n">${fmt(i.contado,3)}</td><td class="n ${dif(i)<0?'bad':'ok'}"><b>${dif(i)>0?'+':''}${fmt(dif(i),3)}</b></td></tr>`).join('')}</table></div>`:''}
+      ${falta?`<p><label class="row" style="gap:6px"><input type="checkbox" id="vz"> Zerar os ${falta} itens que não foram contados (marque só se contaram tudo e o que não está na lista não existe)</label></p>`:''}
+      <div class="row"><button class="btn" id="vg">Fechar e ajustar estoque</button><button class="btn sec" id="vb">Voltar</button></div>`);
+    $('#vb').onclick=()=>abrirInv(v.id);
+    $('#vg').onclick=tenta(async()=>{ const r=await api(`/api/inventarios/${v.id}/fechar`,{zerar_nao_contados:!!($('#vz')&&$('#vz').checked)}); toast('Inventário fechado · '+r.ajustes+' ajuste(s) no estoque'); abrirInv(v.id); }); };
+});
 
 // ===== relatório de produção
 function periodo(){ const d=new Date(hojeISO()+'T12:00'), iso=x=>x.toISOString().slice(0,10);
