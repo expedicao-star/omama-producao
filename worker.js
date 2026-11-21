@@ -15,7 +15,7 @@ const json = (req, data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(req) } });
 const agora = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const minDesde = (s) => Math.max(0, (Date.now() - Date.parse(s.replace(' ', 'T') + 'Z')) / 60000);
-const ESTAGIO_INICIAL = 1, ESTAGIO_FINAL = 12, DEP_PA = 1, DEP_PATIO = 11;
+const ESTAGIO_INICIAL = 1, ESTAGIO_FINAL = 12, DEP_PA = 1, DEP_PATIO = 11, DEP_RETRABALHO = 4, DEP_DEFEITO = 6;
 
 const all = async (DB, sql, ...b) => (await DB.prepare(sql).bind(...b).all()).results;
 const one = async (DB, sql, ...b) => await DB.prepare(sql).bind(...b).first();
@@ -68,9 +68,80 @@ export default {
           all(DB, 'select * from deposito order by id')]);
         return json(req, { estagios, tipos, setores, funcionarios, depositos });
       }
+      if (p === '/api/funcionarios' && req.method === 'GET') {
+        return json(req, await all(DB, 'select f.*, s.nome setor from funcionario f left join setor s on s.id=f.setor_id order by f.ativo desc, s.id, f.nome'));
+      }
       if (p === '/api/funcionarios' && req.method === 'POST') {
         if (!body.nome) return json(req, { erro: 'Nome obrigatório' }, 400);
         await DB.prepare('insert into funcionario(nome, setor_id) values(?,?)').bind(body.nome.trim(), body.setor_id || null).run();
+        return json(req, { ok: true });
+      }
+      if ((m = p.match(/^\/api\/funcionarios\/(\d+)$/)) && req.method === 'POST') {
+        if (!body.nome) return json(req, { erro: 'Nome obrigatório' }, 400);
+        await DB.prepare('update funcionario set nome=?, setor_id=?, ativo=? where id=?').bind(body.nome.trim(), body.setor_id || null, body.ativo ? 1 : 0, Number(m[1])).run();
+        return json(req, { ok: true });
+      }
+
+      // ---------- assiduidade (sem registro = presente)
+      if (p === '/api/presenca' && req.method === 'GET') {
+        return json(req, await all(DB, 'select * from presenca where data=?', q('data')));
+      }
+      if (p === '/api/presenca' && req.method === 'POST') {
+        if (!body.data || !body.funcionario_id) return json(req, { erro: 'Data e pessoa' }, 400);
+        if (!body.status || body.status === 'presente') await DB.prepare('delete from presenca where data=? and funcionario_id=?').bind(body.data, body.funcionario_id).run();
+        else await DB.prepare(`insert into presenca(data, funcionario_id, falta, status, minutos, obs) values(?,?,?,?,?,?)
+            on conflict(data, funcionario_id) do update set falta=excluded.falta, status=excluded.status, minutos=excluded.minutos, obs=excluded.obs`)
+          .bind(body.data, body.funcionario_id, body.status.startsWith('falta') ? 1 : 0, body.status, body.minutos || null, body.obs || null).run();
+        return json(req, { ok: true });
+      }
+      if (p === '/api/presenca/resumo') {
+        return json(req, await all(DB, `select f.id, f.nome, s.nome setor,
+            coalesce(sum(pr.status='falta_justificada'),0) falta_just, coalesce(sum(pr.status='falta_injustificada'),0) falta_injust,
+            coalesce(sum(pr.status='atestado'),0) atestado, coalesce(sum(pr.status='atraso'),0) atrasos, coalesce(sum(case when pr.status='atraso' then pr.minutos end),0) min_atraso,
+            coalesce(sum(pr.status='folga'),0) folgas
+          from funcionario f left join setor s on s.id=f.setor_id left join presenca pr on pr.funcionario_id=f.id and pr.data between ? and ?
+          where f.ativo=1 group by f.id order by s.id, f.nome`, q('de'), q('ate')));
+      }
+
+      // ---------- defeitos (depósito Defeito = 6, Retrabalho = 4)
+      if (p === '/api/defeitos' && req.method === 'GET') {
+        const sel = `select d.*, i.codigo, i.nome item, s.nome setor, f.nome funcionario, o.codigo op_codigo
+          from defeito d join item i on i.id=d.item_id left join setor s on s.id=d.setor_id left join funcionario f on f.id=d.funcionario_id left join op o on o.id=d.op_id`;
+        if (q('situacao') === 'todos') return json(req, await all(DB, sel + ' where d.data between ? and ? order by d.id desc limit 500', q('de'), q('ate') + ' 23:59:59'));
+        return json(req, await all(DB, sel + " where d.situacao='em_defeito' order by d.id desc"));
+      }
+      if (p === '/api/defeitos/resumo') {
+        const de = q('de'), ate = q('ate') + ' 23:59:59';
+        const [porMotivo, porSetor, porSituacao] = await Promise.all([
+          all(DB, 'select motivo, sum(qtd) qtd from defeito where data between ? and ? group by motivo order by qtd desc', de, ate),
+          all(DB, "select coalesce(s.nome,'—') setor, sum(d.qtd) qtd from defeito d left join setor s on s.id=d.setor_id where d.data between ? and ? group by d.setor_id order by qtd desc", de, ate),
+          all(DB, 'select situacao, sum(qtd) qtd from defeito where data between ? and ? group by situacao', de, ate)]);
+        return json(req, { porMotivo, porSetor, porSituacao });
+      }
+      if (p === '/api/defeitos' && req.method === 'POST') {
+        const it = await one(DB, 'select * from item where id=?', body.item_id);
+        if (!it || !(body.qtd > 0) || !body.motivo) return json(req, { erro: 'Item, quantidade e motivo' }, 400);
+        const op = body.op_codigo ? await one(DB, 'select * from op where codigo=?', Number(body.op_codigo)) : null;
+        if (body.op_codigo && !op) return json(req, { erro: 'OP não encontrada' }, 400);
+        const daPA = body.origem === 'pa';
+        const r = await DB.prepare('insert into defeito(data, item_id, qtd, op_id, setor_id, motivo, funcionario_id, obs, origem) values(?,?,?,?,?,?,?,?,?)')
+          .bind(agora(), it.id, body.qtd, op ? op.id : null, body.setor_id || null, body.motivo, body.funcionario_id || null, body.obs || null, daPA ? 'pa' : 'producao').run();
+        const st = [DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(it.id, DEP_DEFEITO, body.qtd, 'Defeito: ' + body.motivo, op ? op.id : null)];
+        if (daPA) st.push(DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo) values(?,?,?,?)').bind(it.id, DEP_PA, -body.qtd, 'Saiu do P.A. por defeito: ' + body.motivo));
+        if (op) st.push(evento(DB, op.id, `Defeito registrado: ${body.qtd} × ${it.nome} (${body.motivo})`));
+        await DB.batch(st);
+        return json(req, { ok: true, id: r.meta.last_row_id });
+      }
+      if ((m = p.match(/^\/api\/defeitos\/(\d+)\/(recuperar|retrabalho|descartar)$/)) && req.method === 'POST') {
+        const d = await one(DB, 'select * from defeito where id=?', Number(m[1]));
+        if (!d || d.situacao !== 'em_defeito') return json(req, { erro: 'Defeito já resolvido' }, 400);
+        const acao = m[2], nomes = { recuperar: 'recuperado', retrabalho: 'retrabalho', descartar: 'descartado' };
+        const mov = (dep, qtd, motivo) => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(d.item_id, dep, qtd, motivo, d.op_id);
+        const st = [DB.prepare('update defeito set situacao=?, resolvido_em=?, resolucao_obs=? where id=?').bind(nomes[acao], agora(), body.obs || null, d.id),
+          mov(DEP_DEFEITO, -d.qtd, 'Defeito ' + nomes[acao])];
+        if (acao === 'recuperar') st.push(mov(DEP_PA, d.qtd, 'Recuperada do defeito'));
+        if (acao === 'retrabalho') st.push(mov(DEP_RETRABALHO, d.qtd, 'Veio do defeito'));
+        await DB.batch(st);
         return json(req, { ok: true });
       }
 
