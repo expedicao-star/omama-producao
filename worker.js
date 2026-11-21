@@ -84,12 +84,16 @@ export default {
         const item = await one(DB, 'select * from item where id=?', body.item_id);
         if (!item || !(body.qtd > 0)) return json(req, { erro: 'Escolha o item e a quantidade' }, 400);
         const rot = await all(DB, 'select * from roteiro where item_id=? order by ordem', item.id);
+        const comps = await all(DB, `select c.insumo_id, c.qtd, i.nome,
+            coalesce((select sum(qtd) from estoque_mov where item_id=c.insumo_id and deposito_id=?),0) saldo
+          from composicao c join item i on i.id=c.insumo_id where c.item_id=?`, DEP_PATIO, item.id);
+        const falta = comps.filter(c => c.saldo + 1e-9 < c.qtd * body.qtd);
+        if (falta.length) return json(req, { erro: 'Sem bloco no Pátio: ' + falta.map(c => `${c.nome} (precisa ${+(c.qtd * body.qtd).toFixed(3)}, tem ${+(+c.saldo).toFixed(3)})`).join('; ') }, 400);
         const max = await one(DB, 'select max(codigo) m from op where origem is null');
         const codigo = Math.max(5000, (max && max.m) || 0) + 1;
         await DB.prepare('insert into op(codigo, item_id, qtd, previsao_inicio, previsao_fim, estagio_id, pedido, obs) values(?,?,?,?,?,?,?,?)')
           .bind(codigo, item.id, body.qtd, body.previsao_inicio || agora().slice(0, 10), body.previsao_fim || null, ESTAGIO_INICIAL, body.pedido || null, body.obs || null).run();
         const op = await one(DB, 'select id from op where codigo=?', codigo);
-        const comps = await all(DB, 'select c.insumo_id, c.qtd, i.nome from composicao c join item i on i.id=c.insumo_id where c.item_id=?', item.id);
         await DB.batch([
           ...comps.map(c => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)')
             .bind(c.insumo_id, DEP_PATIO, -(c.qtd * body.qtd), 'Baixa na criação da OP ' + codigo, op.id)),
@@ -187,7 +191,8 @@ export default {
         const item = await one(DB, 'select * from item where id=?', Number(m[1]));
         if (!item) return json(req, { erro: 'Item não encontrado' }, 404);
         const [composicao, roteiro, estoque] = await Promise.all([
-          all(DB, 'select c.qtd, i.id, i.codigo, i.nome from composicao c join item i on i.id=c.insumo_id where c.item_id=?', item.id),
+          all(DB, `select c.qtd, i.id, i.codigo, i.nome, coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) saldo_patio
+            from composicao c join item i on i.id=c.insumo_id where c.item_id=?`, DEP_PATIO, item.id),
           all(DB, 'select r.ordem, r.tempo_min, t.nome, t.espera from roteiro r join operacao_tipo t on t.id=r.operacao_tipo_id where r.item_id=? order by r.ordem', item.id),
           all(DB, 'select d.nome, sum(m.qtd) saldo from estoque_mov m join deposito d on d.id=m.deposito_id where m.item_id=? group by d.id having abs(saldo)>0.0001', item.id),
         ]);
