@@ -15,6 +15,72 @@ const json = (req, data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(req) } });
 const agora = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const minDesde = (s) => Math.max(0, (Date.now() - Date.parse(s.replace(' ', 'T') + 'Z')) / 60000);
+// ---------- sincronização com a v.8 (Google Sheets manda os dados por um Apps Script)
+const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+const dataBR = s => { const m = String(s || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
+const ORDEM_ST = { 'em producao': 1, 'pronto / embalagem': 2, 'transportadora': 3, 'entregue': 4, 'cancelada': 5, 'cancelado': 5 };
+const SAIU = ['enviada', 'entregue', 'cancelado', 'cancelada'];
+const tokensOk = (nome, prod, mad) => { const n = norm(nome), M = norm(mad), P = norm(prod).split(' ').filter(Boolean);
+  return !!M && n.endsWith(' ' + M) && P.every(t => (' ' + n.slice(0, -M.length) + ' ').includes(' ' + t + ' ')); };
+async function syncV8(DB, body) {
+  const simular = !!body.simular;
+  const prods = await all(DB, "select id, nome from item where tipo='Produto'");
+  const acha = (prod, mad) => { const c = prods.filter(i => tokensOk(i.nome, prod, mad)); c.sort((a, b) => a.nome.split(' ').length - b.nome.split(' ').length); return c[0] || null; };
+  const r = { pedidos_novos: [], pedidos_atualizados: [], pecas_novas: [], sem_cadastro: [] };
+  // peças pendentes (não enviadas) por pedido + produto + madeira
+  const grupos = new Map();
+  for (const pc of body.pecas || []) {
+    const num = String(pc.pedido || '').trim(); if (!num || !pc.produto) continue;
+    if (SAIU.includes(norm(pc.etapa))) continue;
+    const k = num + '|' + norm(pc.produto) + '|' + norm(pc.madeira);
+    const g = grupos.get(k) || { num, produto: String(pc.produto).trim(), madeira: String(pc.madeira || '').trim(), pend: 0, etapas: {} };
+    const q = Number(String(pc.qtd || '1').replace(',', '.')) || 1;
+    g.pend += q; g.etapas[pc.etapa || ''] = (g.etapas[pc.etapa || ''] || 0) + q; grupos.set(k, g);
+  }
+  const pendPorPedido = {}; for (const g of grupos.values()) pendPorPedido[g.num] = (pendPorPedido[g.num] || 0) + g.pend;
+  // pedidos
+  const existentes = new Map((await all(DB, 'select * from pedido')).map(x => [String(x.numero), x]));
+  const st = [];
+  for (const pv of body.pedidos || []) {
+    const num = String(pv.numero || '').trim(); if (!/^\d+$/.test(num)) continue;
+    const stt = String(pv.status || '').trim(), ex = existentes.get(num);
+    const cliente = String(pv.cliente || '').trim() || null, prazo = dataBR(pv.prazo), pag = dataBR(pv.data_pagamento);
+    if (!ex) {
+      if (!pendPorPedido[num] || (ORDEM_ST[norm(stt)] || 1) >= 4) continue;
+      st.push(DB.prepare('insert into pedido(numero, cliente, prazo, data_pagamento, status, obs) values(?,?,?,?,?,?)').bind(num, cliente, prazo, pag, stt || 'Em produção', pv.tipo ? 'Tipo: ' + pv.tipo : null));
+      r.pedidos_novos.push(num + ' · ' + (cliente || ''));
+    } else {
+      const novoSt = (ORDEM_ST[norm(stt)] || 0) > (ORDEM_ST[norm(ex.status)] || 0) ? stt : ex.status;
+      if (ex.cliente !== cliente || ex.prazo !== prazo || ex.data_pagamento !== pag || novoSt !== ex.status) {
+        st.push(DB.prepare('update pedido set cliente=?, prazo=?, data_pagamento=?, status=? where id=?').bind(cliente, prazo, pag, novoSt, ex.id));
+        r.pedidos_atualizados.push(num + (novoSt !== ex.status ? ' → ' + novoSt : ''));
+      }
+    }
+  }
+  if (st.length && !simular) await DB.batch(st);
+  // peças novas (só aumenta: o que a v.8 tem pendente além do que já está aqui)
+  const abertos = new Map((await all(DB, "select id, numero from pedido where status not in ('Entregue','Cancelado','Cancelada')")).map(x => [String(x.numero), x.id]));
+  const pis = await all(DB, 'select pedido_id, item_id, descricao, qtd from pedido_item');
+  const st2 = [];
+  for (const g of grupos.values()) {
+    const pid = abertos.get(g.num); if (!pid && !(simular && r.pedidos_novos.some(x => x.startsWith(g.num + ' ')))) continue;
+    const it = acha(g.produto, g.madeira);
+    const desc = it ? it.nome : `${g.produto} ${g.madeira}`.trim();
+    const aqui = pis.filter(x => x.pedido_id === pid && (it ? x.item_id === it.id : !x.item_id && tokensOk(x.descricao, g.produto, g.madeira))).reduce((s, x) => s + x.qtd, 0);
+    const novo = g.pend - aqui; if (novo <= 0) continue;
+    const etapa = Object.entries(g.etapas).sort((a, b) => b[1] - a[1])[0][0] || null;
+    const conf = ['controle de qualidade', 'prontas'].includes(norm(etapa)) ? novo : 0;
+    if (!simular) st2.push(DB.prepare('insert into pedido_item(pedido_id, item_id, descricao, qtd, etapa_v8, conferida) values(?,?,?,?,?,?)').bind(pid, it ? it.id : null, desc, novo, etapa, conf));
+    r.pecas_novas.push(`${g.num}: ${novo} × ${desc}`);
+    if (!it) r.sem_cadastro.push(`${g.num}: ${desc}`);
+  }
+  if (!simular) {
+    st2.push(DB.prepare('insert into sync_log(origem, resumo) values(?,?)').bind('v8', JSON.stringify(r)));
+    await DB.batch(st2);
+  }
+  return r;
+}
+
 const ESTAGIO_INICIAL = 1, ESTAGIO_FINAL = 12, DEP_PA = 1, DEP_PATIO = 11, DEP_RETRABALHO = 4, DEP_DEFEITO = 6;
 
 const all = async (DB, sql, ...b) => (await DB.prepare(sql).bind(...b).all()).results;
@@ -337,6 +403,9 @@ export default {
         await DB.batch(st);
         return json(req, { ok: true, completo: falta <= 0 });
       }
+
+      if (p === '/api/sync/v8' && req.method === 'POST') return json(req, await syncV8(DB, body));
+      if (p === '/api/sync/v8') return json(req, await one(DB, "select * from sync_log where origem='v8' order by id desc limit 1"));
 
       // itens de pedido em aberto que ainda precisam de OP (para escolher ao criar/vincular OP)
       if (p === '/api/pedido-itens') {
