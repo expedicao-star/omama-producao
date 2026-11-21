@@ -44,10 +44,10 @@ async function recalcularOp(DB, op_id) {
 
 async function opsAbertas(DB, where = "op.status='aberta'", ...b) {
   return all(DB, `select op.id, op.codigo, op.qtd, op.estagio_id, op.previsao_inicio, op.previsao_fim, op.pedido, op.status, op.origem,
-      i.id item_id, i.codigo item_codigo, i.nome item_nome,
+      i.id item_id, i.codigo item_codigo, i.nome item_nome, op.pedido_item_id, pd.numero pedido_numero, pd.cliente pedido_cliente,
       (select t.nome || '|' || oo.status || '|' || coalesce(f.nome,'') from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id
          left join funcionario f on f.id=oo.funcionario_id where oo.op_id=op.id and oo.status<>'finalizado' order by oo.ordem limit 1) atual
-    from op join item i on i.id=op.item_id where ${where} order by op.previsao_fim is null, op.previsao_fim, op.codigo`, ...b);
+    from op join item i on i.id=op.item_id left join pedido_item pi on pi.id=op.pedido_item_id left join pedido pd on pd.id=pi.pedido_id where ${where} order by op.previsao_fim is null, op.previsao_fim, op.codigo`, ...b);
 }
 
 export default {
@@ -91,15 +91,20 @@ export default {
         if (falta.length) return json(req, { erro: 'Sem bloco no Pátio: ' + falta.map(c => `${c.nome} (precisa ${+(c.qtd * body.qtd).toFixed(3)}, tem ${+(+c.saldo).toFixed(3)})`).join('; ') }, 400);
         const max = await one(DB, 'select max(codigo) m from op where origem is null');
         const codigo = Math.max(5000, (max && max.m) || 0) + 1;
-        await DB.prepare('insert into op(codigo, item_id, qtd, previsao_inicio, previsao_fim, estagio_id, pedido, obs) values(?,?,?,?,?,?,?,?)')
-          .bind(codigo, item.id, body.qtd, body.previsao_inicio || agora().slice(0, 10), body.previsao_fim || null, ESTAGIO_INICIAL, body.pedido || null, body.obs || null).run();
+        let pi = null;
+        if (body.pedido_item_id) {
+          pi = await one(DB, 'select pi.*, p.numero, p.cliente, p.prazo from pedido_item pi join pedido p on p.id=pi.pedido_id where pi.id=?', body.pedido_item_id);
+          if (!pi) return json(req, { erro: 'Item de pedido não encontrado' }, 400);
+        }
+        await DB.prepare('insert into op(codigo, item_id, qtd, previsao_inicio, previsao_fim, estagio_id, pedido, obs, pedido_item_id) values(?,?,?,?,?,?,?,?,?)')
+          .bind(codigo, item.id, body.qtd, body.previsao_inicio || agora().slice(0, 10), body.previsao_fim || (pi && pi.prazo) || null, ESTAGIO_INICIAL, pi ? pi.numero : (body.pedido || null), body.obs || null, pi ? pi.id : null).run();
         const op = await one(DB, 'select id from op where codigo=?', codigo);
         await DB.batch([
           ...comps.map(c => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)')
             .bind(c.insumo_id, DEP_PATIO, -(c.qtd * body.qtd), 'Baixa na criação da OP ' + codigo, op.id)),
           ...(comps.length ? [evento(DB, op.id, 'Blocos baixados do Pátio: ' + comps.map(c => `${+(c.qtd * body.qtd).toFixed(3)} × ${c.nome}`).join(', '))] : []),
           ...rot.map(r => DB.prepare('insert into op_operacao(op_id, ordem, operacao_tipo_id, tempo_unit_min) values(?,?,?,?)').bind(op.id, r.ordem, r.operacao_tipo_id, r.tempo_min)),
-          evento(DB, op.id, `OP criada: ${body.qtd} × ${item.nome}` + (rot.length ? '' : ' (item sem roteiro)')),
+          evento(DB, op.id, `OP criada: ${body.qtd} × ${item.nome}` + (pi ? ` para o pedido ${pi.numero} (${pi.cliente})` : ' (estoque)') + (rot.length ? '' : ' (item sem roteiro)')),
         ]);
         return json(req, { ok: true, codigo });
       }
@@ -176,6 +181,58 @@ export default {
           where op.status='aberta' and oo.status<>'finalizado' and ${setor ? 't.setor_id=?' : 't.espera=1 and ?=0'}
           order by case oo.status when 'produzindo' then 0 when 'pausado' then 1 else 2 end, op.previsao_fim is null, op.previsao_fim, op.codigo`, setor || 0);
         return json(req, r.filter(x => x.status !== 'pendente' || x.antes === 0));
+      }
+
+      // ---------- pedidos
+      if (p === '/api/pedidos' && req.method === 'GET') {
+        const abertos = q('todos') ? '1=1' : "p.status not in ('Entregue','Cancelado','Cancelada')";
+        return json(req, await all(DB, `select p.*,
+            (select coalesce(sum(qtd),0) from pedido_item where pedido_id=p.id) pecas,
+            (select coalesce(sum(o.qtd),0) from op o join pedido_item x on x.id=o.pedido_item_id where x.pedido_id=p.id and o.status<>'cancelada') com_op,
+            (select coalesce(sum(o.qtd),0) from op o join pedido_item x on x.id=o.pedido_item_id where x.pedido_id=p.id and o.status='finalizada') prontas_op
+          from pedido p where ${abertos} order by p.prazo is null, p.prazo, p.numero`));
+      }
+      if (p === '/api/pedidos' && req.method === 'POST') {
+        if (!body.numero) return json(req, { erro: 'Número do pedido obrigatório' }, 400);
+        if (await one(DB, 'select id from pedido where numero=?', String(body.numero))) return json(req, { erro: 'Pedido já existe' }, 400);
+        await DB.prepare('insert into pedido(numero, cliente, prazo, data_pagamento, obs) values(?,?,?,?,?)').bind(String(body.numero), body.cliente || null, body.prazo || null, body.data_pagamento || null, body.obs || null).run();
+        return json(req, { ok: true });
+      }
+      if ((m = p.match(/^\/api\/pedidos\/([^/]+)$/)) && req.method === 'GET') {
+        const pd = await one(DB, 'select * from pedido where numero=?', decodeURIComponent(m[1]));
+        if (!pd) return json(req, { erro: 'Pedido não encontrado' }, 404);
+        const itens = await all(DB, `select pi.*, i.codigo item_codigo,
+            (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status<>'cancelada') com_op
+          from pedido_item pi left join item i on i.id=pi.item_id where pi.pedido_id=? order by pi.id`, pd.id);
+        const ops = await opsAbertas(DB, "pi.pedido_id=? and op.status<>'cancelada'", pd.id);
+        return json(req, { ...pd, itens, ops });
+      }
+      if ((m = p.match(/^\/api\/pedidos\/([^/]+)\/(status|itens)$/)) && req.method === 'POST') {
+        const pd = await one(DB, 'select * from pedido where numero=?', decodeURIComponent(m[1]));
+        if (!pd) return json(req, { erro: 'Pedido não encontrado' }, 404);
+        if (m[2] === 'status') await DB.prepare('update pedido set status=? where id=?').bind(body.status, pd.id).run();
+        else {
+          const it = await one(DB, 'select * from item where id=?', body.item_id);
+          if (!it || !(body.qtd > 0)) return json(req, { erro: 'Escolha o item e a quantidade' }, 400);
+          await DB.prepare('insert into pedido_item(pedido_id, item_id, descricao, qtd) values(?,?,?,?)').bind(pd.id, it.id, it.nome, body.qtd).run();
+        }
+        return json(req, { ok: true });
+      }
+      // itens de pedido em aberto que ainda precisam de OP (para escolher ao criar/vincular OP)
+      if (p === '/api/pedido-itens') {
+        return json(req, await all(DB, `select pi.id, pi.qtd, pi.descricao, pi.etapa_v8, p.numero, p.cliente, p.prazo,
+            pi.qtd - (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status<>'cancelada') falta
+          from pedido_item pi join pedido p on p.id=pi.pedido_id
+          where pi.item_id=? and p.status not in ('Entregue','Cancelado','Cancelada') order by p.prazo is null, p.prazo`, Number(q('item_id'))));
+      }
+      if ((m = p.match(/^\/api\/ops\/(\d+)\/pedido$/)) && req.method === 'POST') {
+        const op = await one(DB, 'select * from op where codigo=?', Number(m[1]));
+        if (!op) return json(req, { erro: 'OP não encontrada' }, 404);
+        const pi = body.pedido_item_id ? await one(DB, 'select pi.*, p.numero, p.cliente from pedido_item pi join pedido p on p.id=pi.pedido_id where pi.id=?', body.pedido_item_id) : null;
+        if (body.pedido_item_id && (!pi || pi.item_id !== op.item_id)) return json(req, { erro: 'Esse item do pedido é de outro produto' }, 400);
+        await DB.batch([DB.prepare('update op set pedido_item_id=?, pedido=? where id=?').bind(pi ? pi.id : null, pi ? pi.numero : null, op.id),
+          evento(DB, op.id, pi ? `Vinculada ao pedido ${pi.numero} (${pi.cliente})` : 'Desvinculada do pedido (estoque)')]);
+        return json(req, { ok: true });
       }
 
       // ---------- itens
