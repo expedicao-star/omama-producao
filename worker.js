@@ -261,7 +261,10 @@ export default {
         return json(req, await all(DB, `select p.*,
             (select coalesce(sum(qtd),0) from pedido_item where pedido_id=p.id) pecas,
             (select coalesce(sum(o.qtd),0) from op o join pedido_item x on x.id=o.pedido_item_id where x.pedido_id=p.id and o.status<>'cancelada') com_op,
-            (select coalesce(sum(o.qtd),0) from op o join pedido_item x on x.id=o.pedido_item_id where x.pedido_id=p.id and o.status='finalizada') prontas_op
+            (select coalesce(sum(o.qtd),0) from op o join pedido_item x on x.id=o.pedido_item_id where x.pedido_id=p.id and o.status='finalizada') prontas_op,
+            (select coalesce(sum(conferida),0) from pedido_item where pedido_id=p.id) conferidas,
+            (select coalesce(sum(embalada),0) from pedido_item where pedido_id=p.id) embaladas,
+            (select coalesce(sum(enviada),0) from pedido_item where pedido_id=p.id) enviadas
           from pedido p where ${abertos} order by p.prazo is null, p.prazo, p.numero`));
       }
       if (p === '/api/pedidos' && req.method === 'POST') {
@@ -274,10 +277,15 @@ export default {
         const pd = await one(DB, 'select * from pedido where numero=?', decodeURIComponent(m[1]));
         if (!pd) return json(req, { erro: 'Pedido não encontrado' }, 404);
         const itens = await all(DB, `select pi.*, i.codigo item_codigo,
-            (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status<>'cancelada') com_op
+            (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status<>'cancelada') com_op,
+            (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status='finalizada') op_fin,
+            (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status='aberta' and estagio_id>=11) op_acab,
+            (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status='aberta' and estagio_id<11) op_prod
           from pedido_item pi left join item i on i.id=pi.item_id where pi.pedido_id=? order by pi.id`, pd.id);
-        const ops = await opsAbertas(DB, "pi.pedido_id=? and op.status<>'cancelada'", pd.id);
-        return json(req, { ...pd, itens, ops });
+        const [ops, envios] = await Promise.all([opsAbertas(DB, "pi.pedido_id=? and op.status<>'cancelada'", pd.id),
+          all(DB, `select e.*, (select group_concat(cast(ei.qtd as int) || ' × ' || pi.descricao, ' · ') from envio_item ei join pedido_item pi on pi.id=ei.pedido_item_id where ei.envio_id=e.id) itens
+            from envio e where e.pedido_id=? order by e.id desc`, pd.id)]);
+        return json(req, { ...pd, itens, ops, envios });
       }
       if ((m = p.match(/^\/api\/pedidos\/([^/]+)\/(status|itens)$/)) && req.method === 'POST') {
         const pd = await one(DB, 'select * from pedido where numero=?', decodeURIComponent(m[1]));
@@ -290,6 +298,46 @@ export default {
         }
         return json(req, { ok: true });
       }
+      // ---------- expedição: conferir / embalar por item de pedido, registrar envio (baixa do P.A.)
+      if ((m = p.match(/^\/api\/pedido-itens\/(\d+)\/exp$/)) && req.method === 'POST') {
+        const pi = await one(DB, 'select * from pedido_item where id=?', Number(m[1]));
+        if (!pi) return json(req, { erro: 'Item não encontrado' }, 404);
+        const conf = body.conferida ?? pi.conferida, emb = body.embalada ?? pi.embalada;
+        if (conf < 0 || conf > pi.qtd) return json(req, { erro: 'Conferidas tem que ficar entre 0 e ' + pi.qtd }, 400);
+        if (emb < pi.enviada) return json(req, { erro: 'Já foram enviadas ' + pi.enviada }, 400);
+        if (body.conferida !== undefined && conf < emb) return json(req, { erro: 'Tem peça embalada; tire da embalagem antes' }, 400);
+        if (emb > conf) return json(req, { erro: 'Só embala peça conferida' }, 400);
+        await DB.prepare('update pedido_item set conferida=?, embalada=? where id=?').bind(conf, emb, pi.id).run();
+        const t = await one(DB, 'select sum(qtd) q, sum(embalada) e from pedido_item where pedido_id=?', pi.pedido_id);
+        if (t.q > 0 && t.e >= t.q) await DB.prepare("update pedido set status='Pronto / embalagem' where id=? and status='Em produção'").bind(pi.pedido_id).run();
+        return json(req, { ok: true });
+      }
+      if ((m = p.match(/^\/api\/pedidos\/([^/]+)\/envio$/)) && req.method === 'POST') {
+        const pd = await one(DB, 'select * from pedido where numero=?', decodeURIComponent(m[1]));
+        if (!pd) return json(req, { erro: 'Pedido não encontrado' }, 404);
+        const linhas = (body.itens || []).filter(x => x.qtd > 0);
+        if (!linhas.length) return json(req, { erro: 'Nenhuma peça no envio' }, 400);
+        const its = await all(DB, 'select * from pedido_item where pedido_id=?', pd.id);
+        for (const l of linhas) {
+          const it = its.find(x => x.id === l.pedido_item_id);
+          if (!it) return json(req, { erro: 'Item de outro pedido' }, 400);
+          if (l.qtd > it.embalada - it.enviada) return json(req, { erro: `${it.descricao}: só tem ${it.embalada - it.enviada} embalada(s) para enviar` }, 400);
+        }
+        const r = await DB.prepare('insert into envio(pedido_id, data, transportadora, nf, volumes, obs) values(?,?,?,?,?,?)')
+          .bind(pd.id, body.data || agora().slice(0, 10), body.transportadora || null, body.nf || null, body.volumes || null, body.obs || null).run();
+        const eid = r.meta.last_row_id, st = [];
+        for (const l of linhas) {
+          const it = its.find(x => x.id === l.pedido_item_id);
+          st.push(DB.prepare('insert into envio_item(envio_id, pedido_item_id, qtd) values(?,?,?)').bind(eid, it.id, l.qtd),
+            DB.prepare('update pedido_item set enviada=enviada+? where id=?').bind(l.qtd, it.id));
+          if (it.item_id) st.push(DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo) values(?,?,?,?)').bind(it.item_id, DEP_PA, -l.qtd, `Envio do pedido ${pd.numero} (${pd.cliente || ''})`));
+        }
+        const falta = its.reduce((s, x) => s + x.qtd - x.enviada, 0) - linhas.reduce((s, l) => s + l.qtd, 0);
+        if (falta <= 0) st.push(DB.prepare("update pedido set status='Transportadora' where id=? and status in ('Em produção','Pronto / embalagem')").bind(pd.id));
+        await DB.batch(st);
+        return json(req, { ok: true, completo: falta <= 0 });
+      }
+
       // itens de pedido em aberto que ainda precisam de OP (para escolher ao criar/vincular OP)
       if (p === '/api/pedido-itens') {
         return json(req, await all(DB, `select pi.id, pi.qtd, pi.descricao, pi.etapa_v8, p.numero, p.cliente, p.prazo,
