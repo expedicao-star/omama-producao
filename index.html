@@ -264,8 +264,9 @@ const abrirOp = tenta(async codigo=>{
 
 // ===== pedidos
 async function tPedidos(){
-  app.innerHTML = `<div class="row"><input id="bp" placeholder="Buscar pedido ou cliente" value="${esc(S.bp||'')}" style="flex:1"><button class="btn" id="novo">+ Novo pedido</button></div><br><div id="pl" class="vazio">Carregando…</div>`;
+  app.innerHTML = `<div class="row"><input id="bp" placeholder="Buscar pedido ou cliente" value="${esc(S.bp||'')}" style="flex:1"><button class="btn" id="novo">+ Novo pedido</button></div><div class="mut" id="sv8" style="margin-top:6px"></div><br><div id="pl" class="vazio">Carregando…</div>`;
   $('#novo').onclick=novoPedido;
+  api('/api/sync/v8').then(s=>{ if(s&&s.data&&$('#sv8')){ const r=JSON.parse(s.resumo||'{}'); $('#sv8').textContent='Ligado à v.8 · última atualização '+brHora(s.data)+(r.sem_cadastro&&r.sem_cadastro.length?' · sem cadastro: '+r.sem_cadastro.join(', '):''); } }).catch(()=>{});
   const l=await api('/api/pedidos');
   const desenha=()=>{ const b=(S.bp||'').toLowerCase(); const f=l.filter(p=>!b||String(p.numero).includes(b)||(p.cliente||'').toLowerCase().includes(b)); $('#pl').className='';
     $('#pl').innerHTML=f.map(p=>{ const d=diasAte(p.prazo); const pc=p.pecas?Math.min(100,p.com_op/p.pecas*100):0;
