@@ -464,6 +464,58 @@ export default {
           join deposito d on d.id=m.deposito_id order by m.id desc limit 100`));
       }
 
+      // ---------- inventário (contagem física por depósito; ao fechar, ajusta o saldo pela diferença)
+      if (p === '/api/inventarios' && req.method === 'GET') {
+        return json(req, await all(DB, `select v.*, d.nome deposito, (select count(*) from inventario_item where inventario_id=v.id) itens,
+            (select count(*) from inventario_item where inventario_id=v.id and contado is not null) contados,
+            (select count(*) from inventario_item where inventario_id=v.id and abs(coalesce(ajuste,0))>0.0001) com_ajuste
+          from inventario v join deposito d on d.id=v.deposito_id where v.status<>'cancelado' order by v.id desc limit 50`));
+      }
+      if (p === '/api/inventarios' && req.method === 'POST') {
+        const dep = await one(DB, 'select * from deposito where id=?', body.deposito_id);
+        if (!dep) return json(req, { erro: 'Escolha o depósito' }, 400);
+        const aberto = await one(DB, "select id from inventario where deposito_id=? and status='aberto'", dep.id);
+        if (aberto) return json(req, { id: aberto.id, ja_aberto: true });
+        const r = await DB.prepare('insert into inventario(deposito_id, obs) values(?,?)').bind(dep.id, body.obs || null).run();
+        const id = r.meta.last_row_id, tipo = dep.id === DEP_PATIO ? 'Matéria-prima' : 'Produto';
+        await DB.prepare(`insert into inventario_item(inventario_id, item_id, saldo_sistema)
+          select ?, i.id, coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) from item i
+          where (i.tipo=? and i.ativo=1) or exists(select 1 from estoque_mov m where m.item_id=i.id and m.deposito_id=? group by m.item_id having abs(sum(m.qtd))>0.0001)`)
+          .bind(id, dep.id, tipo, dep.id).run();
+        return json(req, { id });
+      }
+      if ((m = p.match(/^\/api\/inventarios\/(\d+)$/)) && req.method === 'GET') {
+        const v = await one(DB, 'select v.*, d.nome deposito from inventario v join deposito d on d.id=v.deposito_id where v.id=?', Number(m[1]));
+        if (!v) return json(req, { erro: 'Inventário não encontrado' }, 404);
+        const itens = await all(DB, `select ii.*, i.codigo, i.nome, coalesce((select sum(qtd) from estoque_mov where item_id=ii.item_id and deposito_id=?),0) saldo_atual
+          from inventario_item ii join item i on i.id=ii.item_id where ii.inventario_id=? order by i.codigo`, v.deposito_id, v.id);
+        return json(req, { ...v, itens });
+      }
+      if ((m = p.match(/^\/api\/inventarios\/(\d+)\/(contagem|fechar|cancelar)$/)) && req.method === 'POST') {
+        const v = await one(DB, 'select * from inventario where id=?', Number(m[1]));
+        if (!v || v.status !== 'aberto') return json(req, { erro: 'Inventário já fechado' }, 400);
+        if (m[2] === 'contagem') {
+          const c = body.contado === null || body.contado === '' ? null : Number(body.contado);
+          if (c !== null && !(c >= 0)) return json(req, { erro: 'Quantidade inválida' }, 400);
+          await DB.prepare('update inventario_item set contado=? where inventario_id=? and item_id=?').bind(c, v.id, body.item_id).run();
+          return json(req, { ok: true });
+        }
+        if (m[2] === 'cancelar') { await DB.prepare("update inventario set status='cancelado', fechado_em=? where id=?").bind(agora(), v.id).run(); return json(req, { ok: true }); }
+        const its = await all(DB, `select ii.*, coalesce((select sum(qtd) from estoque_mov where item_id=ii.item_id and deposito_id=?),0) saldo_atual
+          from inventario_item ii where ii.inventario_id=?`, v.deposito_id, v.id);
+        const st = []; let n = 0;
+        for (const it of its) {
+          const c = it.contado !== null ? it.contado : (body.zerar_nao_contados ? 0 : null);
+          if (c === null) continue;
+          const dif = Math.round((c - it.saldo_atual) * 1000) / 1000;
+          st.push(DB.prepare('update inventario_item set contado=?, ajuste=? where id=?').bind(c, dif, it.id));
+          if (Math.abs(dif) > 0.0001) { n++; st.push(DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo) values(?,?,?,?)').bind(it.item_id, v.deposito_id, dif, `Inventário nº ${v.id} (contado ${c})`)); }
+        }
+        st.push(DB.prepare("update inventario set status='fechado', fechado_em=? where id=?").bind(agora(), v.id));
+        await DB.batch(st);
+        return json(req, { ok: true, ajustes: n });
+      }
+
       // ---------- relatório de produção (operações finalizadas no período)
       if (p === '/api/relatorio') {
         const de = q('de') + ' 00:00:00', ate = q('ate') + ' 23:59:59';
