@@ -456,41 +456,47 @@ async function tFuncionarios(){
     $('#eg').onclick=tenta(async()=>{ await api('/api/funcionarios/'+f.id,{nome:$('#en').value,setor_id:+$('#es').value||null,ativo:$('#ea').checked}); B=await api('/api/base'); toast('Salvo'); modal(''); tFuncionarios(); }); });
 }
 
-// ===== assiduidade
-const PRES={presente:['Presente','ok'],falta_justificada:['Falta justificada','midc'],falta_injustificada:['Falta não justificada','bad'],atestado:['Atestado','blue'],atraso:['Atraso / saída cedo','midc'],folga:['Folga / férias','mut']};
+// ===== assiduidade (só lança faltas e atrasos; quem não tem lançamento estava presente)
+const PRES={falta_injustificada:['Falta não justificada','bad'],falta_justificada:['Falta justificada','midc'],atestado:['Atestado','blue'],atraso:['Atraso / saída cedo','midc'],folga:['Folga / férias','mut']};
+const TAGC={bad:'background:#fbe3e1;color:#b2362d',midc:'background:#fbefd3;color:#94690d',blue:'background:#e1eefb;color:#2d6aa3',mut:'background:#f0edf7;color:var(--mut)'};
+function semanaDe(iso){ const d=new Date(iso+'T12:00'); d.setDate(d.getDate()-((d.getDay()+6)%7)); const f=new Date(d); f.setDate(d.getDate()+6); const x=v=>v.toISOString().slice(0,10); return [x(d),x(f)]; }
 async function tAssid(){
-  const dia=S.dia||hojeISO(); S.dia=dia;
-  const mes=dia.slice(0,7), de=mes+'-01', ate=new Date(+mes.slice(0,4),+mes.slice(5,7),0,12).toISOString().slice(0,10);
-  const mv=n=>{ const d=new Date(dia+'T12:00'); d.setDate(d.getDate()+n); S.dia=d.toISOString().slice(0,10); tAssid(); };
-  app.innerHTML=`<div class="row"><button class="btn sec sm" id="ap">◀</button><input type="date" id="ad" value="${dia}"><button class="btn sec sm" id="an">▶</button>
-    <b>${new Date(dia+'T12:00').toLocaleDateString('pt-BR',{weekday:'long'})}</b>${dia===hojeISO()?' <span class="mut">(hoje)</span>':''}</div>
-    <p class="mut">Todo mundo começa como presente. Marque só quem faltou, chegou atrasado, saiu cedo ou estava de folga.</p><div class="card" id="al">Carregando…</div>
-    <h2>Resumo de ${new Date(de+'T12:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</h2><div class="card" id="ar" style="overflow-x:auto">Carregando…</div>`;
-  $('#ap').onclick=()=>mv(-1); $('#an').onclick=()=>mv(1); $('#ad').onchange=e=>{ if(e.target.value){ S.dia=e.target.value; tAssid(); } };
-  const [reg,res]=await Promise.all([api('/api/presenca?data='+dia),api(`/api/presenca/resumo?de=${de}&ate=${ate}`)]);
-  const por={}; reg.forEach(r=>por[r.funcionario_id]=r);
-  const grupos=B.setores.map(s=>[s.nome,B.funcionarios.filter(f=>f.setor_id===s.id)]).concat([['Sem setor',B.funcionarios.filter(f=>!f.setor_id)]]).filter(g=>g[1].length);
-  $('#al').innerHTML=grupos.map(([g,fs])=>`<h2>${esc(g)}</h2>${fs.map(f=>{ const r=por[f.id], st=r?r.status:'presente';
-    return `<div class="pess"><div class="nm">${esc(f.nome)}${r&&(r.minutos||r.obs)?`<br><span class="mut" style="font-weight:500">${r.minutos?r.minutos+' min':''}${r.minutos&&r.obs?' · ':''}${esc(r.obs||'')}</span>`:''}</div>
-      <div class="row" style="gap:5px">${Object.entries(PRES).map(([k,[n,c]])=>`<button class="st ${c} ${st===k?'on':''}" data-f="${f.id}" data-s="${k}">${n}</button>`).join('')}</div></div>`}).join('')}`).join('');
-  $('#al').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>marcar(dia,B.funcionarios.find(f=>f.id===+b.dataset.f),b.dataset.s,por[+b.dataset.f]));
-  $('#ar').innerHTML=`<table><tr><th>Pessoa</th><th>Setor</th><th class="n">Falta just.</th><th class="n">Falta não just.</th><th class="n">Atestado</th><th class="n">Atrasos / saídas</th><th class="n">Folga / férias</th></tr>
-    ${res.map(p=>`<tr><td>${esc(p.nome)}</td><td class="mut">${esc(p.setor||'')}</td><td class="n">${p.falta_just||''}</td><td class="n ${p.falta_injust?'bad':''}"><b>${p.falta_injust||''}</b></td><td class="n">${p.atestado||''}</td><td class="n">${p.atrasos?p.atrasos+' ('+dur(p.min_atraso)+')':''}</td><td class="n">${p.folgas||''}</td></tr>`).join('')}</table>
-    <p class="mut">Folga e férias não contam como falta.</p>`;
+  const [de,ate]=semanaDe(S.dia||hojeISO());
+  const mv=n=>{ const d=new Date(de+'T12:00'); d.setDate(d.getDate()+7*n); S.dia=d.toISOString().slice(0,10); tAssid(); };
+  let tipo='falta_injustificada';
+  const opt=fs=>fs.map(f=>`<option value="${f.id}">${esc(f.nome)}</option>`).join('');
+  app.innerHTML=`<h2>Lançar falta ou atraso</h2><div class="card">
+    <div class="row"><select id="lp"><option value="">Quem?</option>${B.setores.map(s=>`<optgroup label="${esc(s.nome)}">${opt(B.funcionarios.filter(f=>f.setor_id===s.id))}</optgroup>`).join('')}${opt(B.funcionarios.filter(f=>!f.setor_id))}</select>
+      <input type="date" id="ld" value="${hojeISO()}"></div>
+    <div class="row" id="lt" style="margin-top:10px">${Object.entries(PRES).map(([k,[n,c]])=>`<button class="st ${c} ${k===tipo?'on':''}" data-s="${k}">${n}</button>`).join('')}</div>
+    <div class="row" style="margin-top:10px"><input id="lmin" type="number" min="1" inputmode="numeric" placeholder="Minutos" style="width:110px;display:none"><input id="lo" placeholder="Motivo / observação" style="flex:1;min-width:200px"><button class="btn" id="lg">Lançar</button></div></div>
+    <div class="row" style="justify-content:space-between;margin-top:18px"><h2 style="margin:0">Semana ${brData(de)} a ${brData(ate)}</h2>
+      <div class="row"><button class="btn sec sm" id="ap">◀</button><button class="btn sec sm" id="ah">Esta semana</button><button class="btn sec sm" id="an">▶</button></div></div>
+    <div id="al" class="vazio">Carregando…</div>`;
+  $('#ap').onclick=()=>mv(-1); $('#an').onclick=()=>mv(1); $('#ah').onclick=()=>{ S.dia=null; tAssid(); };
+  $('#lt').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{ tipo=b.dataset.s; $('#lt').querySelectorAll('[data-s]').forEach(x=>x.classList.toggle('on',x===b)); $('#lmin').style.display=tipo==='atraso'?'':'none'; });
+  $('#lg').onclick=tenta(async()=>{
+    const fid=+$('#lp').value, dia=$('#ld').value; if(!fid) throw new Error('Escolha a pessoa'); if(!dia) throw new Error('Escolha o dia');
+    const minutos=tipo==='atraso'?+$('#lmin').value:null; if(tipo==='atraso'&&!(minutos>0)) throw new Error('Informe os minutos');
+    const obs=$('#lo').value.trim(); if(tipo==='falta_justificada'&&!obs) throw new Error('Escreva o motivo da falta');
+    await api('/api/presenca',{data:dia,funcionario_id:fid,status:tipo,minutos,obs:obs||null});
+    toast(B.funcionarios.find(f=>f.id===fid).nome+': '+PRES[tipo][0]+' lançado'); S.dia=dia; tAssid();
+  });
+  const l=await api(`/api/presenca?de=${de}&ate=${ate}`);
+  const res={}; l.forEach(r=>{ const p=res[r.funcionario_id]=res[r.funcionario_id]||{nome:r.nome,setor:r.setor,min:0}; p[r.status]=(p[r.status]||0)+1; if(r.status==='atraso') p.min+=r.minutos||0; });
+  $('#al').className='';
+  $('#al').innerHTML=l.length?`<div class="card" style="overflow-x:auto"><table><tr><th>Dia</th><th>Pessoa</th><th>O quê</th><th>Detalhe</th><th></th></tr>
+    ${l.map(r=>{ const [n,c]=PRES[r.status]||[r.status,'mut']; return `<tr><td>${new Date(r.data+'T12:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}</td><td><b>${esc(r.nome)}</b> <span class="mut">${esc(r.setor||'')}</span></td>
+      <td><span class="tag" style="${TAGC[c]}">${n}</span></td><td class="mut">${r.minutos?r.minutos+' min':''}${r.minutos&&r.obs?' · ':''}${esc(r.obs||'')}</td><td class="n"><button class="btn sec sm" data-x="${r.id}">Apagar</button></td></tr>`}).join('')}</table></div>
+    <h2>Resumo da semana</h2><div class="card" style="overflow-x:auto"><table><tr><th>Pessoa</th><th class="n">Falta não just.</th><th class="n">Falta just.</th><th class="n">Atestado</th><th class="n">Atrasos / saídas</th><th class="n">Folga / férias</th></tr>
+    ${Object.values(res).sort((a,b)=>a.nome.localeCompare(b.nome)).map(p=>`<tr><td>${esc(p.nome)}</td><td class="n ${p.falta_injustificada?'bad':''}"><b>${p.falta_injustificada||''}</b></td><td class="n">${p.falta_justificada||''}</td><td class="n">${p.atestado||''}</td><td class="n">${p.atraso?p.atraso+' ('+dur(p.min)+')':''}</td><td class="n">${p.folga||''}</td></tr>`).join('')}</table>
+    <p class="mut">Quem não aparece aqui não teve falta nem atraso na semana. Folga e férias não contam como falta.</p></div>`
+    :'<div class="card vazio">Nenhuma falta ou atraso lançado nesta semana.</div>';
+  $('#al').querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{ const r=l.find(x=>x.id===+b.dataset.x);
+    modal(`<h2 style="margin-top:0">Apagar lançamento?</h2><p>${esc(r.nome)} · ${(PRES[r.status]||[r.status])[0]} · ${brData(r.data)}</p><div class="row"><button class="btn bad" id="xc">Apagar</button><button class="btn sec" id="xv">Voltar</button></div>`);
+    $('#xv').onclick=()=>modal('');
+    $('#xc').onclick=tenta(async()=>{ await api('/api/presenca',{data:r.data,funcionario_id:r.funcionario_id,status:'presente'}); modal(''); toast('Apagado'); tAssid(); }); });
 }
-const marcar=tenta(async(dia,f,st,atual)=>{
-  const salva=async(extra={})=>{ await api('/api/presenca',{data:dia,funcionario_id:f.id,status:st,...extra}); toast(f.nome+': '+PRES[st][0]); tAssid(); };
-  if(st==='presente') return salva();
-  const pedeMin=st==='atraso', pedeObs=st!=='presente';
-  modal(`<h2 style="margin-top:0">${esc(f.nome)} · ${PRES[st][0]}</h2><div class="mut">${brData(dia)}</div><br>
-    ${pedeMin?`<div class="mut">Quantos minutos? (atraso ou saída mais cedo)</div><input id="mm" type="number" min="1" inputmode="numeric" value="${atual&&atual.status==='atraso'&&atual.minutos||''}" style="width:120px"><br><br>`:''}
-    <div class="mut">${st==='falta_justificada'?'Motivo da falta':st==='atestado'?'Observação (ex.: dias de atestado)':'Observação (opcional)'}</div><input id="mo" value="${esc(atual&&atual.status===st&&atual.obs||'')}" style="width:100%"><br><br>
-    <div class="row"><button class="btn" id="mg">Salvar</button><button class="btn sec" id="mx">Voltar</button></div>`);
-  $('#mx').onclick=()=>modal(''); (pedeMin?$('#mm'):$('#mo')).focus();
-  $('#mg').onclick=tenta(async()=>{ const minutos=pedeMin?+$('#mm').value:null; if(pedeMin&&!(minutos>0)) throw new Error('Informe os minutos');
-    const obs=$('#mo').value.trim(); if(st==='falta_justificada'&&!obs) throw new Error('Escreva o motivo da falta');
-    modal(''); await salva({minutos,obs:obs||null}); });
-});
 iniciar();
 </script>
 </body>
