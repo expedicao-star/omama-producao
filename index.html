@@ -65,6 +65,9 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;lett
 .login input{width:100%;margin:14px 0;text-align:center;font-size:22px;letter-spacing:.2em}
 .bar{height:8px;background:var(--card2);border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--amb)}
 .link{color:var(--amb);cursor:pointer;text-decoration:underline}
+.ped{display:inline-block;background:#efeaff;color:#5b3cc4;border:1px solid #d9ccff;border-radius:8px;padding:1px 7px;font-size:12px;font-weight:700;cursor:pointer}
+.ped.est{background:#f0edf7;color:var(--mut);border-color:var(--line);cursor:default}
+.pd{cursor:pointer;margin-bottom:8px}.pd b{font-size:16px}
 </style>
 </head>
 <body>
@@ -73,6 +76,7 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;lett
 <nav id="nav" style="display:none">
   <button data-t="fila" class="on"><b>⚒</b>Setores</button>
   <button data-t="ops"><b>▦</b>OPs</button>
+  <button data-t="ped"><b>✉</b>Pedidos</button>
   <button data-t="itens"><b>◫</b>Itens</button>
   <button data-t="estoque"><b>▤</b>Estoque</button>
   <button data-t="rel"><b>▮▮</b>Relatório</button>
@@ -127,7 +131,7 @@ async function iniciar(){
   $('#nav').style.display='flex'; render();
 }
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{ S.tab=b.dataset.t; document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b)); render(); });
-function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, itens:tItens, estoque:tEstoque, rel:tRel})[S.tab](); }
+function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, ped:tPedidos, itens:tItens, estoque:tEstoque, rel:tRel})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -147,6 +151,9 @@ const botoes = o => o.status==='finalizado' ? `<button class="btn sec sm" data-a
   : o.status==='produzindo' ? `<button class="btn mid sm" data-a="pausar">⏸ Pausar</button> <button class="btn ok sm" data-a="finalizar">✓ Finalizar</button>`
   : `<button class="btn sm" data-a="iniciar">▶ Iniciar</button> <button class="btn sec sm" data-a="finalizar">✓ Finalizar</button>`;
 const tag = s => `<span class="tag t-${s}">${s}</span>`;
+const pedTag = o => o.pedido_numero ? `<span class="ped" data-ped="${esc(o.pedido_numero)}">Pedido ${esc(o.pedido_numero)} · ${esc(o.pedido_cliente||'')}</span>` : `<span class="ped est">Estoque</span>`;
+const ligaPed = root => root.querySelectorAll('[data-ped]').forEach(c=>c.onclick=e=>{e.stopPropagation(); abrirPedido(c.dataset.ped);});
+const diasAte = s => s ? Math.round((new Date(s.slice(0,10)+'T12:00')-new Date(hojeISO()+'T12:00'))/864e5) : null;
 
 // ===== fila por setor (tela principal do líder)
 async function tFila(){
@@ -166,39 +173,43 @@ async function tFila(){
 
 // ===== OPs (kanban por estágio)
 async function tOps(){
-  app.innerHTML = `<div class="row"><input id="busca" placeholder="Buscar OP ou item" value="${esc(S.busca)}" style="flex:1;min-width:180px"><button class="btn" id="nova">+ Nova OP</button></div><br><div id="kb" class="vazio">Carregando…</div>`;
+  app.innerHTML = `<div class="row"><input id="busca" placeholder="Buscar OP, item, pedido ou cliente" value="${esc(S.busca)}" style="flex:1;min-width:180px"><button class="btn" id="nova">+ Nova OP</button></div><br><div id="kb" class="vazio">Carregando…</div>`;
   $('#nova').onclick=novaOp;
   const ops = await api('/api/ops');
   const desenha = ()=>{
-    const b=S.busca.toLowerCase(), f=ops.filter(o=>!b||String(o.codigo).includes(b)||o.item_nome.toLowerCase().includes(b));
+    const b=S.busca.toLowerCase(), f=ops.filter(o=>!b||String(o.codigo).includes(b)||o.item_nome.toLowerCase().includes(b)||String(o.pedido_numero||'').includes(b)||(o.pedido_cliente||'').toLowerCase().includes(b));
     $('#kb').className='kanban';
     $('#kb').innerHTML = B.estagios.filter(e=>e.ordem<12).map(e=>{ const l=f.filter(o=>o.estagio_id===e.id);
       return `<div class="col ${l.length?'':'vz'}"><h3><span>${esc(e.nome)}</span><span>${l.length}</span></h3>${l.map(o=>{ const a=(o.atual||'').split('|');
-        return `<div class="op ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-op="${o.codigo}"><b>OP ${o.codigo} · ${fmt(o.qtd)} un</b>${esc(o.item_nome)}
+        return `<div class="op ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-op="${o.codigo}"><b>OP ${o.codigo} · ${fmt(o.qtd)} un</b>${esc(o.item_nome)}<div style="margin:3px 0">${pedTag(o)}</div>
           <div class="mut">${a[0]?esc(a[0])+' · '+a[1]+(a[2]?' · '+esc(a[2]):''):''}${o.previsao_fim?'<br>entrega '+brData(o.previsao_fim):''}</div></div>`}).join('')||'<div class="mut" style="padding:6px">—</div>'}</div>`}).join('');
-    $('#kb').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
+    $('#kb').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op)); ligaPed($('#kb'));
   };
   $('#busca').oninput=e=>{S.busca=e.target.value; desenha();};
   desenha();
 }
-const novaOp = tenta(async ()=>{
+const novaOp = tenta(async (pre={})=>{
   modal(`<h2 style="margin-top:0">Nova OP</h2><input id="ib" placeholder="Buscar item (nome ou código)" style="width:100%"><div id="il" class="grid" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
     <div id="sel" class="mut" style="margin:10px 0">Nenhum item escolhido</div>
-    <div class="row"><label>Qtd <input id="nq" type="number" min="1" value="1" style="width:90px"></label><label>Entrega <input id="nf" type="date"></label><label>Pedido <input id="np" style="width:120px"></label></div><br>
+    <div class="row"><label>Qtd <input id="nq" type="number" min="1" value="${pre.qtd||1}" style="width:90px"></label><label>Entrega <input id="nf" type="date"></label></div>
+    <div class="row" style="margin-top:8px"><label>Para qual pedido? <select id="np" style="min-width:280px"><option value="">Estoque (sem pedido)</option></select></label></div><br>
     <div class="row"><button class="btn" id="cria" disabled>Criar OP</button><button class="btn sec" id="mx">Cancelar</button></div>`);
   $('#mx').onclick=()=>modal('');
   let item=null, t;
   const busca = async ()=>{ const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent($('#ib').value)); $('#il').innerHTML=l.filter(i=>i.ativo).slice(0,60).map(i=>`<div class="chip" data-id="${i.id}" data-n="${esc(i.nome)}" data-r="${i.n_rot}">${esc(i.nome)}<small>${i.codigo}${i.n_rot?'':' · sem roteiro'}</small></div>`).join('');
     $('#il').querySelectorAll('[data-id]').forEach(c=>c.onclick=async()=>{ item=+c.dataset.id; $('#il').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c)); const d=await api('/api/itens/'+item); comp=d.composicao;
-      $('#sel').innerHTML='Item: <b>'+c.dataset.n+'</b>'+(+c.dataset.r?'':' <span class="bad">(sem roteiro no sistema)</span>')+'<div id="blk"></div>'; confere(); }); };
+      $('#sel').innerHTML='Item: <b>'+c.dataset.n+'</b>'+(+c.dataset.r?'':' <span class="bad">(sem roteiro no sistema)</span>')+'<div id="blk"></div>'; confere();
+      const pis=await api('/api/pedido-itens?item_id='+item); $('#np').innerHTML='<option value="">Estoque (sem pedido)</option>'+pis.map(x=>`<option value="${x.id}" ${x.id===pre.pedido_item_id?'selected':''}>Pedido ${esc(x.numero)} · ${esc(x.cliente||'')} · falta ${fmt(x.falta)}${x.etapa_v8?' · v.8: '+esc(x.etapa_v8):''}</option>`).join('');
+      $('#np').onchange=()=>{ const x=pis.find(z=>z.id===+$('#np').value); if(x){ $('#nq').value=Math.max(1,x.falta); if(x.prazo&&!$('#nf').value) $('#nf').value=x.prazo.slice(0,10); confere(); } }; if(pre.pedido_item_id) $('#np').onchange(); }); };
   let comp=[];
   const confere=()=>{ if(!item) return; const q=+$('#nq').value||0;
     const max=comp.length?Math.floor(Math.min(...comp.map(c=>c.saldo_patio/c.qtd))+1e-9):null;
     $('#blk').innerHTML=comp.length?comp.map(c=>`<div>${esc(c.nome)}: precisa <b>${fmt(c.qtd*q,3)}</b> · tem no Pátio <b class="${c.saldo_patio+1e-9<c.qtd*q?'bad':'ok'}">${fmt(c.saldo_patio,3)}</b></div>`).join('')+`<div>Dá para fazer até <b>${Math.max(0,max)}</b> peça(s) com o bloco do Pátio.</div>`:'<div>Sem composição de bloco cadastrada.</div>';
     $('#cria').disabled = !(q>0) || (max!==null && q>max); };
   $('#nq').oninput=confere;
-  $('#ib').oninput=()=>{clearTimeout(t); t=setTimeout(busca,300)}; busca();
-  $('#cria').onclick=tenta(async()=>{ const r=await api('/api/ops',{item_id:item,qtd:+$('#nq').value,previsao_fim:$('#nf').value||null,pedido:$('#np').value||null}); toast('OP '+r.codigo+' criada · blocos baixados do Pátio'); modal(''); abrirOp(r.codigo); });
+  if(pre.nome) $('#ib').value=pre.nome;
+  $('#ib').oninput=()=>{clearTimeout(t); t=setTimeout(busca,300)}; await busca(); if(pre.item_id){ const ch=$('#il [data-id="'+pre.item_id+'"]'); if(ch) ch.click(); }
+  $('#cria').onclick=tenta(async()=>{ const r=await api('/api/ops',{item_id:item,qtd:+$('#nq').value,previsao_fim:$('#nf').value||null,pedido_item_id:+$('#np').value||null}); toast('OP '+r.codigo+' criada · blocos baixados do Pátio'); modal(''); abrirOp(r.codigo); });
 });
 
 // ===== detalhe da OP
@@ -207,7 +218,7 @@ const abrirOp = tenta(async codigo=>{
   const est = B.estagios.find(e=>e.id===o.estagio_id)||{};
   const fe = o.operacoes.filter(x=>x.status==='finalizado').length;
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">OP ${o.codigo}${o.origem==='sensio'?' · veio do Sensio':''}</h2>
-      <div style="font-size:20px;font-weight:800">${esc(o.item_nome)}</div><div class="mut">${o.item_codigo} · ${fmt(o.qtd)} un${o.pedido?' · pedido '+esc(o.pedido):''} · início ${brData(o.previsao_inicio)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</div></div>
+      <div style="font-size:20px;font-weight:800">${esc(o.item_nome)}</div><div style="margin:4px 0">${pedTag(o)} ${o.status==='aberta'?`<span class="link" id="vinc" style="font-size:13px">${o.pedido_numero?'trocar / tirar pedido':'vincular a um pedido'}</span>`:''}</div><div class="mut">${o.item_codigo} · ${fmt(o.qtd)} un · início ${brData(o.previsao_inicio)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</div></div>
       <button class="btn sec sm" id="mx">Fechar</button></div>
     <br><div class="row"><span class="mut">Estágio</span>
       ${o.status==='aberta'?`<select id="est">${B.estagios.filter(e=>e.ordem<12).map(e=>`<option value="${e.id}" ${e.id===o.estagio_id?'selected':''}>${esc(e.nome)}</option>`).join('')}</select>`:`<b>${esc(est.nome)}</b> (${o.status})`}
@@ -222,10 +233,60 @@ const abrirOp = tenta(async codigo=>{
     <h2>Eventos</h2><div class="card">${o.eventos.map(e=>`<div><span class="mut">${brHora(e.data)}</span> · ${esc(e.texto)}</div>`).join('')}</div>
     ${o.status==='aberta'?'<br><button class="btn bad sm" id="canc">Cancelar OP</button>':''}`);
   $('#mx').onclick=()=>{ modal(''); render(); };
-  const re=()=>abrirOp(codigo);
+  const re=()=>abrirOp(codigo); ligaPed($('#modal'));
+  if($('#vinc')) $('#vinc').onclick=tenta(async()=>{ const pis=await api('/api/pedido-itens?item_id='+o.item_id);
+    const id=await escolher('Para qual pedido é a OP '+codigo+'?', [{id:-1,nome:'Estoque (sem pedido)'}, ...pis.map(x=>({id:x.id,nome:'Pedido '+x.numero+' · '+(x.cliente||''),sub:'falta '+fmt(x.falta)+(x.etapa_v8?' · v.8: '+x.etapa_v8:'')}))]);
+    if(id===null) return abrirOp(codigo); await api(`/api/ops/${codigo}/pedido`,{pedido_item_id:id>0?id:null}); toast(id>0?'OP vinculada ao pedido':'OP marcada como estoque'); re(); });
   document.querySelectorAll('#modal td[data-i]').forEach(td=>{ const x=o.operacoes[+td.dataset.i]; td.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>acao(x,b.dataset.a,re)); });
   if($('#est')) $('#est').onchange=tenta(async e=>{ await api(`/api/ops/${codigo}/estagio`,{estagio_id:+e.target.value}); toast('Estágio alterado'); re(); });
   if($('#canc')) $('#canc').onclick=tenta(async()=>{ const m=prompt('Motivo do cancelamento da OP '+codigo+':'); if(m===null) return; await api(`/api/ops/${codigo}/cancelar`,{motivo:m}); toast('OP cancelada'); modal(''); render(); });
+});
+
+// ===== pedidos
+async function tPedidos(){
+  app.innerHTML = `<div class="row"><input id="bp" placeholder="Buscar pedido ou cliente" value="${esc(S.bp||'')}" style="flex:1"><button class="btn" id="novo">+ Novo pedido</button></div><br><div id="pl" class="vazio">Carregando…</div>`;
+  $('#novo').onclick=novoPedido;
+  const l=await api('/api/pedidos');
+  const desenha=()=>{ const b=(S.bp||'').toLowerCase(); const f=l.filter(p=>!b||String(p.numero).includes(b)||(p.cliente||'').toLowerCase().includes(b)); $('#pl').className='';
+    $('#pl').innerHTML=f.map(p=>{ const d=diasAte(p.prazo); const pc=p.pecas?Math.min(100,p.com_op/p.pecas*100):0;
+      return `<div class="card pd ${d!==null&&d<0?'late':''}" data-n="${esc(p.numero)}"><div class="row" style="justify-content:space-between"><div><b>Pedido ${esc(p.numero)} · ${esc(p.cliente||'')}</b><br>
+        <span class="mut">${esc(p.status)} · ${fmt(p.pecas)} peça(s) · ${fmt(p.com_op)} com OP · ${fmt(p.prontas_op)} OP finalizada</span></div>
+        <div class="n">${p.prazo?`<b class="${d<0?'bad':d<=7?'midc':''}">${d<0?Math.abs(d)+' dias atrasado':d===0?'vence hoje':d+' dias'}</b><br><span class="mut">prazo ${brData(p.prazo)}</span>`:'<span class="mut">sem prazo</span>'}</div></div>
+        <div class="bar" style="margin-top:8px"><i style="width:${pc}%"></i></div></div>`}).join('')||'<div class="vazio">Nenhum pedido em aberto.</div>';
+    $('#pl').querySelectorAll('[data-n]').forEach(c=>c.onclick=()=>abrirPedido(c.dataset.n)); };
+  $('#bp').oninput=e=>{S.bp=e.target.value; desenha();}; desenha();
+}
+const novoPedido = tenta(async()=>{
+  modal(`<h2 style="margin-top:0">Novo pedido</h2><div class="row"><label>Número <input id="pn" style="width:110px"></label><label>Cliente <input id="pc" style="width:260px"></label><label>Prazo <input id="pp" type="date"></label></div><br>
+    <div class="row"><button class="btn" id="ok">Criar pedido</button><button class="btn sec" id="mx">Cancelar</button></div>`);
+  $('#mx').onclick=()=>modal('');
+  $('#ok').onclick=tenta(async()=>{ const n=$('#pn').value.trim(); if(!n) return toast('Coloque o número',1); await api('/api/pedidos',{numero:n,cliente:$('#pc').value.trim(),prazo:$('#pp').value||null}); toast('Pedido '+n+' criado'); abrirPedido(n); });
+});
+const abrirPedido = tenta(async numero=>{
+  const p=await api('/api/pedidos/'+encodeURIComponent(numero)); const d=diasAte(p.prazo);
+  const opsDe = id => p.ops.filter(o=>o.pedido_item_id===id);
+  const est = id => (B.estagios.find(e=>e.id===id)||{}).nome||'';
+  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
+      <div class="mut">${p.prazo?'prazo '+brData(p.prazo)+' · <b class="'+(d<0?'bad':'')+'">'+(d<0?Math.abs(d)+' dias atrasado':d+' dias')+'</b>':'sem prazo'}${p.data_pagamento?' · pago em '+brData(p.data_pagamento):''}</div></div>
+      <div class="row"><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select><button class="btn sec sm" id="mx">Fechar</button></div></div>
+    <h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th></th></tr>
+    ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return `<tr><td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td><td class="mut">${esc(x.etapa_v8||'')}</td>
+      <td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
+      <td style="white-space:nowrap">${x.item_id&&falta>0?`<button class="btn sm" data-cria="${x.id}">+ OP (${fmt(falta)})</button>`:''}</td></tr>`}).join('')||'<tr><td colspan=5 class="vazio">Sem peças.</td></tr>'}</table></div>
+    <br><button class="btn sec sm" id="addi">+ Adicionar peça ao pedido</button>`);
+  $('#mx').onclick=()=>{ modal(''); render(); };
+  $('#pst').onchange=tenta(async e=>{ await api('/api/pedidos/'+encodeURIComponent(numero)+'/status',{status:e.target.value}); toast('Status: '+e.target.value); });
+  document.querySelectorAll('#modal [data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
+  document.querySelectorAll('#modal [data-cria]').forEach(b=>b.onclick=()=>{ const x=p.itens.find(i=>i.id===+b.dataset.cria); novaOp({item_id:x.item_id,nome:x.descricao,qtd:x.qtd-x.com_op,pedido_item_id:x.id}); });
+  $('#addi').onclick=tenta(async()=>{
+    modal(`<h2 style="margin-top:0">Adicionar peça ao pedido ${esc(numero)}</h2><input id="ib" placeholder="Buscar item" style="width:100%"><div id="il" class="grid" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+      <div class="row" style="margin-top:10px"><label>Qtd <input id="aq" type="number" min="1" value="1" style="width:90px"></label><button class="btn" id="ok" disabled>Adicionar</button><button class="btn sec" id="mx">Voltar</button></div>`);
+    $('#mx').onclick=()=>abrirPedido(numero); let it=null,t;
+    const busca=async()=>{ const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent($('#ib').value)); $('#il').innerHTML=l.filter(i=>i.ativo).slice(0,60).map(i=>`<div class="chip" data-id="${i.id}">${esc(i.nome)}<small>${i.codigo}</small></div>`).join('');
+      $('#il').querySelectorAll('[data-id]').forEach(c=>c.onclick=()=>{ it=+c.dataset.id; $('#il').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c)); $('#ok').disabled=false; }); };
+    $('#ib').oninput=()=>{clearTimeout(t);t=setTimeout(busca,300)}; busca();
+    $('#ok').onclick=tenta(async()=>{ await api('/api/pedidos/'+encodeURIComponent(numero)+'/itens',{item_id:it,qtd:+$('#aq').value}); toast('Peça adicionada'); abrirPedido(numero); });
+  });
 });
 
 // ===== itens
