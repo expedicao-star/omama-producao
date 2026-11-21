@@ -101,7 +101,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['fila','ops','ped','itens','estoque','defeitos','func','assid','rel'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['fila','ops','ped','exp','itens','estoque','defeitos','func','assid','rel'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -137,7 +137,7 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos']]],['Estoque',[['estoque','▤','Estoque'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção']]]];
+const MENU=[['Produção',[['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição']]],['Estoque',[['estoque','▤','Estoque'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 function menu(){
   $('#side').innerHTML=MENU.map(([g,its])=>`<button class="gh ${fechados.includes(g)?'fechado':''}" data-g="${g}">${g}<i>▾</i></button>
@@ -150,7 +150,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, ped:tPedidos, itens:tItens, estoque:tEstoque, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
+function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -376,6 +376,90 @@ async function tRel(){
 `;
   $('#rl').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
 }
+
+// ===== expedição
+const ETAPA={aguardando:['Aguardando madeira',0,'#766f8a'],producao:['Produção',1,'#d49a1f'],acabamento:['Acabamento',2,'#d49a1f'],pronta:['Pronta, falta conferir',3,'#6fa8dc'],conferida:['Conferida',4,'#2f9e5b'],embalada:['Embalada',5,'#7c55e0'],enviada:['Enviada',5,'#241d33']};
+function unidades(it){
+  const q=Math.round(it.qtd), out=[], put=(k,n)=>{ n=Math.max(0,Math.min(Math.round(n),q-out.length)); for(let i=0;i<n;i++) out.push(k); };
+  put('enviada',it.enviada); put('embalada',it.embalada-it.enviada); put('conferida',it.conferida-it.embalada);
+  put('pronta',(it.op_fin||0)-it.conferida); put('acabamento',it.op_acab||0); put('producao',it.op_prod||0);
+  const v=(it.etapa_v8||'').toLowerCase(); put(v==='acabamento'?'acabamento':v==='produção'?'producao':'aguardando',q);
+  return out;
+}
+const resumoUn=un=>{ const c={}; un.forEach(k=>c[k]=(c[k]||0)+1); return Object.keys(ETAPA).filter(k=>c[k]).map(k=>`<span style="color:${ETAPA[k][2]};font-weight:700">${c[k]} ${ETAPA[k][0].toLowerCase()}</span>`).join(' · '); };
+async function tExped(){
+  app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Expedição · pedidos em aberto</h2><button class="btn" id="imp">Imprimir check dos marcados</button></div>
+    <p class="mut">Conferir → embalar → enviar. Ao registrar o envio a peça sai do P.A.</p><div id="el" class="vazio">Carregando…</div>`;
+  const l=await api('/api/pedidos');
+  $('#el').className='';
+  $('#el').innerHTML=l.map(p=>{ const d=diasAte(p.prazo), q=p.pecas||0, pc=x=>q?Math.min(100,x/q*100):0;
+    return `<div class="card pd ${d!==null&&d<0?'late':''}"><div class="row" style="justify-content:space-between;align-items:flex-start">
+      <label class="row" style="gap:10px;cursor:pointer;flex:1"><input type="checkbox" data-c="${esc(p.numero)}" style="width:20px;height:20px">
+        <div><b>Pedido ${esc(p.numero)} · ${esc(p.cliente||'')}</b><br><span class="mut">${esc(p.status)} · ${fmt(q)} peça(s) · ${fmt(p.conferidas)} conferida(s) · ${fmt(p.embaladas)} embalada(s) · ${fmt(p.enviadas)} enviada(s)</span></div></label>
+      <div class="row"><span class="n">${p.prazo?`<b class="${d<0?'bad':d<=7?'midc':''}">${d<0?Math.abs(d)+' dias atrasado':d===0?'vence hoje':d+' dias'}</b><br><span class="mut">prazo ${brData(p.prazo)}</span>`:'<span class="mut">sem prazo</span>'}</span>
+        <button class="btn sec sm" data-n="${esc(p.numero)}">Abrir</button></div></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">${[['Conferidas',p.conferidas,'var(--ok)'],['Embaladas',p.embaladas,'var(--amb)'],['Enviadas',p.enviadas,'var(--txt)']].map(([n,x,c])=>`<div><div class="bar"><i style="width:${pc(x)}%;background:${c}"></i></div><span class="mut" style="font-size:11px">${n}</span></div>`).join('')}</div></div>`}).join('')||'<div class="vazio">Nenhum pedido em aberto.</div>';
+  $('#el').querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>abrirExp(b.dataset.n));
+  $('#imp').onclick=()=>{ const ns=[...$('#el').querySelectorAll('[data-c]:checked')].map(c=>c.dataset.c); if(!ns.length) return toast('Marque os pedidos que quer imprimir',1); imprimirCheck(ns); };
+}
+const abrirExp=tenta(async numero=>{
+  const p=await api('/api/pedidos/'+encodeURIComponent(numero));
+  const re=()=>abrirExp(numero);
+  const paraEnviar=p.itens.reduce((s,i)=>s+i.embalada-i.enviada,0), falta=p.itens.reduce((s,i)=>s+i.qtd-i.enviada,0);
+  const ctl=(it,campo,n)=>`<div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sec sm" data-i="${it.id}" data-c="${campo}" data-v="${n-1}" ${n<=0?'disabled':''}>−</button><b style="min-width:42px;text-align:center">${fmt(n)}/${fmt(it.qtd)}</b><button class="btn sec sm" data-i="${it.id}" data-c="${campo}" data-v="${n+1}" ${n>=it.qtd?'disabled':''}>+</button></div>`;
+  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Expedição · Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
+      <div class="mut">${esc(p.status)}${p.prazo?' · prazo '+brData(p.prazo):''}</div></div><button class="btn sec sm" id="mx">Fechar</button></div>
+    <br><div class="row"><button class="btn" id="env" ${paraEnviar?'':'disabled'}>Registrar envio${paraEnviar?' ('+fmt(paraEnviar)+' embalada'+(paraEnviar>1?'s':'')+')':''}</button><button class="btn sec" id="chk">Imprimir check</button>
+      ${!falta&&p.status!=='Entregue'?'<button class="btn ok" id="ent">Marcar entregue</button>':''}<button class="btn sec" id="tc">Conferir tudo que está pronto</button></div>
+    <h2>Peças</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Situação</th><th>Conferidas</th><th>Embaladas</th><th class="n">Enviadas</th></tr>
+    ${p.itens.map(it=>`<tr><td><b>${esc(it.descricao)}</b>${it.item_id?'':' <span class="mut">(sem cadastro)</span>'}</td><td class="n">${fmt(it.qtd)}</td><td style="font-size:13px">${resumoUn(unidades(it))}</td>
+      <td>${ctl(it,'conferida',it.conferida)}</td><td>${ctl(it,'embalada',it.embalada)}</td><td class="n"><b>${fmt(it.enviada)}</b></td></tr>`).join('')||'<tr><td colspan=6 class="vazio">Pedido sem peças.</td></tr>'}</table></div>
+    <p class="mut">Conferida = passou no controle de qualidade e subiu pra prateleira. Só embala peça conferida.</p>
+    <h2>Envios</h2><div class="card">${p.envios.map(e=>`<div style="padding:4px 0"><b>${brData(e.data)}</b> · ${esc(e.itens||'')}<br><span class="mut">${[e.transportadora,e.nf?'NF '+e.nf:'',e.volumes?e.volumes+' volume(s)':'',e.obs].filter(Boolean).map(esc).join(' · ')}</span></div>`).join('')||'<span class="mut">Nenhum envio ainda.</span>'}</div>`);
+  $('#mx').onclick=()=>{ modal(''); render(); };
+  $('#modal').querySelectorAll('[data-c][data-i]').forEach(b=>b.onclick=tenta(async()=>{ await api(`/api/pedido-itens/${b.dataset.i}/exp`,{[b.dataset.c]:+b.dataset.v}); re(); }));
+  $('#chk').onclick=()=>imprimirCheck([p.numero]);
+  $('#tc').onclick=tenta(async()=>{ let n=0; for(const it of p.itens){ const un=unidades(it), alvo=it.conferida+un.filter(k=>k==='pronta').length; if(alvo>it.conferida){ await api(`/api/pedido-itens/${it.id}/exp`,{conferida:alvo}); n+=alvo-it.conferida; } }
+    toast(n?n+' peça(s) conferida(s)':'Nenhuma peça pronta esperando conferência',!n); re(); });
+  if($('#ent')) $('#ent').onclick=tenta(async()=>{ await api(`/api/pedidos/${encodeURIComponent(p.numero)}/status`,{status:'Entregue'}); toast('Pedido '+p.numero+' entregue'); modal(''); render(); });
+  $('#env').onclick=()=>{ const its=p.itens.filter(i=>i.embalada>i.enviada);
+    modal(`<h2 style="margin-top:0">Envio · Pedido ${esc(p.numero)}</h2><div class="card"><table><tr><th>Peça</th><th class="n">Embaladas</th><th class="n">Vai agora</th></tr>
+      ${its.map(i=>`<tr><td>${esc(i.descricao)}</td><td class="n">${fmt(i.embalada-i.enviada)}</td><td class="n"><input type="number" min="0" max="${i.embalada-i.enviada}" value="${i.embalada-i.enviada}" data-e="${i.id}" style="width:80px"></td></tr>`).join('')}</table></div><br>
+      <div class="row"><div><div class="mut">Data</div><input type="date" id="ed" value="${hojeISO()}"></div><div><div class="mut">Transportadora</div><input id="et"></div><div><div class="mut">NF</div><input id="enf" style="width:120px"></div><div><div class="mut">Volumes</div><input id="ev" type="number" min="1" style="width:90px"></div></div>
+      <div class="mut" style="margin-top:8px">Observação</div><input id="eo" style="width:100%"><br><br>
+      <div class="row"><button class="btn" id="eg">Confirmar envio</button><button class="btn sec" id="ex">Voltar</button></div><p class="mut">As peças saem do estoque P.A.</p>`);
+    $('#ex').onclick=re;
+    $('#eg').onclick=tenta(async()=>{ const itens=[...$('#modal').querySelectorAll('[data-e]')].map(x=>({pedido_item_id:+x.dataset.e,qtd:+x.value})).filter(x=>x.qtd>0);
+      const r=await api(`/api/pedidos/${encodeURIComponent(p.numero)}/envio`,{itens,data:$('#ed').value,transportadora:$('#et').value.trim()||null,nf:$('#enf').value.trim()||null,volumes:+$('#ev').value||null,obs:$('#eo').value.trim()||null});
+      toast(r.completo?'Pedido completo enviado':'Envio registrado'); re(); }); };
+});
+// check por pedido (folha da prateleira, mesmo layout do PDF)
+const imprimirCheck=tenta(async numeros=>{
+  const PAL=['#0F766E','#E4572E','#4F46E5','#BE185D','#D97706','#15803D','#0284C7','#7C3AED'];
+  const ps=await Promise.all(numeros.map(n=>api('/api/pedidos/'+encodeURIComponent(n))));
+  const COLS=['AGUARD. MADEIRA','PRODUÇÃO','ACABAMENTO','CONTR. QUALIDADE','EMBALAGEM'];
+  const box=(c,ok)=>`<span class="bx" style="border-color:${c}">${ok?`<svg viewBox="0 0 12 12"><path d="M2 6.5l2.6 2.8L10 3" fill="none" stroke="${c}" stroke-width="2"/></svg>`:''}</span>`;
+  const pag=(p,pi)=>{ const c=PAL[pi%8], rows=p.itens.flatMap(it=>unidades(it).map(k=>({peca:it.descricao,k}))), n=rows.length;
+    return `<section class="pg"><div class="hd" style="border-color:${c};color:${c}"><div class="t">P E D I D O</div><div class="num">${esc(p.numero)}</div><div class="pz">Prazo ${p.prazo?brData(p.prazo):'—'} · ${n} peça${n!==1?'s':''}</div><div class="ln" style="background:${c}"></div><div class="cl">${esc((p.cliente||'').toUpperCase())}</div></div>
+      <div class="th"><span class="c1">Nº</span><span class="c2">PEÇA</span><span class="c3">TEM A PEÇA?</span>${COLS.map(h=>`<span class="cc" style="border-color:${c};color:${c}">${h}</span>`).join('')}</div>
+      ${rows.map((r,i)=>{ const [,t]=ETAPA[r.k], tem=t>=4; return `<div class="rw" style="border-color:${c}55"><span class="c1" style="color:${c}">${i+1}</span><span class="c2">${esc(r.peca)}</span><span class="c3"><i style="background:${tem?'#16A34A':'#DC2626'}"></i></span>${COLS.map((_,j)=>`<span class="cc0">${box(c,j<t)}</span>`).join('')}</div>`}).join('')}
+      <div class="ok" style="border-color:${c};color:${c}"><span class="bx big" style="border-color:${c}"></span>PEDIDO COMPLETO, CONFERIDO E EMBALADO · PRONTO PARA COLETA</div>
+      <div class="ass"><span>Conferido por: <u style="width:300px"></u></span><span>Data: __/__/____</span><span class="lg"><i style="background:#16A34A"></i> tem a peça <i style="background:#DC2626"></i> não tem</span></div>
+      <div class="ass">Obs.: <u style="flex:1"></u></div>
+      <div class="ft"><span>OMAMA DESIGN · CHECK DO PEDIDO</span><span>Pág. ${pi+1}</span></div></section>`; };
+  const css=`@page{size:A4 landscape;margin:10mm 12mm}*{box-sizing:border-box}body{margin:0;font-family:Helvetica,Arial,sans-serif;color:#111}
+    .pg{page-break-after:always;min-height:188mm;display:flex;flex-direction:column}.pg:last-child{page-break-after:auto}
+    .hd{border:2px solid;border-radius:14px;text-align:center;padding:8px 0 10px;margin-bottom:12px}.hd .t{font-weight:700;font-size:13px}.hd .num{font-weight:700;font-size:64px;line-height:1}.hd .pz{font-size:9px;margin-top:4px}.hd .ln{height:1px;width:40%;margin:6px auto}.hd .cl{font-weight:700;font-size:16px}
+    .th,.rw{display:grid;grid-template-columns:36px 2.6fr 80px repeat(5,1fr);align-items:center;gap:4px}.th{font-size:8px;font-weight:700;color:#6b6b6b;margin-bottom:4px}
+    .cc{border:1.2px solid;border-radius:4px 12px 12px 4px;text-align:center;padding:5px 2px;font-size:7.5px}
+    .rw{border:1px solid;border-radius:14px;padding:3px 0;margin-bottom:4px;font-size:13px;font-weight:700}.c1{text-align:center}.c3{text-align:center}.c3 i{display:inline-block;width:15px;height:15px;border-radius:50%}
+    .cc0{text-align:center}.bx{display:inline-block;width:18px;height:18px;border:1.5px solid;border-radius:4px;vertical-align:middle}.bx svg{width:100%;height:100%}.bx.big{width:24px;height:24px;margin-right:12px}
+    .ok{border:1.6px dashed;border-radius:14px;padding:8px 20px;margin-top:10px;font-weight:700;font-size:15px;display:flex;align-items:center}
+    .ass{display:flex;gap:30px;align-items:flex-end;font-size:12px;margin-top:22px}.ass u{display:inline-block;border-bottom:1px solid #333;height:14px}.lg{margin-left:auto;font-size:9px;color:#6b6b6b}.lg i{display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 3px 0 10px}
+    .ft{margin-top:auto;padding-top:10px;display:flex;justify-content:space-between;font-size:8px;color:#888}`;
+  const w=window.open('','_blank'); if(!w) throw new Error('O navegador bloqueou a janela de impressão');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Check por pedido</title><style>${css}</style></head><body>${ps.map(pag).join('')}<script>setTimeout(()=>print(),300)<\/script></body></html>`); w.document.close();
+});
 
 // ===== defeitos
 const MOTIVOS=['Rachadura / fissura','Trinca na estufa','Defeito de torno','Acabamento','Madeira (nó, broca, mancha)','Quebra no transporte','Outro'];
