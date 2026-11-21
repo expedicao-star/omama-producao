@@ -84,6 +84,7 @@ export default {
 
       // ---------- assiduidade (sem registro = presente)
       if (p === '/api/presenca' && req.method === 'GET') {
+        if (q('de')) return json(req, await all(DB, 'select pr.*, f.nome, s.nome setor from presenca pr join funcionario f on f.id=pr.funcionario_id left join setor s on s.id=f.setor_id where pr.data between ? and ? and pr.status is not null order by pr.data, f.nome', q('de'), q('ate')));
         return json(req, await all(DB, 'select * from presenca where data=?', q('data')));
       }
       if (p === '/api/presenca' && req.method === 'POST') {
