@@ -33,14 +33,11 @@ async function recalcularOp(DB, op_id) {
     }
     return;
   }
-  // todas as operações finalizadas: finaliza a OP e movimenta o estoque
-  const comps = await all(DB, 'select insumo_id, qtd from composicao where item_id=?', op.item_id);
+  // todas as operações finalizadas: finaliza a OP e dá entrada no P.A. (os blocos já saíram na criação da OP)
   const st = [
     DB.prepare("update op set status='finalizada', estagio_id=?, finalizado_em=? where id=?").bind(ESTAGIO_FINAL, agora(), op_id),
     DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(op.item_id, DEP_PA, op.qtd, 'Entrada da OP ' + op.codigo, op_id),
-    ...comps.map(c => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)')
-      .bind(c.insumo_id, DEP_PATIO, -(c.qtd * op.qtd), 'Consumo da OP ' + op.codigo, op_id)),
-    evento(DB, op_id, 'OP finalizada: entrada no P.A. e consumo dos blocos no Pátio'),
+    evento(DB, op_id, 'OP finalizada: entrada no P.A.'),
   ];
   await DB.batch(st);
 }
@@ -92,7 +89,11 @@ export default {
         await DB.prepare('insert into op(codigo, item_id, qtd, previsao_inicio, previsao_fim, estagio_id, pedido, obs) values(?,?,?,?,?,?,?,?)')
           .bind(codigo, item.id, body.qtd, body.previsao_inicio || agora().slice(0, 10), body.previsao_fim || null, ESTAGIO_INICIAL, body.pedido || null, body.obs || null).run();
         const op = await one(DB, 'select id from op where codigo=?', codigo);
+        const comps = await all(DB, 'select c.insumo_id, c.qtd, i.nome from composicao c join item i on i.id=c.insumo_id where c.item_id=?', item.id);
         await DB.batch([
+          ...comps.map(c => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)')
+            .bind(c.insumo_id, DEP_PATIO, -(c.qtd * body.qtd), 'Baixa na criação da OP ' + codigo, op.id)),
+          ...(comps.length ? [evento(DB, op.id, 'Blocos baixados do Pátio: ' + comps.map(c => `${+(c.qtd * body.qtd).toFixed(3)} × ${c.nome}`).join(', '))] : []),
           ...rot.map(r => DB.prepare('insert into op_operacao(op_id, ordem, operacao_tipo_id, tempo_unit_min) values(?,?,?,?)').bind(op.id, r.ordem, r.operacao_tipo_id, r.tempo_min)),
           evento(DB, op.id, `OP criada: ${body.qtd} × ${item.nome}` + (rot.length ? '' : ' (item sem roteiro)')),
         ]);
@@ -121,7 +122,9 @@ export default {
       if ((m = p.match(/^\/api\/ops\/(\d+)\/cancelar$/)) && req.method === 'POST') {
         const op = await one(DB, 'select * from op where codigo=?', Number(m[1]));
         if (!op || op.status !== 'aberta') return json(req, { erro: 'OP não está aberta' }, 400);
-        await DB.batch([DB.prepare("update op set status='cancelada' where id=?").bind(op.id), evento(DB, op.id, 'OP cancelada' + (body.motivo ? ': ' + body.motivo : ''))]);
+        const baixas = await all(DB, 'select item_id, sum(qtd) q from estoque_mov where op_id=? and deposito_id=? group by item_id having q<0', op.id, DEP_PATIO);
+        await DB.batch([DB.prepare("update op set status='cancelada' where id=?").bind(op.id), evento(DB, op.id, 'OP cancelada' + (body.motivo ? ': ' + body.motivo : '') + (baixas.length ? ' (blocos devolvidos ao Pátio)' : '')),
+          ...baixas.map(b => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(b.item_id, DEP_PATIO, -b.q, 'Devolução do cancelamento da OP ' + op.codigo, op.id))]);
         return json(req, { ok: true });
       }
 
