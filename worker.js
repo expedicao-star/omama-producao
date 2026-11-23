@@ -7,7 +7,7 @@ const cors = (req) => {
   return {
     'Access-Control-Allow-Origin': ORIGENS.includes(o) || o.startsWith('http://localhost') ? o : ORIGENS[0],
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type,X-Codigo',
+    'Access-Control-Allow-Headers': 'Content-Type,X-Codigo,X-Token',
     'Vary': 'Origin',
   };
 };
@@ -116,6 +116,45 @@ async function opsAbertas(DB, where = "op.status='aberta'", ...b) {
     from op join item i on i.id=op.item_id left join pedido_item pi on pi.id=op.pedido_item_id left join pedido pd on pd.id=pi.pedido_id where ${where} order by op.previsao_fim is null, op.previsao_fim, op.codigo`, ...b);
 }
 
+// ---------- usuários: login e senha (senha guardada só como hash PBKDF2), sessão por token
+const MAX_USUARIOS = 5; // além do administrador
+const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+const sha256 = async s => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+async function hashSenha(senha, salt) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(senha), 'PBKDF2', false, ['deriveBits']);
+  return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: new TextEncoder().encode(salt), iterations: 100000 }, k, 256));
+}
+const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
+async function novaSessao(DB, u) {
+  const tok = crypto.randomUUID() + crypto.randomUUID();
+  await DB.prepare("insert into sessao(token_hash, usuario_id, expira_em) values(?,?,datetime('now','+30 days'))").bind(await sha256(tok), u.id).run();
+  return { token: tok, usuario: { id: u.id, login: u.login, nome: u.nome, admin: u.admin } };
+}
+const usuarioDoToken = async (DB, tok) => one(DB, `select u.id, u.login, u.nome, u.admin from sessao s join usuario u on u.id=s.usuario_id
+  where s.token_hash=? and s.expira_em > datetime('now') and u.ativo=1`, await sha256(tok));
+async function rotasAbertas(req, env, p) {
+  const DB = env.DB;
+  if (p === '/api/auth/estado') return json(req, { tem_usuarios: !!(await one(DB, 'select id from usuario limit 1')) });
+  const b = await req.json().catch(() => ({}));
+  if (p === '/api/auth/primeiro') {
+    if (await one(DB, 'select id from usuario limit 1')) return json(req, { erro: 'O administrador já foi criado' }, 400);
+    if (String(b.codigo || '') !== env.CODIGO) return json(req, { erro: 'Código do sistema errado' }, 400);
+    const login = String(b.login || '').trim().toLowerCase();
+    if (!loginOk(login)) return json(req, { erro: 'Usuário: de 3 a 30 letras minúsculas, números, ponto ou traço (sem espaço)' }, 400);
+    if (String(b.senha || '').length < 6) return json(req, { erro: 'A senha precisa de pelo menos 6 caracteres' }, 400);
+    const salt = crypto.randomUUID();
+    await DB.prepare('insert into usuario(login, nome, senha_hash, salt, admin) values(?,?,?,?,1)').bind(login, String(b.nome || '').trim() || login, await hashSenha(String(b.senha), salt), salt).run();
+    return json(req, await novaSessao(DB, await one(DB, 'select * from usuario where login=?', login)));
+  }
+  // /api/auth/login
+  const u = await one(DB, 'select * from usuario where login=? and ativo=1', String(b.login || '').trim().toLowerCase());
+  if (!u || await hashSenha(String(b.senha || ''), u.salt) !== u.senha_hash) {
+    await new Promise(r => setTimeout(r, 800));
+    return json(req, { erro: 'Usuário ou senha errados' }, 400);
+  }
+  return json(req, await novaSessao(DB, u));
+}
+
 // ---------- conector do Claude (MCP, HTTP simples) — endereço /mcp/<CODIGO>
 const FERRAMENTAS = [
   { name: 'resumo_fabrica', description: 'Resumo ao vivo da fábrica OMAMA: OPs abertas e atrasadas, peças por estágio, produção de hoje e da semana, pedidos vencendo em 7 dias, defeitos e faltas.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/painel' },
@@ -154,11 +193,62 @@ const app = {
     const url = new URL(req.url), p = url.pathname, q = (k) => url.searchParams.get(k);
     if (p === '/') return json(req, { ok: true, sistema: 'OMAMA Produção', versao: 2 });
     if (p.startsWith('/mcp/')) return p === '/mcp/' + env.CODIGO ? mcp(req, env) : new Response('não autorizado', { status: 401 });
-    if ((req.headers.get('X-Codigo') || q('c') || '') !== env.CODIGO) return json(req, { erro: 'Código de acesso inválido' }, 401);
+    if (['/api/auth/estado', '/api/auth/primeiro', '/api/auth/login'].includes(p)) return rotasAbertas(req, env, p);
+    // acesso: login do usuário (X-Token / ?t=) ou o código interno do sistema (v.8, conector do Claude)
+    const cod = req.headers.get('X-Codigo') || q('c') || '', tok = req.headers.get('X-Token') || q('t') || '';
+    const usuario = cod && cod === env.CODIGO ? { id: 0, login: null, nome: 'Sistema', admin: 1 } : tok ? await usuarioDoToken(env.DB, tok) : null;
+    if (!usuario) return json(req, { erro: 'Faça login' }, 401);
     const DB = env.DB;
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     let m;
     try {
+      // ---------- usuários
+      if (p === '/api/eu') return json(req, usuario);
+      if (p === '/api/auth/sair' && req.method === 'POST') {
+        const tok = req.headers.get('X-Token'); if (tok) await DB.prepare('delete from sessao where token_hash=?').bind(await sha256(tok)).run();
+        return json(req, { ok: true });
+      }
+      if (p === '/api/auth/senha' && req.method === 'POST') {
+        const u = await one(DB, 'select * from usuario where id=?', usuario.id);
+        if (!u) return json(req, { erro: 'Entre com seu usuário para trocar a senha' }, 400);
+        if (await hashSenha(String(body.atual || ''), u.salt) !== u.senha_hash) return json(req, { erro: 'Senha atual errada' }, 400);
+        if (String(body.nova || '').length < 6) return json(req, { erro: 'A senha nova precisa de pelo menos 6 caracteres' }, 400);
+        const salt = crypto.randomUUID();
+        await DB.prepare('update usuario set senha_hash=?, salt=? where id=?').bind(await hashSenha(String(body.nova), salt), salt, u.id).run();
+        return json(req, { ok: true });
+      }
+      if (p.startsWith('/api/usuarios') && !usuario.admin) return json(req, { erro: 'Só o administrador mexe em usuários' }, 403);
+      if (p === '/api/usuarios' && req.method === 'GET') {
+        return json(req, { max: MAX_USUARIOS, lista: await all(DB, `select id, login, nome, admin, ativo, criado_em,
+          (select max(criado_em) from sessao where usuario_id=usuario.id) ultimo_acesso from usuario order by admin desc, ativo desc, nome`) });
+      }
+      if (p === '/api/usuarios' && req.method === 'POST') {
+        const login = String(body.login || '').trim().toLowerCase();
+        if (!loginOk(login)) return json(req, { erro: 'Usuário: de 3 a 30 letras minúsculas, números, ponto ou traço (sem espaço)' }, 400);
+        if (String(body.senha || '').length < 6) return json(req, { erro: 'A senha precisa de pelo menos 6 caracteres' }, 400);
+        if ((await one(DB, 'select count(*) n from usuario where admin=0 and ativo=1')).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo). Desative um antes.` }, 400);
+        if (await one(DB, 'select id from usuario where login=?', login)) return json(req, { erro: 'Esse usuário já existe' }, 400);
+        const salt = crypto.randomUUID();
+        await DB.prepare('insert into usuario(login, nome, senha_hash, salt, admin) values(?,?,?,?,0)').bind(login, String(body.nome || '').trim() || login, await hashSenha(String(body.senha), salt), salt).run();
+        return json(req, { ok: true });
+      }
+      if ((m = p.match(/^\/api\/usuarios\/(\d+)$/)) && req.method === 'POST') {
+        const u = await one(DB, 'select * from usuario where id=?', Number(m[1]));
+        if (!u) return json(req, { erro: 'Usuário não encontrado' }, 404);
+        const ativo = body.ativo === undefined ? u.ativo : (body.ativo ? 1 : 0);
+        if (u.admin && !ativo) return json(req, { erro: 'Não dá para desativar o administrador' }, 400);
+        if (ativo && !u.ativo && (await one(DB, 'select count(*) n from usuario where admin=0 and ativo=1')).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo)` }, 400);
+        const st = [DB.prepare('update usuario set nome=?, ativo=? where id=?').bind(String(body.nome || '').trim() || u.nome, ativo, u.id)];
+        if (body.senha) {
+          if (String(body.senha).length < 6) return json(req, { erro: 'A senha precisa de pelo menos 6 caracteres' }, 400);
+          const salt = crypto.randomUUID();
+          st.push(DB.prepare('update usuario set senha_hash=?, salt=? where id=?').bind(await hashSenha(String(body.senha), salt), salt, u.id));
+        }
+        if (body.senha || !ativo) st.push(DB.prepare('delete from sessao where usuario_id=?').bind(u.id));
+        await DB.batch(st);
+        return json(req, { ok: true });
+      }
+
       // ---------- base
       if (p === '/api/base') {
         const [estagios, tipos, setores, funcionarios, depositos] = await Promise.all([
