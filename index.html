@@ -185,10 +185,26 @@ const acao = tenta(async (o, tipo, depois) => {
     }
   }
   if (tipo==='reabrir' && !confirm('Reabrir essa operação?')) return;
-  await api(`/api/operacoes/${o.id}/${tipo}`, {funcionario_id});
+  let pausa={};
+  if (tipo==='pausar') { pausa=await motivoPausa(o); if(!pausa) return; }
+  await api(`/api/operacoes/${o.id}/${tipo}`, {funcionario_id, ...pausa});
   toast({iniciar:'▶ Iniciada',pausar:'⏸ Pausada',finalizar:'✓ Finalizada',reabrir:'Reaberta'}[tipo]);
   depois();
 });
+const MOTIVOS_PAUSA=['Almoço / intervalo','Fim do expediente','Falta de material','Manutenção da máquina','Acidente','Saúde / foi ao médico','Esperando outra etapa','Chamado pra outra tarefa','Outro'];
+function motivoPausa(o){
+  return new Promise(res=>{
+    modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Por que vai pausar?</h2><button class="btn sec sm" id="mx">Voltar</button></div>
+      <div class="mut" style="margin:6px 0 10px">${esc(o.operacao||o.nome||'')}${o.codigo?' · '+nomeOp(o.codigo):''}${o.funcionario?' · '+esc(o.funcionario):''}</div>
+      <div class="grid">${MOTIVOS_PAUSA.map((m,i)=>`<div class="chip" data-m="${i}" style="${['Acidente','Saúde / foi ao médico'].includes(m)?'border-color:var(--bad)':''}">${esc(m)}</div>`).join('')}</div>
+      <div style="margin-top:10px"><div class="mut">O que aconteceu? (opcional; obrigatório em "Outro")</div><input id="pobs" style="width:100%" placeholder="Ex.: cortou a mão no torno e foi pro hospital"></div><br>
+      <div class="row"><button class="btn mid" id="pok" disabled>⏸ Pausar</button></div>`);
+    let sel=null;
+    document.querySelectorAll('#modal [data-m]').forEach(c=>c.onclick=()=>{ sel=MOTIVOS_PAUSA[+c.dataset.m]; document.querySelectorAll('#modal [data-m]').forEach(x=>x.classList.toggle('on',x===c)); $('#pok').disabled=false; });
+    $('#mx').onclick=()=>{ modal(''); res(null); };
+    $('#pok').onclick=()=>{ const obs=$('#pobs').value.trim(); if(sel==='Outro'&&!obs) return toast('Escreva o motivo',1); modal(''); res({motivo:sel,obs:obs||null}); };
+  });
+}
 const botoes = o => o.status==='finalizado' ? `<button class="btn sec sm" data-a="reabrir">Reabrir</button>`
   : o.status==='produzindo' ? `<button class="btn mid sm" data-a="pausar">⏸ Pausar</button> <button class="btn ok sm" data-a="finalizar">✓ Finalizar</button>`
   : `<button class="btn sm" data-a="iniciar">▶ Iniciar</button> <button class="btn sec sm" data-a="finalizar">✓ Finalizar</button>`;
@@ -207,7 +223,7 @@ async function tFila(){
   const t = (B.tipos.find(x=>x.setor_id===S.setor)||{});
   $('#fila').innerHTML = l.length ? l.map((o,i)=>`<div class="card ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-i="${i}">
       <div class="info"><b>${esc(o.operacao)}</b> ${tag(o.status)}<br>
-        <span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.item_nome)} · <b>${fmt(o.qtd)} un</b>${o.motivo?`<br><span class="bad">Motivo: ${esc(o.motivo)}</span>`:''}<br>
+        <span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.item_nome)} · <b>${fmt(o.qtd)} un</b>${o.motivo?`<br><span class="bad">Motivo: ${esc(o.motivo)}</span>`:''}${o.status==='pausado'&&o.pausa_motivo?`<br><span class="${/^(Acidente|Saúde)/.test(o.pausa_motivo)?'bad':'midc'}">Pausado: ${esc(o.pausa_motivo)}</span>`:''}<br>
         <span class="mut">${o.funcionario?'👤 '+esc(o.funcionario)+' · ':''}tempo <span data-tempo='${JSON.stringify({minutos:o.minutos,status:o.status,inicio_atual:o.inicio_atual})}'>${dur(decorrido(o))}</span> / padrão ${dur(o.tempo_unit_min*o.qtd)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</span></div>
       <div>${botoes(o)}</div></div>`).join('') : '<div class="vazio">Nada na fila desse setor agora.</div>';
   $('#fila').querySelectorAll('[data-i]').forEach(c=>{ const o=l[+c.dataset.i]; c.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>acao(o,b.dataset.a,tFila)); });
@@ -294,7 +310,7 @@ const abrirOp = tenta(async codigo=>{
       <span class="mut">${fe}/${o.operacoes.length} operações</span></div>
     <div class="bar" style="margin:8px 0"><i style="width:${o.operacoes.length?fe/o.operacoes.length*100:0}%"></i></div>
     <h2>Roteiro</h2><div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Operação</th><th>Status</th><th>Quem</th><th class="n">Real</th><th class="n">Padrão</th><th>Início / fim</th><th></th></tr>
-      ${o.operacoes.map((x,i)=>`<tr><td>${x.ordem}</td><td>${esc(x.nome)}</td><td>${tag(x.status)}</td><td>${esc(x.funcionario||(x.sem_registro===2?'Operador':''))}</td>
+      ${o.operacoes.map((x,i)=>`<tr><td>${x.ordem}</td><td>${esc(x.nome)}</td><td>${tag(x.status)}${x.status==='pausado'&&x.pausa_motivo?`<br><span class="mut" style="font-size:12px">${esc(x.pausa_motivo)}</span>`:''}</td><td>${esc(x.funcionario||(x.sem_registro===2?'Operador':''))}</td>
         <td class="n">${x.sem_registro===2?'<span class="mut">~'+dur(x.minutos)+' estimado</span>':x.sem_registro?'<span class="mut">sem registro</span>':x.status!=='produzindo'&&!x.minutos?'–':dur(decorrido(x))}</td><td class="n">${dur(x.tempo_unit_min*o.qtd)}</td>
         <td class="mut">${brHora(x.inicio)}${x.fim?' → '+brHora(x.fim):''}</td><td style="white-space:nowrap" data-i="${i}">${o.status==='aberta'?botoes(x):''}</td></tr>`).join('')||'<tr><td colspan=8 class="vazio">Item sem roteiro cadastrado.</td></tr>'}</table></div>
     ${o.tipo==='RT'?'':`<h2>Blocos ${o.origem==='sensio'?'(OP veio do Sensio: blocos não baixados aqui)':'(baixados do Pátio na criação da OP)'}</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio agora</th></tr>
@@ -598,7 +614,7 @@ async function tPainel(tv){
       <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Produzindo agora (${prod.filter(x=>x.status==='produzindo').length})</b><span class="mut">tempo corre ao vivo · borda verde = no tempo, vermelha = passou do padrão, amarela = pausado</span></div>
         <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr));margin-top:8px">${prod.map(x=>{ const t=x.status==='produzindo'?decorrido(x):(x.minutos||0), pct=x.padrao>0?t/x.padrao*100:null;
           return `<div class="card" style="padding:10px;border-left:5px solid ${x.status==='pausado'?'var(--mid)':pct!==null&&pct>100?'var(--bad)':'var(--ok)'}"><div style="font-size:1.15em;font-weight:800">${esc(x.funcionario||'—')}${x.status==='pausado'?' <span class="tag t-pausado" style="font-size:.6em;vertical-align:middle">pausado</span>':''}</div>
-            <div>${esc(x.operacao)} <span class="mut">· ${esc(x.setor||'')}</span></div><div class="mut" style="font-size:.9em"><span class="link" data-op="${x.codigo}">${nomeOp(x.codigo)}</span> · ${esc(x.item)} · ${fmt(x.qtd)} un</div>
+            <div>${esc(x.operacao)} <span class="mut">· ${esc(x.setor||'')}</span></div>${x.status==='pausado'&&x.pausa_motivo?`<div class="${/^(Acidente|Saúde)/.test(x.pausa_motivo)?'bad':'midc'}" style="font-weight:700">${esc(x.pausa_motivo)}${x.pausa_inicio?` <span class="mut" style="font-weight:400">· parado há <span data-tempo='${JSON.stringify({minutos:0,status:'produzindo',inicio_atual:x.pausa_inicio})}'>${dur(decorrido({minutos:0,status:'produzindo',inicio_atual:x.pausa_inicio}))}</span></span>`:''}</div>`:''}<div class="mut" style="font-size:.9em"><span class="link" data-op="${x.codigo}">${nomeOp(x.codigo)}</span> · ${esc(x.item)} · ${fmt(x.qtd)} un</div>
             <div style="margin-top:4px"><b style="font-size:1.2em" data-tempo='${JSON.stringify({minutos:x.minutos,status:x.status,inicio_atual:x.inicio_atual})}'>${dur(t)}</b> <span class="mut">/ padrão ${x.padrao?dur(x.padrao):'—'}</span></div></div>`; }).join('')||'<div class="mut">Ninguém com etapa iniciada agora.</div>'}</div></div>
       <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Eficiência de hoje (pela meta de peças/dia)</b><span class="mut">verde ≥ 100% · amarelo 80–99% · vermelho &lt; 80%</span></div>
         ${ef?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 18px;margin-top:8px">${efl.map(f=>`<div class="row" style="gap:8px;flex-wrap:nowrap"><span style="min-width:90px;font-weight:700">${esc(f.nome)}</span><div style="flex:1;height:14px;background:var(--line);border-radius:7px;overflow:hidden"><i style="display:block;height:100%;width:${f.eficiencia===null?0:Math.min(100,f.eficiencia/maxEf*100)}%;background:${bgE(f.eficiencia)}"></i></div><b style="min-width:52px;text-align:right;color:${bgE(f.eficiencia)}">${f.eficiencia===null?'–':f.eficiencia+'%'}</b></div>`).join('')||'<div class="mut">Ninguém finalizou etapa hoje ainda.</div>'}</div>`:'<div class="mut">Sem acesso à eficiência.</div>'}</div>
