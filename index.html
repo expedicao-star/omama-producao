@@ -713,21 +713,24 @@ async function tSemana(){
 // ===== usuários (só o administrador)
 async function tUsuarios(){
   if(!EU||!EU.admin){ app.innerHTML='<div class="vazio">Só o administrador mexe em usuários.</div>'; return; }
-  const r=await api('/api/usuarios'), ativos=r.lista.filter(u=>!u.admin&&u.ativo).length;
+  const r=await api('/api/usuarios'), ativos=r.usados??r.lista.filter(u=>!u.admin&&u.ativo).length;
   app.innerHTML=`<h2>Novo usuário <span class="mut" style="text-transform:none;letter-spacing:0">(${ativos} de ${r.max} em uso)</span></h2>
     <div class="card"><div class="row"><input id="un" placeholder="Nome (ex.: Raimundo)"><input id="ul" placeholder="Usuário (ex.: raimundo)" autocomplete="off" autocapitalize="none"><input id="us" type="password" placeholder="Senha (mín. 6)" autocomplete="new-password"><button class="btn" id="ug" ${ativos>=r.max?'disabled':''}>Criar</button></div>
+    <label class="row" style="gap:6px;margin-top:8px"><input type="checkbox" id="uadm"> <span><b>Administrador</b> <span class="mut">(vê e mexe em tudo, inclusive Usuários, Permissões e Financeiro)</span></span></label>
     <label class="row" style="gap:6px;margin-top:8px"><input type="checkbox" id="ufab"> <span><b>Login da fábrica</b> <span class="mut">(só vê a tela Setores: o operador escolhe o nome dele e clica Iniciar / Pausar / Finalizar, e o tempo da etapa conta sozinho)</span></span></label>
     <p class="mut">${ativos>=r.max?'Chegou no limite de '+r.max+' usuários. Desative um para criar outro.':'O usuário entra no site com esse usuário e senha (começa com acesso a todas as telas; ajuste em Permissões). Depois ele pode trocar a senha no menu.'}</p></div>
     <h2>Usuários</h2><div class="card"><table><tr><th>Nome</th><th>Usuário</th><th>Tipo</th><th>Situação</th><th>Último acesso</th><th></th></tr>
     ${r.lista.map(u=>`<tr style="${u.ativo?'':'opacity:.5'}"><td><b>${esc(u.nome||'')}</b></td><td>${esc(u.login)}</td><td>${u.admin?'<span class="tag t-finalizado">Administrador</span>':'Usuário'}</td><td>${u.ativo?'<span class="tag t-produzindo">Ativo</span>':'<span class="tag t-pendente">Desativado</span>'}</td><td class="mut">${u.ultimo_acesso?brHora(u.ultimo_acesso):'nunca'}</td><td class="n"><button class="btn sec sm" data-u="${u.id}">Editar</button></td></tr>`).join('')}</table></div>`;
-  $('#ug').onclick=tenta(async()=>{ await api('/api/usuarios',{nome:$('#un').value,login:$('#ul').value,senha:$('#us').value,...($('#ufab').checked?{permissoes:['fila']}:{})}); toast('Usuário '+$('#ul').value.trim().toLowerCase()+' criado'); tUsuarios(); });
+  $('#uadm').onchange=()=>{ if($('#uadm').checked) $('#ufab').checked=false; }; $('#ufab').onchange=()=>{ if($('#ufab').checked) $('#uadm').checked=false; };
+  $('#ug').onclick=tenta(async()=>{ await api('/api/usuarios',{nome:$('#un').value,login:$('#ul').value,senha:$('#us').value,...($('#uadm').checked?{admin:true}:$('#ufab').checked?{permissoes:['fila']}:{})}); toast('Usuário '+$('#ul').value.trim().toLowerCase()+' criado'); tUsuarios(); });
   app.querySelectorAll('[data-u]').forEach(b=>b.onclick=()=>{ const u=r.lista.find(x=>x.id===+b.dataset.u);
     modal(`<h2 style="margin-top:0">Editar ${esc(u.login)}</h2><div class="mut">Nome</div><input id="en" value="${esc(u.nome||'')}" style="width:100%"><br><br>
       <div class="mut">Nova senha (deixe vazio para não mudar)</div><input id="es" type="password" autocomplete="new-password" style="width:100%"><br><br>
-      ${u.admin?'':`<label class="row" style="gap:6px"><input type="checkbox" id="ea" ${u.ativo?'checked':''}> Ativo (desativado não consegue entrar)</label><br>`}
+      ${u.id===r.eu?'<p class="mut">Esse é você: não dá pra tirar seu próprio acesso de administrador.</p>':`<label class="row" style="gap:6px"><input type="checkbox" id="ea" ${u.ativo?'checked':''}> Ativo (desativado não consegue entrar)</label><br>
+      <label class="row" style="gap:6px"><input type="checkbox" id="ead" ${u.admin?'checked':''}> Administrador (vê e mexe em tudo, inclusive Usuários, Permissões e Financeiro)</label><br>`}
       <div class="row"><button class="btn" id="eg">Salvar</button><button class="btn sec" id="ex">Voltar</button></div>`);
     $('#ex').onclick=()=>modal('');
-    $('#eg').onclick=tenta(async()=>{ const b={nome:$('#en').value}; if($('#es').value) b.senha=$('#es').value; if($('#ea')) b.ativo=$('#ea').checked; await api('/api/usuarios/'+u.id,b); toast('Salvo'); modal(''); tUsuarios(); }); });
+    $('#eg').onclick=tenta(async()=>{ const b={nome:$('#en').value}; if($('#es').value) b.senha=$('#es').value; if($('#ea')) b.ativo=$('#ea').checked; if($('#ead')) b.admin=$('#ead').checked; await api('/api/usuarios/'+u.id,b); toast('Salvo'); modal(''); tUsuarios(); }); });
 }
 function trocarSenha(){
   modal(`<h2 style="margin-top:0">Trocar minha senha</h2><div class="mut">Senha atual</div><input id="sa" type="password" autocomplete="current-password" style="width:100%"><br><br>
