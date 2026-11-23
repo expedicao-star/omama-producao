@@ -586,13 +586,22 @@ const abrirPcp=tenta(async(id,novo)=>{
 let tvTimer=null;
 async function tPainel(tv){
   clearInterval(tvTimer);
-  const d=await api('/api/painel');
+  const hj=hojeISO(), [d,ef]=await Promise.all([api('/api/painel'),api(`/api/eficiencia?de=${hj}&ate=${hj}`).catch(()=>null)]);
+  const bgE=p=>p===null?'var(--line)':p>=100?'#2e9e5b':p>=80?'#d89a1c':'#d14343';
+  const prod=d.agoraProd||[], efl=ef?ef.lista.filter(f=>f.dias):[], maxEf=Math.max(130,...efl.map(f=>f.eficiencia||0));
   const k=(n,t,c)=>`<div class="card" style="text-align:center"><div style="font-size:34px;font-weight:800;color:${c||'var(--amb)'}">${n}</div><div class="mut">${t}</div></div>`;
   const maxE=Math.max(1,...d.estagios.map(e=>e.pecas));
   const ST={falta_injustificada:'falta',falta_justificada:'falta justificada',atestado:'atestado',atraso:'atraso',folga:'folga/férias'};
   app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Painel da fábrica · ${new Date().toLocaleString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</h2><button class="btn sec sm" id="tv">${tv?'Sair do modo TV':'Modo TV'}</button></div><br>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">${k(d.ops.n,'OPs abertas')}${k(fmt(d.ops.pecas),'peças em produção')}${k(d.atrasadas.length,'OPs atrasadas',d.atrasadas.length?'var(--bad)':'var(--ok)')}${k(d.hojeProd.ops,'operações finalizadas hoje')}${k(fmt(d.semanaProd.pecas),'peças finalizadas na semana','var(--ok)')}${k(fmt(d.envios.pecas),'peças enviadas na semana')}${k(fmt(d.defeitos),'defeitos na semana',d.defeitos?'var(--bad)':'var(--ok)')}${k(d.faltas.length,'faltas/atrasos hoje',d.faltas.length?'var(--mid)':'var(--ok)')}</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:10px">
+      <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Produzindo agora (${prod.filter(x=>x.status==='produzindo').length})</b><span class="mut">tempo corre ao vivo · borda verde = no tempo, vermelha = passou do padrão, amarela = pausado</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr));margin-top:8px">${prod.map(x=>{ const t=x.status==='produzindo'?decorrido(x):(x.minutos||0), pct=x.padrao>0?t/x.padrao*100:null;
+          return `<div class="card" style="padding:10px;border-left:5px solid ${x.status==='pausado'?'var(--mid)':pct!==null&&pct>100?'var(--bad)':'var(--ok)'}"><div style="font-size:1.15em;font-weight:800">${esc(x.funcionario||'—')}${x.status==='pausado'?' <span class="tag t-pausado" style="font-size:.6em;vertical-align:middle">pausado</span>':''}</div>
+            <div>${esc(x.operacao)} <span class="mut">· ${esc(x.setor||'')}</span></div><div class="mut" style="font-size:.9em"><span class="link" data-op="${x.codigo}">${nomeOp(x.codigo)}</span> · ${esc(x.item)} · ${fmt(x.qtd)} un</div>
+            <div style="margin-top:4px"><b style="font-size:1.2em" data-tempo='${JSON.stringify({minutos:x.minutos,status:x.status,inicio_atual:x.inicio_atual})}'>${dur(t)}</b> <span class="mut">/ padrão ${x.padrao?dur(x.padrao):'—'}</span></div></div>`; }).join('')||'<div class="mut">Ninguém com etapa iniciada agora.</div>'}</div></div>
+      <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Eficiência de hoje (pela meta de peças/dia)</b><span class="mut">verde ≥ 100% · amarelo 80–99% · vermelho &lt; 80%</span></div>
+        ${ef?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 18px;margin-top:8px">${efl.map(f=>`<div class="row" style="gap:8px;flex-wrap:nowrap"><span style="min-width:90px;font-weight:700">${esc(f.nome)}</span><div style="flex:1;height:14px;background:var(--line);border-radius:7px;overflow:hidden"><i style="display:block;height:100%;width:${f.eficiencia===null?0:Math.min(100,f.eficiencia/maxEf*100)}%;background:${bgE(f.eficiencia)}"></i></div><b style="min-width:52px;text-align:right;color:${bgE(f.eficiencia)}">${f.eficiencia===null?'–':f.eficiencia+'%'}</b></div>`).join('')||'<div class="mut">Ninguém finalizou etapa hoje ainda.</div>'}</div>`:'<div class="mut">Sem acesso à eficiência.</div>'}</div>
       <div class="card"><b>Peças por estágio</b>${d.estagios.map(e=>`<div style="margin-top:6px"><div class="row" style="justify-content:space-between"><span style="font-size:13px">${esc(e.nome)}</span><b>${fmt(e.pecas)}</b></div><div class="bar"><i style="width:${e.pecas/maxE*100}%"></i></div></div>`).join('')}</div>
       <div class="card"><b>Pedidos vencendo em 7 dias</b>${d.pedidos.map(p=>{ const x=diasAte(p.prazo); return `<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span>${esc(p.numero)} · ${esc(p.cliente||'')}<br><span class="mut">${fmt(p.conferidas)}/${fmt(p.pecas)} conferidas</span></span><b class="${x<0?'bad':'midc'}">${x<0?Math.abs(x)+' d atrasado':x===0?'hoje':x+' d'}</b></div>`}).join('')||'<div class="mut" style="margin-top:6px">Nenhum.</div>'}</div>
       <div class="card"><b>OPs atrasadas</b>${d.atrasadas.map(o=>`<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.nome)} · ${fmt(o.qtd)} un<br><span class="mut">${esc(o.estagio)} · previsto ${brData(o.previsao_fim)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nenhuma.</div>'}</div>
@@ -600,7 +609,7 @@ async function tPainel(tv){
         <br><b>Faltas e atrasos hoje</b>${d.faltas.map(f=>`<div>${esc(f.nome)} <span class="mut">· ${ST[f.status]||f.status}${f.minutos?' '+f.minutos+' min':''}</span></div>`).join('')||'<div class="mut">Ninguém.</div>'}</div></div>`;
   app.querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
   $('#tv').onclick=()=>{ document.body.classList.toggle('tv',!tv); if(!tv&&document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); if(tv&&document.fullscreenElement) document.exitFullscreen(); tPainel(!tv); };
-  if(tv) tvTimer=setInterval(()=>{ if(S.tab==='painel'&&!$('#mbg')) tPainel(true); else clearInterval(tvTimer); },60000);
+  if(tv) tvTimer=setInterval(()=>{ if(S.tab==='painel'&&!$('#mbg')) tPainel(true); else clearInterval(tvTimer); },30000);
 }
 
 // ===== relatório semanal
