@@ -262,7 +262,7 @@ const abrirOp = tenta(async codigo=>{
     <div class="bar" style="margin:8px 0"><i style="width:${o.operacoes.length?fe/o.operacoes.length*100:0}%"></i></div>
     <h2>Roteiro</h2><div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Operação</th><th>Status</th><th>Quem</th><th class="n">Real</th><th class="n">Padrão</th><th>Início / fim</th><th></th></tr>
       ${o.operacoes.map((x,i)=>`<tr><td>${x.ordem}</td><td>${esc(x.nome)}</td><td>${tag(x.status)}</td><td>${esc(x.funcionario||'')}</td>
-        <td class="n">${x.status!=='produzindo'&&!x.minutos?'–':dur(decorrido(x))}</td><td class="n">${dur(x.tempo_unit_min*o.qtd)}</td>
+        <td class="n">${x.sem_registro?'<span class="mut">sem registro</span>':x.status!=='produzindo'&&!x.minutos?'–':dur(decorrido(x))}</td><td class="n">${dur(x.tempo_unit_min*o.qtd)}</td>
         <td class="mut">${brHora(x.inicio)}${x.fim?' → '+brHora(x.fim):''}</td><td style="white-space:nowrap" data-i="${i}">${o.status==='aberta'?botoes(x):''}</td></tr>`).join('')||'<tr><td colspan=8 class="vazio">Item sem roteiro cadastrado.</td></tr>'}</table></div>
     <h2>Blocos ${o.origem==='sensio'?'(OP veio do Sensio: blocos não baixados aqui)':'(baixados do Pátio na criação da OP)'}</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio agora</th></tr>
       ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<0?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>
@@ -552,10 +552,11 @@ async function tUsuarios(){
   const r=await api('/api/usuarios'), ativos=r.lista.filter(u=>!u.admin&&u.ativo).length;
   app.innerHTML=`<h2>Novo usuário <span class="mut" style="text-transform:none;letter-spacing:0">(${ativos} de ${r.max} em uso)</span></h2>
     <div class="card"><div class="row"><input id="un" placeholder="Nome (ex.: Raimundo)"><input id="ul" placeholder="Usuário (ex.: raimundo)" autocomplete="off" autocapitalize="none"><input id="us" type="password" placeholder="Senha (mín. 6)" autocomplete="new-password"><button class="btn" id="ug" ${ativos>=r.max?'disabled':''}>Criar</button></div>
+    <label class="row" style="gap:6px;margin-top:8px"><input type="checkbox" id="ufab"> <span><b>Login da fábrica</b> <span class="mut">(só vê a tela Setores: o operador escolhe o nome dele e clica Iniciar / Pausar / Finalizar, e o tempo da etapa conta sozinho)</span></span></label>
     <p class="mut">${ativos>=r.max?'Chegou no limite de '+r.max+' usuários. Desative um para criar outro.':'O usuário entra no site com esse usuário e senha (começa com acesso a todas as telas; ajuste em Permissões). Depois ele pode trocar a senha no menu.'}</p></div>
     <h2>Usuários</h2><div class="card"><table><tr><th>Nome</th><th>Usuário</th><th>Tipo</th><th>Situação</th><th>Último acesso</th><th></th></tr>
     ${r.lista.map(u=>`<tr style="${u.ativo?'':'opacity:.5'}"><td><b>${esc(u.nome||'')}</b></td><td>${esc(u.login)}</td><td>${u.admin?'<span class="tag t-finalizado">Administrador</span>':'Usuário'}</td><td>${u.ativo?'<span class="tag t-produzindo">Ativo</span>':'<span class="tag t-pendente">Desativado</span>'}</td><td class="mut">${u.ultimo_acesso?brHora(u.ultimo_acesso):'nunca'}</td><td class="n"><button class="btn sec sm" data-u="${u.id}">Editar</button></td></tr>`).join('')}</table></div>`;
-  $('#ug').onclick=tenta(async()=>{ await api('/api/usuarios',{nome:$('#un').value,login:$('#ul').value,senha:$('#us').value}); toast('Usuário '+$('#ul').value.trim().toLowerCase()+' criado'); tUsuarios(); });
+  $('#ug').onclick=tenta(async()=>{ await api('/api/usuarios',{nome:$('#un').value,login:$('#ul').value,senha:$('#us').value,...($('#ufab').checked?{permissoes:['fila']}:{})}); toast('Usuário '+$('#ul').value.trim().toLowerCase()+' criado'); tUsuarios(); });
   app.querySelectorAll('[data-u]').forEach(b=>b.onclick=()=>{ const u=r.lista.find(x=>x.id===+b.dataset.u);
     modal(`<h2 style="margin-top:0">Editar ${esc(u.login)}</h2><div class="mut">Nome</div><input id="en" value="${esc(u.nome||'')}" style="width:100%"><br><br>
       <div class="mut">Nova senha (deixe vazio para não mudar)</div><input id="es" type="password" autocomplete="new-password" style="width:100%"><br><br>
@@ -595,16 +596,16 @@ async function tRel(){
   const [de,ate]=periodo();
   app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Produção · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2>
     <div class="row">${['dia','semana','mes'].map(p=>`<button class="btn ${S.per===p?'':'sec'} sm" data-p="${p}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div>
-    <p class="mut">Eficiência = tempo padrão do roteiro ÷ tempo real cronometrado (só operações com pelo menos 1 minuto cronometrado). Acima de 100% = mais rápido que o padrão.</p><div id="rl" class="vazio">Carregando…</div>`;
+    <p class="mut">Eficiência = tempo padrão do roteiro ÷ tempo real cronometrado (só operações com pelo menos 1 minuto cronometrado). Acima de 100% = mais rápido que o padrão. <b>Sem registro</b> = etapa finalizada sem ter clicado em Iniciar (não entra no tempo nem na eficiência).</p><div id="rl" class="vazio">Carregando…</div>`;
   app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.per=b.dataset.p; tRel();});
   const r=await api(`/api/relatorio?de=${de}&ate=${ate}`);
   const cor=p=>p>=100?'ok':p>=80?'midc':'bad';
   $('#rl').className='';
-  $('#rl').innerHTML=`<div class="card" style="overflow-x:auto"><table><tr><th>Pessoa</th><th>Setor</th><th class="n">Operações</th><th class="n">Peças</th><th class="n">Tempo real</th><th class="n">Tempo padrão</th><th class="n">Eficiência</th></tr>
-    ${r.porPessoa.map(p=>{ const e=p.minutos_medidos>0?p.padrao_medido/p.minutos_medidos*100:null; return `<tr><td>${esc(p.funcionario)}</td><td class="mut">${esc(p.setor||'')}</td><td class="n">${p.operacoes}</td><td class="n">${fmt(p.pecas)}</td><td class="n">${dur(p.minutos_reais)}</td><td class="n">${dur(p.minutos_padrao)}</td><td class="n ${e===null?'':cor(e)}"><b>${e===null?'–':fmt(e,0)+'%'}</b></td></tr>`}).join('')||'<tr><td colspan=7 class="vazio">Nenhuma operação finalizada no período.</td></tr>'}</table></div>
+  $('#rl').innerHTML=`<div class="card" style="overflow-x:auto"><table><tr><th>Pessoa</th><th>Setor</th><th class="n">Operações</th><th class="n">Peças</th><th class="n">Sem registro</th><th class="n">Tempo real</th><th class="n">Tempo padrão</th><th class="n">Eficiência</th></tr>
+    ${r.porPessoa.map(p=>{ const e=p.minutos_medidos>0?p.padrao_medido/p.minutos_medidos*100:null; return `<tr><td>${esc(p.funcionario)}</td><td class="mut">${esc(p.setor||'')}</td><td class="n">${p.operacoes}</td><td class="n">${fmt(p.pecas)}</td><td class="n ${p.sem_registro?'bad':'mut'}">${p.sem_registro||'–'}</td><td class="n">${dur(p.minutos_reais)}</td><td class="n">${dur(p.minutos_padrao)}</td><td class="n ${e===null?'':cor(e)}"><b>${e===null?'–':fmt(e,0)+'%'}</b></td></tr>`}).join('')||'<tr><td colspan=8 class="vazio">Nenhuma operação finalizada no período.</td></tr>'}</table></div>
     <h2>OPs finalizadas (${r.finalizadas.length})</h2><div class="card">${r.finalizadas.map(o=>`<div><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.item)} · ${fmt(o.qtd)} un <span class="mut">· ${brHora(o.finalizado_em)}</span></div>`).join('')||'<span class="mut">Nenhuma.</span>'}</div>
     <h2>Operações finalizadas</h2><div class="card" style="overflow-x:auto"><table><tr><th>Quando</th><th>Pessoa</th><th>Operação</th><th>OP</th><th class="n">Real</th><th class="n">Padrão</th></tr>
-    ${r.detalhe.map(d=>`<tr><td class="mut">${brHora(d.fim)}</td><td>${esc(d.funcionario||'')}</td><td>${esc(d.operacao)}</td><td>${d.codigo} · ${esc(d.item)}</td><td class="n">${d.minutos?dur(d.minutos):'–'}</td><td class="n">${dur(d.padrao)}</td></tr>`).join('')}</table></div>
+    ${r.detalhe.map(d=>`<tr><td class="mut">${brHora(d.fim)}</td><td>${esc(d.funcionario||'')}</td><td>${esc(d.operacao)}</td><td>${d.codigo} · ${esc(d.item)}</td><td class="n">${d.sem_registro?'<span class="bad">sem registro</span>':d.minutos?dur(d.minutos):'–'}</td><td class="n">${dur(d.padrao)}</td></tr>`).join('')}</table></div>
 `;
   $('#rl').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
 }
