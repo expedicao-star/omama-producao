@@ -116,12 +116,45 @@ async function opsAbertas(DB, where = "op.status='aberta'", ...b) {
     from op join item i on i.id=op.item_id left join pedido_item pi on pi.id=op.pedido_item_id left join pedido pd on pd.id=pi.pedido_id where ${where} order by op.previsao_fim is null, op.previsao_fim, op.codigo`, ...b);
 }
 
-export default {
+// ---------- conector do Claude (MCP, HTTP simples) — endereço /mcp/<CODIGO>
+const FERRAMENTAS = [
+  { name: 'resumo_fabrica', description: 'Resumo ao vivo da fábrica OMAMA: OPs abertas e atrasadas, peças por estágio, produção de hoje e da semana, pedidos vencendo em 7 dias, defeitos e faltas.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/painel' },
+  { name: 'pedidos_abertos', description: 'Lista os pedidos em aberto com prazo, status e quantas peças têm OP, estão conferidas, embaladas e enviadas.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/pedidos' },
+  { name: 'pedido', description: 'Detalhe de um pedido OMAMA pelo número: peças, OPs ligadas (estágio), conferidas/embaladas/enviadas e envios.', inputSchema: { type: 'object', properties: { numero: { type: 'string' } }, required: ['numero'] }, path: a => '/api/pedidos/' + encodeURIComponent(a.numero) },
+  { name: 'ops_abertas', description: 'Lista as OPs abertas com item, quantidade, estágio, previsão de entrega, pedido e operação atual.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/ops' },
+  { name: 'estoque', description: 'Saldo de estoque de um depósito. deposito_id: 11 = Pátio (blocos), 1 = P.A. (produto acabado), 6 = Defeito, 4 = Retrabalho, 3 = Showroom.', inputSchema: { type: 'object', properties: { deposito_id: { type: 'number' } }, required: ['deposito_id'] }, path: a => '/api/estoque?deposito_id=' + Number(a.deposito_id) },
+  { name: 'producao_periodo', description: 'Produção e eficiência por pessoa num período (datas AAAA-MM-DD).', inputSchema: { type: 'object', properties: { de: { type: 'string' }, ate: { type: 'string' } }, required: ['de', 'ate'] }, path: a => `/api/relatorio?de=${a.de}&ate=${a.ate}` },
+  { name: 'defeitos', description: 'Peças que estão no estoque de defeito agora (item, quantidade, motivo, OP, setor).', inputSchema: { type: 'object', properties: {} }, path: () => '/api/defeitos' },
+  { name: 'faltas_semana', description: 'Faltas, atestados, atrasos e folgas lançados num período (datas AAAA-MM-DD).', inputSchema: { type: 'object', properties: { de: { type: 'string' }, ate: { type: 'string' } }, required: ['de', 'ate'] }, path: a => `/api/presenca?de=${a.de}&ate=${a.ate}` },
+  { name: 'pcp_sugestao', description: 'Sugestão do PCP: peças de pedidos que ainda precisam de OP, quantas dá para fazer com o bloco do Pátio e quanta madeira falta.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/pcp/sugestao' },
+];
+async function mcp(req, env) {
+  if (req.method !== 'POST') return new Response('Use POST (MCP)', { status: 405 });
+  const msg = await req.json().catch(() => null);
+  const responde = (id, result) => new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'Content-Type': 'application/json' } });
+  const erro = (id, code, message) => new Response(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }), { headers: { 'Content-Type': 'application/json' } });
+  if (!msg || Array.isArray(msg)) return erro(null, -32600, 'Requisição inválida');
+  if (msg.id === undefined) return new Response(null, { status: 202 });
+  if (msg.method === 'initialize') return responde(msg.id, { protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'omama-producao', version: '1.0' },
+    instructions: 'Dados ao vivo do sistema de produção da OMAMA (OPs, pedidos, estoque, expedição, defeitos, assiduidade). Somente leitura.' });
+  if (msg.method === 'ping') return responde(msg.id, {});
+  if (msg.method === 'tools/list') return responde(msg.id, { tools: FERRAMENTAS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
+  if (msg.method === 'tools/call') {
+    const f = FERRAMENTAS.find(x => x.name === (msg.params || {}).name);
+    if (!f) return erro(msg.id, -32602, 'Ferramenta não existe');
+    const r = await app.fetch(new Request('https://interno' + f.path((msg.params || {}).arguments || {}), { headers: { 'X-Codigo': env.CODIGO } }), env);
+    return responde(msg.id, { content: [{ type: 'text', text: await r.text() }], isError: !r.ok });
+  }
+  return erro(msg.id, -32601, 'Método não suportado');
+}
+
+const app = {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     const url = new URL(req.url), p = url.pathname, q = (k) => url.searchParams.get(k);
     if (p === '/') return json(req, { ok: true, sistema: 'OMAMA Produção', versao: 2 });
-    if ((req.headers.get('X-Codigo') || '') !== env.CODIGO) return json(req, { erro: 'Código de acesso inválido' }, 401);
+    if (p.startsWith('/mcp/')) return p === '/mcp/' + env.CODIGO ? mcp(req, env) : new Response('não autorizado', { status: 401 });
+    if ((req.headers.get('X-Codigo') || q('c') || '') !== env.CODIGO) return json(req, { erro: 'Código de acesso inválido' }, 401);
     const DB = env.DB;
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     let m;
@@ -516,6 +549,133 @@ export default {
         return json(req, { ok: true, ajustes: n });
       }
 
+      // ---------- entrada de madeira (blocos que chegam no Pátio)
+      if (p === '/api/entradas' && req.method === 'GET') {
+        return json(req, await all(DB, `select e.*, (select group_concat(cast(ei.qtd as text) || ' × ' || i.nome, ' · ') from entrada_item ei join item i on i.id=ei.item_id where ei.entrada_id=e.id) itens,
+          (select sum(qtd) from entrada_item where entrada_id=e.id) total from entrada e order by e.id desc limit 100`));
+      }
+      if (p === '/api/entradas' && req.method === 'POST') {
+        const linhas = (body.itens || []).filter(x => x.item_id && x.qtd > 0);
+        if (!linhas.length) return json(req, { erro: 'Coloque pelo menos um bloco e a quantidade' }, 400);
+        const r = await DB.prepare('insert into entrada(data, fornecedor, nf, obs) values(?,?,?,?)').bind(body.data || agora().slice(0, 10), body.fornecedor || null, body.nf || null, body.obs || null).run();
+        const id = r.meta.last_row_id, txt = `Entrada de madeira nº ${id}` + (body.fornecedor ? ' · ' + body.fornecedor : '') + (body.nf ? ' · NF ' + body.nf : '');
+        await DB.batch(linhas.flatMap(l => [DB.prepare('insert into entrada_item(entrada_id, item_id, qtd) values(?,?,?)').bind(id, l.item_id, l.qtd),
+          DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo) values(?,?,?,?)').bind(l.item_id, DEP_PATIO, l.qtd, txt)]));
+        return json(req, { ok: true, id });
+      }
+
+      // ---------- PCP quinzenal: sugere o que cortar com o bloco que tem no Pátio, cria as OPs e acompanha plano x realizado
+      if (p === '/api/pcp/sugestao') {
+        const falta = await all(DB, `select pi.id pedido_item_id, pi.item_id, i.nome, i.codigo, p.numero, p.cliente, p.prazo,
+            pi.qtd - pi.conferida - (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status<>'cancelada') falta
+          from pedido_item pi join pedido p on p.id=pi.pedido_id join item i on i.id=pi.item_id
+          where p.status in ('Em produção','Pronto / embalagem') and pi.item_id is not null
+            and pi.qtd - pi.conferida - (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status<>'cancelada') > 0
+          order by p.prazo is null, p.prazo, p.numero`);
+        const comps = await all(DB, `select c.item_id, c.insumo_id, c.qtd, i.nome from composicao c join item i on i.id=c.insumo_id`);
+        const saldo = {}; for (const s of await all(DB, 'select item_id, sum(qtd) q from estoque_mov where deposito_id=? group by item_id', DEP_PATIO)) saldo[s.item_id] = s.q;
+        const resto = { ...saldo }, out = [];
+        for (const f of falta) {
+          const cs = comps.filter(c => c.item_id === f.item_id);
+          let pode = f.falta;
+          for (const c of cs) pode = Math.min(pode, Math.floor(((resto[c.insumo_id] || 0) + 1e-9) / c.qtd));
+          pode = Math.max(0, pode);
+          for (const c of cs) resto[c.insumo_id] = (resto[c.insumo_id] || 0) - c.qtd * pode;
+          out.push({ ...f, pode, sem_composicao: !cs.length, blocos: cs.map(c => `${+(c.qtd * f.falta).toFixed(3)} × ${c.nome} (Pátio: ${+(+(saldo[c.insumo_id] || 0)).toFixed(3)})`).join(', ') });
+        }
+        const precisa = {};
+        for (const f of out) for (const c of comps.filter(c => c.item_id === f.item_id)) precisa[c.insumo_id] = { nome: c.nome, q: ((precisa[c.insumo_id] || {}).q || 0) + c.qtd * f.falta, tem: saldo[c.insumo_id] || 0 };
+        return json(req, { itens: out, madeira: Object.values(precisa).map(x => ({ ...x, falta: Math.max(0, x.q - x.tem) })).sort((a, b) => b.falta - a.falta) });
+      }
+      if (p === '/api/pcp' && req.method === 'GET') {
+        return json(req, await all(DB, `select c.*, count(ci.id) itens, sum(ci.qtd) pecas,
+            sum(case when o.status='finalizada' then ci.qtd else 0 end) prontas, sum(case when o.status='cancelada' then ci.qtd else 0 end) canceladas
+          from pcp c left join pcp_item ci on ci.pcp_id=c.id left join op o on o.id=ci.op_id group by c.id order by c.id desc limit 30`));
+      }
+      if (p === '/api/pcp' && req.method === 'POST') {
+        if (!body.inicio || !body.fim) return json(req, { erro: 'Período da quinzena' }, 400);
+        const r = await DB.prepare('insert into pcp(inicio, fim, obs) values(?,?,?)').bind(body.inicio, body.fim, body.obs || null).run();
+        return json(req, { id: r.meta.last_row_id });
+      }
+      if ((m = p.match(/^\/api\/pcp\/(\d+)$/)) && req.method === 'GET') {
+        const c = await one(DB, 'select * from pcp where id=?', Number(m[1]));
+        if (!c) return json(req, { erro: 'PCP não encontrado' }, 404);
+        const itens = await all(DB, `select ci.*, i.nome, i.codigo, o.codigo op_codigo, o.status op_status, o.finalizado_em, e.nome estagio, pd.numero, pd.cliente
+          from pcp_item ci join item i on i.id=ci.item_id left join op o on o.id=ci.op_id left join estagio e on e.id=o.estagio_id
+          left join pedido_item pi on pi.id=ci.pedido_item_id left join pedido pd on pd.id=pi.pedido_id where ci.pcp_id=? order by ci.id`, c.id);
+        return json(req, { ...c, itens });
+      }
+      if ((m = p.match(/^\/api\/pcp\/(\d+)\/item$/)) && req.method === 'POST') {
+        // a OP já foi criada pelo /api/ops; aqui só registra no plano
+        const op = await one(DB, 'select * from op where codigo=?', Number(body.op_codigo));
+        if (!op) return json(req, { erro: 'OP não encontrada' }, 400);
+        await DB.prepare('insert into pcp_item(pcp_id, item_id, pedido_item_id, qtd, op_id) values(?,?,?,?,?)').bind(Number(m[1]), op.item_id, op.pedido_item_id, op.qtd, op.id).run();
+        return json(req, { ok: true });
+      }
+
+      // ---------- painel da fábrica
+      if (p === '/api/painel') {
+        const hoje = agora().slice(0, 10), seg = new Date(Date.now() - ((new Date().getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10);
+        const [ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos, faltas, parados, envios] = await Promise.all([
+          one(DB, "select count(*) n, coalesce(sum(qtd),0) pecas from op where status='aberta'"),
+          all(DB, `select op.codigo, op.qtd, op.previsao_fim, i.nome, e.nome estagio from op join item i on i.id=op.item_id join estagio e on e.id=op.estagio_id
+            where op.status='aberta' and op.previsao_fim < ? order by op.previsao_fim limit 20`, hoje),
+          all(DB, `select p.numero, p.cliente, p.prazo, p.status, (select sum(qtd) from pedido_item where pedido_id=p.id) pecas,
+            (select sum(conferida) from pedido_item where pedido_id=p.id) conferidas, (select sum(enviada) from pedido_item where pedido_id=p.id) enviadas
+            from pedido p where p.status in ('Em produção','Pronto / embalagem') and p.prazo is not null and p.prazo <= date(?, '+7 days') order by p.prazo`, hoje),
+          one(DB, "select count(*) ops, coalesce(sum(o.qtd),0) pecas from op_operacao oo join op o on o.id=oo.op_id where oo.status='finalizado' and oo.fim >= ?", hoje + ' 00:00:00'),
+          one(DB, "select count(*) n, coalesce(sum(qtd),0) pecas from op where status='finalizada' and finalizado_em >= ?", seg + ' 00:00:00'),
+          all(DB, "select e.nome, count(op.id) ops, coalesce(sum(op.qtd),0) pecas from estagio e left join op on op.estagio_id=e.id and op.status='aberta' where e.ordem between 2 and 11 group by e.id order by e.ordem"),
+          one(DB, 'select coalesce(sum(qtd),0) n from defeito where data >= ?', seg + ' 00:00:00'),
+          all(DB, "select f.nome, pr.status, pr.minutos from presenca pr join funcionario f on f.id=pr.funcionario_id where pr.data=? and pr.status is not null", hoje),
+          all(DB, `select o.codigo, i.nome, t.nome operacao, oo.inicio from op_operacao oo join op o on o.id=oo.op_id join item i on i.id=o.item_id join operacao_tipo t on t.id=oo.operacao_tipo_id
+            where o.status='aberta' and t.espera=1 and oo.status='produzindo' and oo.inicio < datetime('now','-10 days') order by oo.inicio limit 15`),
+          one(DB, 'select count(*) n, coalesce(sum(ei.qtd),0) pecas from envio e join envio_item ei on ei.envio_id=e.id where e.data >= ?', seg),
+        ]);
+        return json(req, { hoje, seg, ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos: defeitos.n, faltas, parados, envios });
+      }
+
+      // ---------- relatório semanal (junta tudo da semana)
+      if (p === '/api/semana') {
+        const de = q('de'), ate = q('ate'), d0 = de + ' 00:00:00', d1 = ate + ' 23:59:59';
+        const [finalizadas, criadas, envios, entradas, inventarios] = await Promise.all([
+          all(DB, `select o.codigo, o.qtd, i.nome, pd.numero from op o join item i on i.id=o.item_id left join pedido_item pi on pi.id=o.pedido_item_id left join pedido pd on pd.id=pi.pedido_id
+            where o.status='finalizada' and o.finalizado_em between ? and ? order by o.finalizado_em`, d0, d1),
+          one(DB, "select count(*) n, coalesce(sum(qtd),0) pecas from op where origem is null and criado_em between ? and ?", d0, d1),
+          all(DB, `select e.data, p.numero, p.cliente, e.transportadora, (select sum(qtd) from envio_item where envio_id=e.id) pecas from envio e join pedido p on p.id=e.pedido_id
+            where e.data between ? and ? order by e.data`, de, ate),
+          all(DB, `select e.data, e.fornecedor, (select sum(qtd) from entrada_item where entrada_id=e.id) qtd from entrada e where e.data between ? and ?`, de, ate),
+          all(DB, `select v.id, d.nome deposito, (select count(*) from inventario_item where inventario_id=v.id and abs(coalesce(ajuste,0))>0.0001) ajustes from inventario v join deposito d on d.id=v.deposito_id
+            where v.status='fechado' and v.fechado_em between ? and ?`, d0, d1),
+        ]);
+        return json(req, { finalizadas, criadas, envios, entradas, inventarios });
+      }
+
+      // ---------- fotos (guardadas no banco já reduzidas pelo navegador)
+      if (p === '/api/fotos' && req.method === 'GET') {
+        const campo = q('op_id') ? 'op_id' : q('defeito_id') ? 'defeito_id' : null;
+        if (q('pedido')) return json(req, await all(DB, `select f.id, f.nome, f.criado_em, i.codigo, i.nome item, o.codigo op_codigo from foto f join op o on o.id=f.op_id join item i on i.id=o.item_id
+          join pedido_item pi on pi.id=o.pedido_item_id join pedido pd on pd.id=pi.pedido_id where pd.numero=? order by i.codigo, f.id`, q('pedido')));
+        if (!campo) return json(req, []);
+        return json(req, await all(DB, `select id, nome, criado_em from foto where ${campo}=? order by id`, Number(q(campo))));
+      }
+      if ((m = p.match(/^\/api\/fotos\/(\d+)$/)) && req.method === 'GET') {
+        const f = await one(DB, 'select dados from foto where id=?', Number(m[1]));
+        if (!f) return new Response('não achei', { status: 404, headers: cors(req) });
+        const b64 = f.dados.split(',')[1], bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        return new Response(bin, { headers: { ...cors(req), 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400' } });
+      }
+      if (p === '/api/fotos' && req.method === 'POST') {
+        if (!String(body.dados || '').startsWith('data:image/jpeg;base64,') || body.dados.length > 1500000) return json(req, { erro: 'Foto inválida ou grande demais' }, 400);
+        if (!body.op_id && !body.defeito_id) return json(req, { erro: 'Foto sem OP/defeito' }, 400);
+        const r = await DB.prepare('insert into foto(op_id, defeito_id, nome, dados) values(?,?,?,?)').bind(body.op_id || null, body.defeito_id || null, body.nome || null, body.dados).run();
+        return json(req, { ok: true, id: r.meta.last_row_id });
+      }
+      if ((m = p.match(/^\/api\/fotos\/(\d+)\/apagar$/)) && req.method === 'POST') {
+        await DB.prepare('delete from foto where id=?').bind(Number(m[1])).run();
+        return json(req, { ok: true });
+      }
+
       // ---------- relatório de produção (operações finalizadas no período)
       if (p === '/api/relatorio') {
         const de = q('de') + ' 00:00:00', ate = q('ate') + ' 23:59:59';
@@ -541,3 +701,4 @@ export default {
     }
   },
 };
+export default app;
