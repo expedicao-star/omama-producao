@@ -142,7 +142,7 @@ const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
 const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem'];
 const PERM = [
-  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
+  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
@@ -797,7 +797,12 @@ const app = {
             where o.status='aberta' and t.espera=1 and oo.status='produzindo' and oo.inicio < datetime('now','-10 days') order by oo.inicio limit 15`),
           one(DB, 'select count(*) n, coalesce(sum(ei.qtd),0) pecas from envio e join envio_item ei on ei.envio_id=e.id where e.data >= ?', seg),
         ]);
-        return json(req, { hoje, seg, ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos: defeitos.n, faltas, parados, envios });
+        // quem está produzindo agora (etapas iniciadas ou pausadas, fora as de espera)
+        const agoraProd = await all(DB, `select oo.status, oo.minutos, oo.inicio_atual, oo.tempo_unit_min*o.qtd padrao, o.codigo, o.qtd, i.nome item, t.nome operacao, f.nome funcionario, s.nome setor
+          from op_operacao oo join op o on o.id=oo.op_id join item i on i.id=o.item_id join operacao_tipo t on t.id=oo.operacao_tipo_id
+          left join funcionario f on f.id=oo.funcionario_id left join setor s on s.id=t.setor_id
+          where o.status='aberta' and t.espera=0 and oo.status in ('produzindo','pausado') order by oo.status='pausado', s.id, f.nome`);
+        return json(req, { hoje, seg, ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos: defeitos.n, faltas, parados, envios, agoraProd });
       }
 
       // ---------- relatório semanal (junta tudo da semana)
