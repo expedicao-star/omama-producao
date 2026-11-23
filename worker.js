@@ -808,7 +808,22 @@ const app = {
           from op_operacao oo join op o on o.id=oo.op_id join item i on i.id=o.item_id join operacao_tipo t on t.id=oo.operacao_tipo_id
           left join funcionario f on f.id=oo.funcionario_id left join setor s on s.id=t.setor_id
           where o.status='aberta' and t.espera=0 and oo.status in ('produzindo','pausado') order by oo.status='pausado', s.id, f.nome`);
-        return json(req, { hoje, seg, ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos: defeitos.n, faltas, parados, envios, agoraProd });
+        // evolução semanal: S39–S46 dos relatórios do Drive (historico_semana) + semanas medidas no sistema (desde 23/11/2026)
+        const [hist, sis, dias] = await Promise.all([
+          all(DB, 'select * from historico_semana order by semana'),
+          all(DB, `select date(date(op.finalizado_em, '-4 hours'), '-' || ((cast(strftime('%w', date(op.finalizado_em, '-4 hours')) as int) + 6) % 7) || ' days') inicio,
+              sum(op.qtd) pecas, sum(case when i.nome like 'Banco%' then op.qtd else 0 end) bancos
+            from op join item i on i.id=op.item_id where op.status='finalizada' and op.tipo='OP' and date(op.finalizado_em, '-4 hours') >= '2026-11-23' group by inicio order by inicio`),
+          all(DB, `select date(oo.fim, '-4 hours') dia, t.setor_id, count(*) etapas from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id join op on op.id=oo.op_id
+            where oo.status='finalizado' and t.espera=0 and t.setor_id is not null and date(oo.fim, '-4 hours') >= date('now', '-4 hours', '-13 days') group by dia, t.setor_id`),
+        ]);
+        const semanas = hist.map(h => ({ semana: h.semana, inicio: h.inicio, pecas: h.pecas_op || 0, bancos: h.bancos || 0, regularizacao: h.regularizacao || 0, fonte: 'relatorio', obs: h.obs }));
+        const ultimo = hist.length ? hist[hist.length - 1] : null;
+        sis.forEach(x => { if (ultimo && x.inicio <= ultimo.inicio) return; const n = ultimo ? ultimo.semana + Math.round((Date.parse(x.inicio) - Date.parse(ultimo.inicio)) / 6048e5) : 0;
+          semanas.push({ semana: n, inicio: x.inicio, pecas: x.pecas || 0, bancos: x.bancos || 0, regularizacao: 0, fonte: 'sistema' }); });
+        if (ultimo) { const segAtual = new Date(Date.now() - 4 * 36e5); segAtual.setUTCDate(segAtual.getUTCDate() - ((segAtual.getUTCDay() + 6) % 7)); const ini = segAtual.toISOString().slice(0, 10);
+          if (ini > ultimo.inicio && !semanas.find(x => x.inicio === ini)) semanas.push({ semana: ultimo.semana + Math.round((Date.parse(ini) - Date.parse(ultimo.inicio)) / 6048e5), inicio: ini, pecas: 0, bancos: 0, regularizacao: 0, fonte: 'sistema' }); }
+        return json(req, { hoje, seg, ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos: defeitos.n, faltas, parados, envios, agoraProd, semanas, dias });
       }
 
       // ---------- relatório semanal (junta tudo da semana)
