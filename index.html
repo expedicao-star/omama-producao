@@ -233,7 +233,7 @@ async function tOps(){
 const novaOp = tenta(async (pre={})=>{
   modal(`<h2 style="margin-top:0">Nova OP</h2><input id="ib" placeholder="Buscar item (nome ou código)" style="width:100%"><div id="il" class="grid" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
     <div id="sel" class="mut" style="margin:10px 0">Nenhum item escolhido</div>
-    <div class="row"><label>Qtd <input id="nq" type="number" min="1" value="${pre.qtd||1}" style="width:90px"></label><label>Entrega <input id="nf" type="date"></label></div>
+    <div class="row"><label>Qtd por OP <input id="nq" type="number" min="1" value="${pre.qtd||1}" style="width:90px"></label><label>Quantas OPs <input id="nn" type="number" min="1" max="50" value="1" style="width:80px"></label><label>Entrega <input id="nf" type="date"></label></div>
     <div class="row" style="margin-top:8px"><label>Para qual pedido? <select id="np" style="min-width:280px"><option value="">Estoque (sem pedido)</option></select></label></div><br>
     <div class="row"><button class="btn" id="cria" disabled>Criar OP</button><button class="btn sec" id="mx">Cancelar</button></div>`);
   $('#mx').onclick=()=>modal('');
@@ -244,14 +244,18 @@ const novaOp = tenta(async (pre={})=>{
       const pis=await api('/api/pedido-itens?item_id='+item); $('#np').innerHTML='<option value="">Estoque (sem pedido)</option>'+pis.map(x=>`<option value="${x.id}" ${x.id===pre.pedido_item_id?'selected':''}>Pedido ${esc(x.numero)} · ${esc(x.cliente||'')} · falta ${fmt(x.falta)}${x.etapa_v8?' · v.8: '+esc(x.etapa_v8):''}</option>`).join('');
       $('#np').onchange=()=>{ const x=pis.find(z=>z.id===+$('#np').value); if(x){ $('#nq').value=Math.max(1,x.falta); if(x.prazo&&!$('#nf').value) $('#nf').value=x.prazo.slice(0,10); confere(); } }; if(pre.pedido_item_id) $('#np').onchange(); }); };
   let comp=[];
-  const confere=()=>{ if(!item) return; const q=+$('#nq').value||0;
+  const confere=()=>{ const n=Math.max(1,Math.floor(+$('#nn').value||1)); $('#cria').textContent=n>1?'Criar '+n+' OPs':'Criar OP'; if(!item) return; const q=(+$('#nq').value||0)*n;
     const max=comp.length?Math.floor(Math.min(...comp.map(c=>c.saldo_patio/c.qtd))+1e-9):null;
     $('#blk').innerHTML=comp.length?comp.map(c=>`<div>${esc(c.nome)}: precisa <b>${fmt(c.qtd*q,3)}</b> · tem no Pátio <b class="${c.saldo_patio+1e-9<c.qtd*q?'bad':'ok'}">${fmt(c.saldo_patio,3)}</b></div>`).join('')+`<div>Dá para fazer até <b>${Math.max(0,max)}</b> peça(s) com o bloco do Pátio.</div>`:'<div>Sem composição de bloco cadastrada.</div>';
     $('#cria').disabled = !(q>0) || (max!==null && q>max); };
-  $('#nq').oninput=confere;
+  $('#nq').oninput=confere; $('#nn').oninput=confere;
   if(pre.nome) $('#ib').value=pre.nome;
   $('#ib').oninput=()=>{clearTimeout(t); t=setTimeout(busca,300)}; await busca(); if(pre.item_id){ const ch=$('#il [data-id="'+pre.item_id+'"]'); if(ch) ch.click(); }
-  $('#cria').onclick=tenta(async()=>{ const r=await api('/api/ops',{item_id:item,qtd:+$('#nq').value,previsao_fim:$('#nf').value||null,pedido_item_id:+$('#np').value||null}); toast('OP '+r.codigo+' criada · blocos baixados do Pátio'); modal(''); abrirOp(r.codigo); });
+  $('#cria').onclick=tenta(async()=>{ const n=Math.min(50,Math.max(1,Math.floor(+$('#nn').value||1))); if(n>1&&!confirm('Criar '+n+' OPs separadas de '+(+$('#nq').value)+' un cada?')) return;
+    $('#cria').disabled=true; const feitas=[];
+    try{ for(let k=0;k<n;k++){ const r=await api('/api/ops',{item_id:item,qtd:+$('#nq').value,previsao_fim:$('#nf').value||null,pedido_item_id:+$('#np').value||null}); feitas.push(r.codigo); $('#cria').textContent='Criando '+(k+1)+' de '+n+'…'; } }
+    catch(e){ if(!feitas.length){ $('#cria').disabled=false; confere(); throw e; } toast('Criei '+feitas.length+' de '+n+' OPs ('+feitas.join(', ')+'). Parou: '+e.message,1); modal(''); render(); return; }
+    modal(''); if(n===1){ toast('OP '+feitas[0]+' criada · blocos baixados do Pátio'); abrirOp(feitas[0]); } else { toast(n+' OPs criadas: '+feitas[0]+' a '+feitas[n-1]+' · blocos baixados do Pátio'); render(); } });
 });
 
 // ===== detalhe da OP
