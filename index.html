@@ -599,12 +599,61 @@ const abrirPcp=tenta(async(id,novo)=>{
 });
 
 // ===== painel da fábrica
-let tvTimer=null;
+let tvTimer=null, tvRot=null;
+const COR_SETOR={1:'#9F76FF',2:'#5B3FB8',3:'#2f6fd1',4:'#2e9e5b',5:'#d14343'};
+// gráfico de barras empilhadas em SVG (sem biblioteca)
+function barrasSVG(labels, series, h, opts={}){
+  const n=labels.length, W=Math.max(320,n*72+50), top=26, base=h-42, tot=labels.map((_,i)=>series.reduce((a,s)=>a+(s.vals[i]||0),0)), M=Math.max(1,...tot), st=M<=5?1:M<=10?2:Math.ceil(M/4/5)*5, topo=Math.ceil(M/st)*st, mx=topo*1.1, bw=Math.min(46,(W-50)/n*0.62);
+  const y=v=>base-(v/mx)*(base-top);
+  let g=`<svg viewBox="0 0 ${W} ${h}" width="100%" style="max-height:${h*1.6}px;font-family:inherit">`;
+  for(let v=0;v<=topo;v+=st){ const yy=y(v); g+=`<line x1="40" x2="${W-6}" y1="${yy}" y2="${yy}" stroke="var(--line)" stroke-width="1"/><text x="34" y="${yy+4}" text-anchor="end" font-size="11" fill="var(--mut)">${Math.round(v)}</text>`; }
+  labels.forEach((l,i)=>{ const x=46+(i+0.5)*(W-52)/n; let acc=0;
+    series.forEach(s=>{ const v=s.vals[i]||0; if(!v) return; const y0=y(acc), y1=y(acc+v); g+=`<rect x="${x-bw/2}" y="${y1}" width="${bw}" height="${Math.max(0,y0-y1)}" rx="3" fill="${s.cor}" ${opts.tracejar&&opts.tracejar[i]?'opacity=".55"':''}><title>${s.nome}: ${v}</title></rect>`; acc+=v; });
+    g+=`<text x="${x}" y="${y(tot[i])-6}" text-anchor="middle" font-size="14" font-weight="800" fill="var(--txt)">${tot[i]}</text>`;
+    g+=`<text x="${x}" y="${base+16}" text-anchor="middle" font-size="12" font-weight="700" fill="${opts.destaque===i?'var(--amb)':'var(--txt)'}">${esc(l)}</text>`;
+    if(opts.sub) g+=`<text x="${x}" y="${base+31}" text-anchor="middle" font-size="10" fill="var(--mut)">${esc(opts.sub[i]||'')}</text>`; });
+  g+='</svg>';
+  return g+`<div class="row" style="gap:14px;justify-content:center;font-size:13px;margin-top:4px">${series.map(s=>`<span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${s.cor};vertical-align:middle;margin-right:5px"></i>${esc(s.nome)}</span>`).join('')}</div>`;
+}
+function graficoEvol(sem,h){ if(!sem||!sem.length) return '<div class="mut">Sem dados.</div>';
+  const L=sem.map(x=>'S'+x.semana), sub=sem.map(x=>brData(x.inicio).slice(0,5)+(x.fonte==='sistema'?' ·sist.':''));
+  return barrasSVG(L,[{nome:'Bancos',cor:'#7C55E0',vals:sem.map(x=>x.bancos)},{nome:'Outras peças',cor:'#2f6fd1',vals:sem.map(x=>Math.max(0,x.pecas-x.bancos-x.regularizacao))},{nome:'Regularização (feita sem OP)',cor:'#c9c3d8',vals:sem.map(x=>x.regularizacao)}],h,{sub,destaque:sem.length-1}); }
+function graficoDias(d,h){ const dias=[]; for(let k=13;k>=0;k--){ const x=new Date(hojeISO()+'T12:00'); x.setDate(x.getDate()-k); if(x.getDay()!==0) dias.push(x.toISOString().slice(0,10)); }
+  const set=B.setores; return barrasSVG(dias.map(x=>brData(x).slice(0,5)),set.map(st=>({nome:st.nome,cor:COR_SETOR[st.id]||'#999',vals:dias.map(di=>(d.dias.find(r=>r.dia===di&&r.setor_id===st.id)||{}).etapas||0)})),h,{destaque:dias.length-1}); }
+// Modo TV: apresentação que passa sozinha (troca a cada 15 s, dados a cada 60 s)
+function tTV(d,ef){
+  clearInterval(tvRot);
+  const bg=p=>p===null?'var(--line)':p>=100?'#2e9e5b':p>=80?'#d89a1c':'#d14343';
+  const prod=d.agoraProd||[], efl=ef?ef.lista.filter(f=>f.dias):[], mx=Math.max(130,...efl.map(f=>f.eficiencia||0));
+  const big=(n,t,c)=>`<div class="card" style="text-align:center;padding:18px"><div style="font-size:54px;font-weight:800;line-height:1;color:${c||'var(--amb)'}">${n}</div><div class="mut" style="font-size:16px;margin-top:6px">${t}</div></div>`;
+  const slides=[
+    ['Agora na fábrica',`<div class="grid" style="grid-template-columns:repeat(5,1fr)">${big(d.ops.n,'OPs abertas')}${big(fmt(d.ops.pecas),'peças em produção')}${big(d.hojeProd.ops,'etapas finalizadas hoje','var(--ok)')}${big(fmt(d.semanaProd.pecas),'peças finalizadas na semana','var(--ok)')}${big(d.atrasadas.length,'OPs atrasadas',d.atrasadas.length?'var(--bad)':'var(--ok)')}</div>
+      <h2 style="margin-top:22px">Produzindo agora (${prod.filter(x=>x.status==='produzindo').length})</h2><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">${prod.map(x=>{ const t=x.status==='produzindo'?decorrido(x):(x.minutos||0), pct=x.padrao>0?t/x.padrao*100:null;
+        return `<div class="card" style="padding:14px;border-left:8px solid ${x.status==='pausado'?'var(--mid)':pct!==null&&pct>100?'var(--bad)':'var(--ok)'}"><div style="font-size:26px;font-weight:800">${esc(x.funcionario||'—')}</div><div style="font-size:18px">${esc(x.operacao)}</div><div class="mut">${nomeOp(x.codigo)} · ${esc(x.item)}</div>
+          ${x.status==='pausado'?`<div class="${/^(Acidente|Saúde)/.test(x.pausa_motivo||'')?'bad':'midc'}" style="font-weight:800;font-size:18px">PAUSADO · ${esc(x.pausa_motivo||'')}</div>`:''}<div style="font-size:30px;font-weight:800;margin-top:4px" data-tempo='${JSON.stringify({minutos:x.minutos,status:x.status,inicio_atual:x.inicio_atual})}'>${dur(t)}</div><div class="mut">padrão ${x.padrao?dur(x.padrao):'—'}</div></div>`; }).join('')||'<div class="card vazio" style="font-size:20px">Ninguém com etapa iniciada agora.</div>'}</div>`],
+    ['Eficiência de hoje · pela meta de peças/dia', ef&&efl.length?`<div class="grid" style="grid-template-columns:1fr 1fr;gap:14px 40px">${efl.map(f=>`<div class="row" style="gap:12px;flex-wrap:nowrap"><span style="min-width:130px;font-size:24px;font-weight:800">${esc(f.nome)}</span><div style="flex:1;height:30px;background:var(--line);border-radius:15px;overflow:hidden"><i style="display:block;height:100%;width:${f.eficiencia===null?0:Math.min(100,f.eficiencia/mx*100)}%;background:${bg(f.eficiencia)}"></i></div><b style="min-width:84px;text-align:right;font-size:28px;color:${bg(f.eficiencia)}">${f.eficiencia===null?'–':f.eficiencia+'%'}</b></div>`).join('')}</div><p class="mut" style="margin-top:20px">Verde ≥ 100% da meta · amarelo 80–99% · vermelho &lt; 80%.</p>`:'<div class="card vazio" style="font-size:22px">Ninguém finalizou etapa hoje ainda.</div>'],
+    ['Evolução da produção · peças que entraram no P.A. por semana',`<div class="card">${graficoEvol(d.semanas,300)}</div><p class="mut">S39 a S46: relatórios semanais do Drive (Sensio). Da S47 em diante: medido no sistema. Cinza = peças que já estavam prontas e só ganharam OP depois.</p>`],
+    ['Produção dos últimos dias · etapas finalizadas por setor',`<div class="card">${graficoDias(d,300)}</div>`],
+    ['Pedidos e atrasos',`<div class="grid" style="grid-template-columns:1fr 1fr;gap:20px"><div class="card"><h2 style="margin-top:0">Pedidos vencendo em 7 dias</h2>${d.pedidos.map(p=>{ const x=diasAte(p.prazo); return `<div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:20px"><span><b>${esc(p.numero)}</b> · ${esc(p.cliente||'')}</span><b class="${x<0?'bad':x<=2?'midc':''}">${x<0?Math.abs(x)+' d atrasado':x===0?'hoje':x+' d'}</b></div>`; }).join('')||'<div class="mut">Nenhum.</div>'}</div>
+      <div class="card"><h2 style="margin-top:0">OPs atrasadas (${d.atrasadas.length})</h2>${d.atrasadas.slice(0,10).map(o=>`<div style="padding:8px 0;border-bottom:1px solid var(--line);font-size:19px"><b>${nomeOp(o.codigo)}</b> · ${esc(o.nome)} <span class="mut">· ${esc(o.estagio)}</span></div>`).join('')||'<div class="mut">Nenhuma.</div>'}</div></div>`],
+    ['Peças por estágio',`<div class="card">${(()=>{ const m=Math.max(1,...d.estagios.map(e=>e.pecas)); return d.estagios.map(e=>`<div style="margin:10px 0"><div class="row" style="justify-content:space-between;font-size:20px"><span>${esc(e.nome)}</span><b>${fmt(e.pecas)}</b></div><div class="bar" style="height:14px"><i style="width:${e.pecas/m*100}%"></i></div></div>`).join(''); })()}</div>`],
+  ];
+  S.tvIdx=(S.tvIdx||0)%slides.length;
+  const mostra=()=>{ const [t,h]=slides[S.tvIdx];
+    app.innerHTML=`<div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0;font-size:26px;letter-spacing:.02em">${t}</h2>
+      <div class="row" style="gap:14px"><span style="font-size:18px" class="mut">${new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>${slides.map((_,i)=>`<span data-sl="${i}" style="cursor:pointer;display:inline-block;width:12px;height:12px;border-radius:6px;background:${i===S.tvIdx?'var(--amb)':'var(--line)'}"></span>`).join('')}<button class="btn sec sm" id="tv">Sair do modo TV</button></div></div><br>${h}`;
+    app.querySelectorAll('[data-sl]').forEach(x=>x.onclick=()=>{ S.tvIdx=+x.dataset.sl; mostra(); });
+    $('#tv').onclick=()=>{ clearInterval(tvRot); clearInterval(tvTimer); document.body.classList.remove('tv'); if(document.fullscreenElement) document.exitFullscreen(); tPainel(false); }; };
+  mostra();
+  tvRot=setInterval(()=>{ if(S.tab!=='painel'||!document.body.classList.contains('tv')){ clearInterval(tvRot); return; } if($('#mbg')) return; S.tvIdx=(S.tvIdx+1)%slides.length; mostra(); },15000);
+  clearInterval(tvTimer); tvTimer=setInterval(()=>{ if(S.tab==='painel'&&document.body.classList.contains('tv')&&!$('#mbg')) tPainel(true); else clearInterval(tvTimer); },60000);
+}
 async function tPainel(tv){
-  clearInterval(tvTimer);
+  clearInterval(tvTimer); clearInterval(tvRot);
   const hj=hojeISO(), [d,ef]=await Promise.all([api('/api/painel'),api(`/api/eficiencia?de=${hj}&ate=${hj}`).catch(()=>null)]);
   const bgE=p=>p===null?'var(--line)':p>=100?'#2e9e5b':p>=80?'#d89a1c':'#d14343';
   const prod=d.agoraProd||[], efl=ef?ef.lista.filter(f=>f.dias):[], maxEf=Math.max(130,...efl.map(f=>f.eficiencia||0));
+  if(tv) return tTV(d,ef);
   const k=(n,t,c)=>`<div class="card" style="text-align:center"><div style="font-size:34px;font-weight:800;color:${c||'var(--amb)'}">${n}</div><div class="mut">${t}</div></div>`;
   const maxE=Math.max(1,...d.estagios.map(e=>e.pecas));
   const ST={falta_injustificada:'falta',falta_justificada:'falta justificada',atestado:'atestado',atraso:'atraso',folga:'folga/férias'};
@@ -618,6 +667,7 @@ async function tPainel(tv){
             <div style="margin-top:4px"><b style="font-size:1.2em" data-tempo='${JSON.stringify({minutos:x.minutos,status:x.status,inicio_atual:x.inicio_atual})}'>${dur(t)}</b> <span class="mut">/ padrão ${x.padrao?dur(x.padrao):'—'}</span></div></div>`; }).join('')||'<div class="mut">Ninguém com etapa iniciada agora.</div>'}</div></div>
       <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Eficiência de hoje (pela meta de peças/dia)</b><span class="mut">verde ≥ 100% · amarelo 80–99% · vermelho &lt; 80%</span></div>
         ${ef?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 18px;margin-top:8px">${efl.map(f=>`<div class="row" style="gap:8px;flex-wrap:nowrap"><span style="min-width:90px;font-weight:700">${esc(f.nome)}</span><div style="flex:1;height:14px;background:var(--line);border-radius:7px;overflow:hidden"><i style="display:block;height:100%;width:${f.eficiencia===null?0:Math.min(100,f.eficiencia/maxEf*100)}%;background:${bgE(f.eficiencia)}"></i></div><b style="min-width:52px;text-align:right;color:${bgE(f.eficiencia)}">${f.eficiencia===null?'–':f.eficiencia+'%'}</b></div>`).join('')||'<div class="mut">Ninguém finalizou etapa hoje ainda.</div>'}</div>`:'<div class="mut">Sem acesso à eficiência.</div>'}</div>
+      <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Evolução da produção · peças que entraram no P.A. por semana</b><span class="mut">S39–S46 dos relatórios semanais do Drive · a partir da S47, medido no sistema</span></div>${graficoEvol(d.semanas,230)}</div>
       <div class="card"><b>Peças por estágio</b>${d.estagios.map(e=>`<div style="margin-top:6px"><div class="row" style="justify-content:space-between"><span style="font-size:13px">${esc(e.nome)}</span><b>${fmt(e.pecas)}</b></div><div class="bar"><i style="width:${e.pecas/maxE*100}%"></i></div></div>`).join('')}</div>
       <div class="card"><b>Pedidos vencendo em 7 dias</b>${d.pedidos.map(p=>{ const x=diasAte(p.prazo); return `<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span>${esc(p.numero)} · ${esc(p.cliente||'')}<br><span class="mut">${fmt(p.conferidas)}/${fmt(p.pecas)} conferidas</span></span><b class="${x<0?'bad':'midc'}">${x<0?Math.abs(x)+' d atrasado':x===0?'hoje':x+' d'}</b></div>`}).join('')||'<div class="mut" style="margin-top:6px">Nenhum.</div>'}</div>
       <div class="card"><b>OPs atrasadas</b>${d.atrasadas.map(o=>`<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.nome)} · ${fmt(o.qtd)} un<br><span class="mut">${esc(o.estagio)} · previsto ${brData(o.previsao_fim)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nenhuma.</div>'}</div>
