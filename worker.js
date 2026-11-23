@@ -535,7 +535,8 @@ const app = {
             (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status<>'cancelada') com_op,
             (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status='finalizada') op_fin,
             (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status='aberta' and estagio_id>=11) op_acab,
-            (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status='aberta' and estagio_id<11) op_prod
+            (select coalesce(sum(qtd),0) from op where pedido_item_id=pi.id and status='aberta' and estagio_id<11) op_prod,
+            (select count(*) from foto where pedido_item_id=pi.id) + (select count(*) from foto f join op o on o.id=f.op_id where o.pedido_item_id=pi.id) fotos
           from pedido_item pi left join item i on i.id=pi.item_id where pi.pedido_id=? order by pi.id`, pd.id);
         const [ops, envios] = await Promise.all([opsAbertas(DB, "pi.pedido_id=? and op.status<>'cancelada'", pd.id),
           all(DB, `select e.*, (select group_concat(cast(ei.qtd as int) || ' × ' || pi.descricao, ' · ') from envio_item ei join pedido_item pi on pi.id=ei.pedido_item_id where ei.envio_id=e.id) itens
@@ -809,9 +810,13 @@ const app = {
 
       // ---------- fotos (guardadas no banco já reduzidas pelo navegador)
       if (p === '/api/fotos' && req.method === 'GET') {
-        const campo = q('op_id') ? 'op_id' : q('defeito_id') ? 'defeito_id' : null;
-        if (q('pedido')) return json(req, await all(DB, `select f.id, f.nome, f.criado_em, i.codigo, i.nome item, o.codigo op_codigo from foto f join op o on o.id=f.op_id join item i on i.id=o.item_id
-          join pedido_item pi on pi.id=o.pedido_item_id join pedido pd on pd.id=pi.pedido_id where pd.numero=? order by i.codigo, f.id`, q('pedido')));
+        const campo = q('op_id') ? 'op_id' : q('defeito_id') ? 'defeito_id' : q('pedido_item_id') ? 'pedido_item_id' : null;
+        if (q('pedido')) return json(req, await all(DB, `select * from (
+            select f.id, f.nome, f.criado_em, i.codigo, i.nome item, o.codigo op_codigo from foto f join op o on o.id=f.op_id join item i on i.id=o.item_id
+              join pedido_item pi on pi.id=o.pedido_item_id join pedido pd on pd.id=pi.pedido_id where pd.numero=?
+            union all
+            select f.id, f.nome, f.criado_em, coalesce(i.codigo, pi.descricao) codigo, coalesce(i.nome, pi.descricao) item, null op_codigo from foto f join pedido_item pi on pi.id=f.pedido_item_id
+              left join item i on i.id=pi.item_id join pedido pd on pd.id=pi.pedido_id where pd.numero=?) order by codigo, id`, q('pedido'), q('pedido')));
         if (!campo) return json(req, []);
         return json(req, await all(DB, `select id, nome, criado_em from foto where ${campo}=? order by id`, Number(q(campo))));
       }
@@ -823,8 +828,8 @@ const app = {
       }
       if (p === '/api/fotos' && req.method === 'POST') {
         if (!String(body.dados || '').startsWith('data:image/jpeg;base64,') || body.dados.length > 1500000) return json(req, { erro: 'Foto inválida ou grande demais' }, 400);
-        if (!body.op_id && !body.defeito_id) return json(req, { erro: 'Foto sem OP/defeito' }, 400);
-        const r = await DB.prepare('insert into foto(op_id, defeito_id, nome, dados) values(?,?,?,?)').bind(body.op_id || null, body.defeito_id || null, body.nome || null, body.dados).run();
+        if (!body.op_id && !body.defeito_id && !body.pedido_item_id) return json(req, { erro: 'Foto sem OP/defeito/pedido' }, 400);
+        const r = await DB.prepare('insert into foto(op_id, defeito_id, pedido_item_id, nome, dados) values(?,?,?,?,?)').bind(body.op_id || null, body.defeito_id || null, body.pedido_item_id || null, body.nome || null, body.dados).run();
         return json(req, { ok: true, id: r.meta.last_row_id });
       }
       if ((m = p.match(/^\/api\/fotos\/(\d+)\/apagar$/)) && req.method === 'POST') {
