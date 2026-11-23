@@ -103,13 +103,13 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
-  const r = await fetch(API()+path, body===undefined?{headers:{'X-Codigo':ls.get('codigo')||''}}:{method:'POST',headers:{'Content-Type':'application/json','X-Codigo':ls.get('codigo')||''},body:JSON.stringify(body)});
+  const r = await fetch(API()+path, body===undefined?{headers:{'X-Token':ls.get('token')||''}}:{method:'POST',headers:{'Content-Type':'application/json','X-Token':ls.get('token')||''},body:JSON.stringify(body)});
   const j = await r.json().catch(()=>({erro:'Resposta inválida do servidor'}));
-  if (r.status===401){ ls.del('codigo'); telaLogin('Código inválido'); throw new Error('401'); }
+  if (r.status===401){ ls.del('token'); telaLogin('Entre de novo com seu usuário e senha'); throw new Error('401'); }
   if (!r.ok) throw new Error(j.erro||'Erro');
   return j;
 }
@@ -126,16 +126,28 @@ function escolher(titulo, opcoes){ // opcoes: [{id,nome,sub}]
 const pessoas = setor_id => [...B.funcionarios].sort((a,b)=>(b.setor_id===setor_id)-(a.setor_id===setor_id)||a.nome.localeCompare(b.nome)).map(f=>({id:f.id,nome:f.nome,sub:(B.setores.find(s=>s.id===f.setor_id)||{}).nome}));
 
 // ===== login
-function telaLogin(msg){
-  document.body.classList.remove('logado','menu');
-  app.innerHTML = `<div class="login"><h2>Código de acesso</h2><input id="cod" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
-    <button class="btn" id="entrar" style="width:100%">Entrar</button><p class="bad">${esc(msg||'')}</p></div>`;
-  $('#entrar').onclick = async()=>{ ls.set('codigo',$('#cod').value.trim()); await iniciar(); };
-  $('#cod').onkeydown = e=>{ if(e.key==='Enter') $('#entrar').click(); };
+let EU=null;
+const semAuth=(path,body)=>fetch(API()+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}).then(async r=>{ const j=await r.json().catch(()=>({erro:'Resposta inválida do servidor'})); if(!r.ok) throw new Error(j.erro||'Erro'); return j; });
+async function telaLogin(msg){
+  document.body.classList.remove('logado','menu'); ls.del('codigo'); B=null; EU=null;
+  let primeiro=false; try{ primeiro=!(await semAuth('/api/auth/estado')).tem_usuarios; }catch(e){ msg=msg||'Não consegui falar com o servidor'; }
+  app.innerHTML = primeiro?`<div class="login" style="max-width:380px"><h2>Criar o administrador</h2><p class="mut">Primeiro acesso: crie o seu usuário de administrador. Para confirmar que é você, digite também o código antigo do sistema.</p>
+      <input id="lc" type="password" inputmode="numeric" placeholder="Código do sistema" autocomplete="off" style="letter-spacing:normal;font-size:16px"><input id="ln" placeholder="Seu nome" style="letter-spacing:normal;font-size:16px">
+      <input id="ll" placeholder="Usuário (ex.: emanuel)" autocapitalize="none" autocomplete="username" style="letter-spacing:normal;font-size:16px"><input id="ls1" type="password" placeholder="Senha (mín. 6)" autocomplete="new-password" style="letter-spacing:normal;font-size:16px"><input id="ls2" type="password" placeholder="Repita a senha" autocomplete="new-password" style="letter-spacing:normal;font-size:16px">
+      <button class="btn" id="entrar" style="width:100%">Criar e entrar</button><p class="bad" id="lm">${esc(msg||'')}</p></div>`
+    :`<div class="login"><h2>Entrar</h2><input id="ll" placeholder="Usuário" autocapitalize="none" autocomplete="username" style="letter-spacing:normal;font-size:18px"><input id="ls1" type="password" placeholder="Senha" autocomplete="current-password" style="letter-spacing:normal;font-size:18px">
+      <button class="btn" id="entrar" style="width:100%">Entrar</button><p class="bad" id="lm">${esc(msg||'')}</p></div>`;
+  $('#entrar').onclick = async()=>{ try{
+      let r; if(primeiro){ if($('#ls1').value!==$('#ls2').value) throw new Error('As duas senhas não são iguais'); r=await semAuth('/api/auth/primeiro',{codigo:$('#lc').value.trim(),nome:$('#ln').value,login:$('#ll').value,senha:$('#ls1').value}); }
+      else r=await semAuth('/api/auth/login',{login:$('#ll').value,senha:$('#ls1').value});
+      ls.set('token',r.token); await iniciar(); }catch(e){ $('#lm').textContent=e.message; } };
+  app.querySelectorAll('input').forEach(i=>i.onkeydown=e=>{ if(e.key==='Enter') $('#entrar').click(); });
+  (app.querySelector('input')||{focus(){}}).focus();
 }
 async function iniciar(){
-  if(!ls.get('codigo')) return telaLogin();
-  try{ B = await api('/api/base'); }catch(e){ if(e.message!=='401') telaLogin('Não consegui falar com o servidor ('+e.message+')'); return; }
+  if(!ls.get('token')) return telaLogin();
+  try{ [B,EU] = await Promise.all([api('/api/base'),api('/api/eu')]); }catch(e){ if(e.message!=='401') telaLogin('Não consegui falar com o servidor ('+e.message+')'); return; }
+  if(S.tab==='usu'&&!EU.admin) S.tab='painel';
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
@@ -144,15 +156,16 @@ let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e
 function menu(){
   $('#side').innerHTML=MENU.map(([g,its])=>`<button class="gh ${fechados.includes(g)?'fechado':''}" data-g="${g}">${g}<i>▾</i></button>
     <div ${fechados.includes(g)?'style="display:none"':''}>${its.map(([t,ic,n])=>`<button class="gi ${S.tab===t?'on':''}" data-t="${t}"><b>${ic}</b>${n}</button>`).join('')}</div>`).join('')
-    +`<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px"><button class="gi" id="sair" style="color:var(--mut)"><b>⏻</b>Sair deste aparelho</button></div>`;
+    +`<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px"><div class="mut" style="padding:4px 18px">Entrou como <b>${esc(EU&&EU.nome||'')}</b>${EU&&EU.admin?' · admin':''}</div>${EU&&EU.admin?`<button class="gi ${S.tab==='usu'?'on':''}" data-t="usu"><b>⚿</b>Usuários</button>`:''}<button class="gi" id="senha" style="color:var(--mut)"><b>✱</b>Trocar minha senha</button><button class="gi" id="sair" style="color:var(--mut)"><b>⏻</b>Sair</button></div>`;
   $('#side').querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{ const g=b.dataset.g; fechados=fechados.includes(g)?fechados.filter(x=>x!==g):[...fechados,g]; ls.set('menuFechado',JSON.stringify(fechados)); menu(); });
   $('#side').querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{ S.tab=b.dataset.t; ls.set('aba',S.tab); document.body.classList.remove('menu'); menu(); render(); });
-  $('#sair').onclick=()=>{ ls.del('codigo'); B=null; telaLogin(); };
-  const at=MENU.flatMap(x=>x[1]).find(x=>x[0]===S.tab); $('#pg').textContent=at?at[2]:'';
+  $('#senha').onclick=()=>{ document.body.classList.remove('menu'); trocarSenha(); };
+  $('#sair').onclick=async()=>{ try{ await api('/api/auth/sair',{}); }catch(e){} ls.del('token'); telaLogin(); };
+  const at=MENU.flatMap(x=>x[1]).find(x=>x[0]===S.tab); $('#pg').textContent=at?at[2]:S.tab==='usu'?'Usuários':'';
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); ({painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
+function render(){ if(!B) return; modal(''); ({painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -411,7 +424,7 @@ const abrirInv=tenta(async id=>{
 
 // ===== fotos (OP, defeito) e zip do pedido
 const reduzFoto=file=>new Promise((res,rej)=>{ const img=new Image(), u=URL.createObjectURL(file); img.onload=()=>{ const s=Math.min(1,1280/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg',0.75)); }; img.onerror=()=>rej(new Error('Não consegui ler a foto')); img.src=u; });
-const fotoUrl=id=>`${API()}/api/fotos/${id}?c=${encodeURIComponent(ls.get('codigo')||'')}`;
+const fotoUrl=id=>`${API()}/api/fotos/${id}?t=${encodeURIComponent(ls.get('token')||'')}`;
 async function galeria(el,ref){
   const k=Object.keys(ref)[0], l=await api(`/api/fotos?${k}=${ref[k]}`);
   el.innerHTML=`<div class="row" style="gap:8px">${l.map(f=>`<div style="position:relative"><a href="${fotoUrl(f.id)}" target="_blank"><img src="${fotoUrl(f.id)}" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:10px;border:1px solid var(--line)"></a><span class="link" data-x="${f.id}" style="position:absolute;top:2px;right:6px;font-size:12px;background:#fff;border-radius:6px;padding:0 4px">apagar</span></div>`).join('')}
@@ -529,6 +542,32 @@ async function tSemana(){
     <h2>Defeitos</h2><div class="card">${df.porMotivo.map(x=>`<div>${esc(x.motivo)}: <b>${fmt(x.qtd)}</b></div>`).join('')||'<span class="mut">Nenhum defeito.</span>'}</div>
     <h2>Assiduidade</h2><div class="card">${pr.map(x=>`<div>${brData(x.data)} · ${esc(x.nome)} · ${ST[x.status]||x.status}${x.minutos?' ('+x.minutos+' min)':''}${x.obs?' · '+esc(x.obs):''}</div>`).join('')||'<span class="mut">Nenhuma falta ou atraso.</span>'}</div>
     <h2>Madeira e estoque</h2><div class="card">${s.entradas.map(e=>`<div>Entrada ${brData(e.data)}${e.fornecedor?' · '+esc(e.fornecedor):''}: ${fmt(e.qtd,3)} bloco(s)</div>`).join('')}${s.inventarios.map(v=>`<div>Inventário nº ${v.id} (${esc(v.deposito)}) fechado: ${v.ajustes} ajuste(s)</div>`).join('')||(s.entradas.length?'':'<span class="mut">Nenhuma entrada de madeira nem inventário.</span>')}</div>`;
+}
+
+// ===== usuários (só o administrador)
+async function tUsuarios(){
+  if(!EU||!EU.admin){ app.innerHTML='<div class="vazio">Só o administrador mexe em usuários.</div>'; return; }
+  const r=await api('/api/usuarios'), ativos=r.lista.filter(u=>!u.admin&&u.ativo).length;
+  app.innerHTML=`<h2>Novo usuário <span class="mut" style="text-transform:none;letter-spacing:0">(${ativos} de ${r.max} em uso)</span></h2>
+    <div class="card"><div class="row"><input id="un" placeholder="Nome (ex.: Raimundo)"><input id="ul" placeholder="Usuário (ex.: raimundo)" autocomplete="off" autocapitalize="none"><input id="us" type="password" placeholder="Senha (mín. 6)" autocomplete="new-password"><button class="btn" id="ug" ${ativos>=r.max?'disabled':''}>Criar</button></div>
+    <p class="mut">${ativos>=r.max?'Chegou no limite de '+r.max+' usuários. Desative um para criar outro.':'O usuário entra no site com esse usuário e senha. Depois ele pode trocar a senha no menu.'}</p></div>
+    <h2>Usuários</h2><div class="card"><table><tr><th>Nome</th><th>Usuário</th><th>Tipo</th><th>Situação</th><th>Último acesso</th><th></th></tr>
+    ${r.lista.map(u=>`<tr style="${u.ativo?'':'opacity:.5'}"><td><b>${esc(u.nome||'')}</b></td><td>${esc(u.login)}</td><td>${u.admin?'<span class="tag t-finalizado">Administrador</span>':'Usuário'}</td><td>${u.ativo?'<span class="tag t-produzindo">Ativo</span>':'<span class="tag t-pendente">Desativado</span>'}</td><td class="mut">${u.ultimo_acesso?brHora(u.ultimo_acesso):'nunca'}</td><td class="n"><button class="btn sec sm" data-u="${u.id}">Editar</button></td></tr>`).join('')}</table></div>`;
+  $('#ug').onclick=tenta(async()=>{ await api('/api/usuarios',{nome:$('#un').value,login:$('#ul').value,senha:$('#us').value}); toast('Usuário '+$('#ul').value.trim().toLowerCase()+' criado'); tUsuarios(); });
+  app.querySelectorAll('[data-u]').forEach(b=>b.onclick=()=>{ const u=r.lista.find(x=>x.id===+b.dataset.u);
+    modal(`<h2 style="margin-top:0">Editar ${esc(u.login)}</h2><div class="mut">Nome</div><input id="en" value="${esc(u.nome||'')}" style="width:100%"><br><br>
+      <div class="mut">Nova senha (deixe vazio para não mudar)</div><input id="es" type="password" autocomplete="new-password" style="width:100%"><br><br>
+      ${u.admin?'':`<label class="row" style="gap:6px"><input type="checkbox" id="ea" ${u.ativo?'checked':''}> Ativo (desativado não consegue entrar)</label><br>`}
+      <div class="row"><button class="btn" id="eg">Salvar</button><button class="btn sec" id="ex">Voltar</button></div>`);
+    $('#ex').onclick=()=>modal('');
+    $('#eg').onclick=tenta(async()=>{ const b={nome:$('#en').value}; if($('#es').value) b.senha=$('#es').value; if($('#ea')) b.ativo=$('#ea').checked; await api('/api/usuarios/'+u.id,b); toast('Salvo'); modal(''); tUsuarios(); }); });
+}
+function trocarSenha(){
+  modal(`<h2 style="margin-top:0">Trocar minha senha</h2><div class="mut">Senha atual</div><input id="sa" type="password" autocomplete="current-password" style="width:100%"><br><br>
+    <div class="mut">Senha nova (mín. 6)</div><input id="sn" type="password" autocomplete="new-password" style="width:100%"><br><br><div class="mut">Repita a senha nova</div><input id="sr" type="password" autocomplete="new-password" style="width:100%"><br><br>
+    <div class="row"><button class="btn" id="sg">Trocar</button><button class="btn sec" id="sx">Voltar</button></div>`);
+  $('#sx').onclick=()=>modal('');
+  $('#sg').onclick=tenta(async()=>{ if($('#sn').value!==$('#sr').value) throw new Error('As duas senhas novas não são iguais'); await api('/api/auth/senha',{atual:$('#sa').value,nova:$('#sn').value}); toast('Senha trocada'); modal(''); });
 }
 
 // ===== relatório de produção
