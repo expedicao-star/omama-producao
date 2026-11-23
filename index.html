@@ -152,7 +152,7 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['sem','▤','Semana']]]];
+const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 const pode=t=>!!EU&&(EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
@@ -167,7 +167,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -630,6 +630,31 @@ function periodo(){ const d=new Date(hojeISO()+'T12:00'), iso=x=>x.toISOString()
   if(S.per==='dia') return [iso(d),iso(d)];
   if(S.per==='semana'){ const s=new Date(d); s.setDate(d.getDate()-((d.getDay()+6)%7)); return [iso(s),iso(d)]; }
   return [iso(new Date(d.getFullYear(),d.getMonth(),1,12)),iso(d)]; }
+// ===== eficiência por funcionário (ranking + defeitos/RT + evolução 8 semanas)
+async function tEfic(){
+  const [de,ate]=periodo(); S.esetor=S.esetor||0;
+  app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Eficiência por funcionário · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2>
+    <div class="row">${['dia','semana','mes'].map(p=>`<button class="btn ${S.per===p?'':'sec'} sm" data-p="${p}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div>
+    <div class="grid" style="margin:10px 0">${[{id:0,nome:'Todos'},...B.setores.filter(x=>x.nome!=='Retrabalho')].map(x=>`<div class="chip ${S.esetor===x.id?'on':''}" data-s="${x.id}">${esc(x.nome)}</div>`).join('')}</div>
+    <p class="mut">Eficiência = tempo padrão ÷ tempo real, só com etapas de OP cronometradas (Iniciar → Finalizar, pelo menos 1 min). Verde ≥ 100% · amarelo 80–99% · vermelho &lt; 80%. Retrabalho (RT) e etapas sem registro ficam fora da conta e aparecem à parte. Defeitos = peças com defeito registradas no nome da pessoa.</p><div id="ef" class="vazio">Carregando…</div>`;
+  app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.per=b.dataset.p; tEfic();});
+  app.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{S.esetor=+b.dataset.s; tEfic();});
+  const r=await api(`/api/eficiencia?de=${de}&ate=${ate}${S.esetor?'&setor_id='+S.esetor:''}`);
+  const cor=p=>p===null?'mut':p>=100?'ok':p>=80?'midc':'bad', bg=p=>p===null?'var(--line)':p>=100?'#2e9e5b':p>=80?'#d89a1c':'#d14343';
+  const segs=[]; { const d=new Date(ate+'T12:00'); d.setDate(d.getDate()-((d.getDay()+6)%7)); for(let k=7;k>=0;k--){ const x=new Date(d); x.setDate(d.getDate()-7*k); segs.push(x.toISOString().slice(0,10)); } }
+  const l=r.lista, max=Math.max(130,...l.map(f=>f.eficiencia||0));
+  $('#ef').className='';
+  $('#ef').innerHTML=`<div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Funcionário</th><th style="min-width:200px">Eficiência</th><th class="n">Etapas</th><th class="n">Peças</th><th class="n">Tempo real</th><th class="n">Sem registro</th><th class="n">Defeitos</th><th class="n">RT feitos</th></tr>
+    ${l.map((f,i)=>`<tr><td class="mut">${f.eficiencia===null?'':i+1}</td><td><b>${esc(f.nome)}</b><br><span class="mut">${esc(f.setor||'')}</span></td>
+      <td><div class="row" style="gap:8px;flex-wrap:nowrap"><div style="flex:1;height:12px;background:var(--line);border-radius:6px;overflow:hidden;min-width:100px"><i style="display:block;height:100%;width:${f.eficiencia===null?0:Math.min(100,f.eficiencia/max*100)}%;background:${bg(f.eficiencia)}"></i></div><b class="${cor(f.eficiencia)}" style="min-width:46px;text-align:right">${f.eficiencia===null?'–':f.eficiencia+'%'}</b></div></td>
+      <td class="n">${f.operacoes||0}</td><td class="n">${fmt(f.pecas||0)}</td><td class="n">${f.minutos?dur(f.minutos):'–'}</td>
+      <td class="n ${f.sem_registro?'bad':'mut'}">${f.sem_registro||'–'}</td>
+      <td class="n ${f.pecas_defeito?'bad':'mut'}">${f.pecas_defeito?fmt(f.pecas_defeito)+' pç'+(f.rts_gerados?` <span class="mut">(${f.rts_gerados} RT)</span>`:''):'–'}</td>
+      <td class="n">${f.rt_feitos?f.rt_feitos+' <span class="mut">· '+dur(f.rt_minutos)+'</span>':'<span class="mut">–</span>'}</td></tr>`).join('')||'<tr><td colspan=9 class="vazio">Nenhum funcionário.</td></tr>'}</table></div>
+    <h2>Evolução semana a semana (últimas 8 semanas)</h2><div class="card" style="overflow-x:auto"><table><tr><th>Funcionário</th>${segs.map(s=>`<th class="n">${brData(s).slice(0,5)}</th>`).join('')}</tr>
+    ${l.filter(f=>Object.keys(f.semanas||{}).length).map(f=>`<tr><td><b>${esc(f.nome)}</b></td>${segs.map(s=>{ const v=(f.semanas||{})[s]; return `<td class="n"><span style="display:inline-block;min-width:44px;padding:3px 6px;border-radius:6px;font-weight:700;${v==null?'color:var(--mut)':`background:${bg(v)}22;color:${bg(v)}`}">${v==null?'–':v+'%'}</span></td>`; }).join('')}</tr>`).join('')||`<tr><td colspan="${segs.length+1}" class="vazio">Ainda não tem etapa cronometrada nessas semanas.</td></tr>`}</table>
+    <p class="mut">Cada coluna é a semana que começa na segunda indicada.</p></div>`;
+}
 async function tRel(){
   const [de,ate]=periodo();
   app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Produção · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2>
