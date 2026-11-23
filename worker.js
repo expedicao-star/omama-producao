@@ -81,7 +81,7 @@ async function syncV8(DB, body) {
   return r;
 }
 
-const ESTAGIO_INICIAL = 1, ESTAGIO_FINAL = 12, DEP_PA = 1, DEP_PATIO = 11, DEP_RETRABALHO = 4, DEP_DEFEITO = 6;
+const ESTAGIO_INICIAL = 1, ESTAGIO_FINAL = 12, DEP_PA = 1, DEP_PA_SP = 3, DEP_PATIO = 11, DEP_DEFEITO = 6, DEP_INSUMOS = 2;
 
 const all = async (DB, sql, ...b) => (await DB.prepare(sql).bind(...b).all()).results;
 const one = async (DB, sql, ...b) => await DB.prepare(sql).bind(...b).first();
@@ -172,7 +172,7 @@ const FERRAMENTAS = [
   { name: 'pedidos_abertos', description: 'Lista os pedidos em aberto com prazo, status e quantas peças têm OP, estão conferidas, embaladas e enviadas.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/pedidos' },
   { name: 'pedido', description: 'Detalhe de um pedido OMAMA pelo número: peças, OPs ligadas (estágio), conferidas/embaladas/enviadas e envios.', inputSchema: { type: 'object', properties: { numero: { type: 'string' } }, required: ['numero'] }, path: a => '/api/pedidos/' + encodeURIComponent(a.numero) },
   { name: 'ops_abertas', description: 'Lista as OPs abertas com item, quantidade, estágio, previsão de entrega, pedido e operação atual.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/ops' },
-  { name: 'estoque', description: 'Saldo de estoque de um depósito. deposito_id: 11 = Pátio (blocos), 1 = P.A. (produto acabado), 6 = Defeito, 4 = Retrabalho, 3 = Showroom.', inputSchema: { type: 'object', properties: { deposito_id: { type: 'number' } }, required: ['deposito_id'] }, path: a => '/api/estoque?deposito_id=' + Number(a.deposito_id) },
+  { name: 'estoque', description: 'Saldo de estoque de um depósito. deposito_id: 1 = P.A. Manaus (produto acabado na fábrica), 3 = P.A. São Paulo, 11 = Pátio (blocos de madeira), 6 = Defeito, 2 = Insumos.', inputSchema: { type: 'object', properties: { deposito_id: { type: 'number' } }, required: ['deposito_id'] }, path: a => '/api/estoque?deposito_id=' + Number(a.deposito_id) },
   { name: 'producao_periodo', description: 'Produção e eficiência por pessoa num período (datas AAAA-MM-DD).', inputSchema: { type: 'object', properties: { de: { type: 'string' }, ate: { type: 'string' } }, required: ['de', 'ate'] }, path: a => `/api/relatorio?de=${a.de}&ate=${a.ate}` },
   { name: 'defeitos', description: 'Peças que estão no estoque de defeito agora (item, quantidade, motivo, OP, setor).', inputSchema: { type: 'object', properties: {} }, path: () => '/api/defeitos' },
   { name: 'faltas_semana', description: 'Faltas, atestados, atrasos e folgas lançados num período (datas AAAA-MM-DD).', inputSchema: { type: 'object', properties: { de: { type: 'string' }, ate: { type: 'string' } }, required: ['de', 'ate'] }, path: a => `/api/presenca?de=${a.de}&ate=${a.ate}` },
@@ -313,7 +313,7 @@ const app = {
         const sel = `select d.*, i.codigo, i.nome item, s.nome setor, f.nome funcionario, o.codigo op_codigo
           from defeito d join item i on i.id=d.item_id left join setor s on s.id=d.setor_id left join funcionario f on f.id=d.funcionario_id left join op o on o.id=d.op_id`;
         if (q('situacao') === 'todos') return json(req, await all(DB, sel + ' where d.data between ? and ? order by d.id desc limit 500', q('de'), q('ate') + ' 23:59:59'));
-        return json(req, await all(DB, sel + " where d.situacao='em_defeito' order by d.id desc"));
+        return json(req, await all(DB, sel + " where d.situacao in ('em_defeito','retrabalho') order by d.id desc"));
       }
       if (p === '/api/defeitos/resumo') {
         const de = q('de'), ate = q('ate') + ' 23:59:59';
@@ -339,13 +339,13 @@ const app = {
       }
       if ((m = p.match(/^\/api\/defeitos\/(\d+)\/(recuperar|retrabalho|descartar)$/)) && req.method === 'POST') {
         const d = await one(DB, 'select * from defeito where id=?', Number(m[1]));
-        if (!d || d.situacao !== 'em_defeito') return json(req, { erro: 'Defeito já resolvido' }, 400);
+        if (!d || !['em_defeito', 'retrabalho'].includes(d.situacao) || (m[2] === 'retrabalho' && d.situacao === 'retrabalho')) return json(req, { erro: 'Defeito já resolvido' }, 400);
         const acao = m[2], nomes = { recuperar: 'recuperado', retrabalho: 'retrabalho', descartar: 'descartado' };
         const mov = (dep, qtd, motivo) => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(d.item_id, dep, qtd, motivo, d.op_id);
-        const st = [DB.prepare('update defeito set situacao=?, resolvido_em=?, resolucao_obs=? where id=?').bind(nomes[acao], agora(), body.obs || null, d.id),
-          mov(DEP_DEFEITO, -d.qtd, 'Defeito ' + nomes[acao])];
+        // conserto (retrabalho) não tira do depósito Defeito: a peça fica lá até ser recuperada ou descartada
+        const st = [DB.prepare('update defeito set situacao=?, resolvido_em=?, resolucao_obs=? where id=?').bind(nomes[acao], acao === 'retrabalho' ? null : agora(), body.obs || null, d.id)];
+        if (acao !== 'retrabalho') st.push(mov(DEP_DEFEITO, -d.qtd, 'Defeito ' + nomes[acao]));
         if (acao === 'recuperar') st.push(mov(DEP_PA, d.qtd, 'Recuperada do defeito'));
-        if (acao === 'retrabalho') st.push(mov(DEP_RETRABALHO, d.qtd, 'Veio do defeito'));
         await DB.batch(st);
         return json(req, { ok: true });
       }
@@ -534,7 +534,7 @@ const app = {
           const it = its.find(x => x.id === l.pedido_item_id);
           st.push(DB.prepare('insert into envio_item(envio_id, pedido_item_id, qtd) values(?,?,?)').bind(eid, it.id, l.qtd),
             DB.prepare('update pedido_item set enviada=enviada+? where id=?').bind(l.qtd, it.id));
-          if (it.item_id) st.push(DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo) values(?,?,?,?)').bind(it.item_id, DEP_PA, -l.qtd, `Envio do pedido ${pd.numero} (${pd.cliente || ''})`));
+          if (it.item_id) st.push(DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo) values(?,?,?,?)').bind(it.item_id, Number(body.deposito_id) === DEP_PA_SP ? DEP_PA_SP : DEP_PA, -l.qtd, `Envio do pedido ${pd.numero} (${pd.cliente || ''})`));
         }
         const falta = its.reduce((s, x) => s + x.qtd - x.enviada, 0) - linhas.reduce((s, l) => s + l.qtd, 0);
         if (falta <= 0) st.push(DB.prepare("update pedido set status='Transportadora' where id=? and status in ('Em produção','Pronto / embalagem')").bind(pd.id));
