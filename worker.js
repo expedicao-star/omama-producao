@@ -203,6 +203,7 @@ const app = {
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     const url = new URL(req.url), p = url.pathname, q = (k) => url.searchParams.get(k);
     if (p === '/') return json(req, { ok: true, sistema: 'OMAMA Produção', versao: 2 });
+    if (p.startsWith('/.well-known/')) return new Response('não existe', { status: 404 });
     if (p.startsWith('/mcp/')) return p === '/mcp/' + env.CODIGO ? mcp(req, env) : new Response('não autorizado', { status: 401 });
     if (['/api/auth/estado', '/api/auth/primeiro', '/api/auth/login'].includes(p)) return rotasAbertas(req, env, p);
     // acesso: login do usuário (X-Token / ?t=) ou o código interno do sistema (v.8, conector do Claude)
