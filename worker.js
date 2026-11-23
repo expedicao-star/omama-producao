@@ -415,7 +415,7 @@ const app = {
 
       // ---------- operações (iniciar / pausar / finalizar)
       if ((m = p.match(/^\/api\/operacoes\/(\d+)\/(iniciar|pausar|finalizar|reabrir)$/)) && req.method === 'POST') {
-        const oo = await one(DB, `select oo.*, t.nome, t.setor_id, op.status op_status, op.codigo from op_operacao oo
+        const oo = await one(DB, `select oo.*, t.nome, t.setor_id, t.espera, op.status op_status, op.codigo from op_operacao oo
           join operacao_tipo t on t.id=oo.operacao_tipo_id join op on op.id=oo.op_id where oo.id=?`, Number(m[1]));
         if (!oo || oo.op_status !== 'aberta') return json(req, { erro: 'Operação não encontrada ou OP fechada' }, 400);
         const acao = m[2], now = agora();
@@ -434,14 +434,16 @@ const app = {
           if (oo.status === 'finalizado') return json(req, { erro: 'Já finalizada' }, 400);
           if (oo.setor_id && !func && !oo.funcionario_id) return json(req, { erro: 'Escolha quem fez' }, 400);
           const extra = oo.status === 'produzindo' ? minDesde(oo.inicio_atual) : 0;
-          upd = DB.prepare("update op_operacao set status='finalizado', funcionario_id=coalesce(?,funcionario_id), minutos=minutos+?, inicio=coalesce(inicio,?), fim=?, inicio_atual=null where id=?")
-            .bind(func ? func.id : null, extra, now, now, oo.id);
+          const semReg = !oo.espera && (oo.status === 'pendente' || (Number(oo.minutos) || 0) + extra < 0.01) ? 1 : 0;
+          upd = DB.prepare("update op_operacao set status='finalizado', funcionario_id=coalesce(?,funcionario_id), minutos=minutos+?, inicio=coalesce(inicio,?), fim=?, inicio_atual=null, sem_registro=? where id=?")
+            .bind(func ? func.id : null, extra, now, now, semReg, oo.id);
         } else {
           if (oo.status !== 'finalizado') return json(req, { erro: 'Só reabre operação finalizada' }, 400);
-          upd = DB.prepare("update op_operacao set status='pausado', fim=null where id=?").bind(oo.id);
+          upd = DB.prepare("update op_operacao set status='pausado', fim=null, sem_registro=0 where id=?").bind(oo.id);
         }
         const verbo = { iniciar: 'iniciou', pausar: 'pausou', finalizar: 'finalizou', reabrir: 'reabriu' }[acao];
-        await DB.batch([upd, evento(DB, oo.op_id, `${quem} ${verbo} ${oo.nome}`)]);
+        const semTempo = acao === 'finalizar' && !oo.espera && oo.status === 'pendente' ? ' (sem registro de tempo: não foi iniciada)' : '';
+        await DB.batch([upd, evento(DB, oo.op_id, `${quem} ${verbo} ${oo.nome}${semTempo}`)]);
         await recalcularOp(DB, oo.op_id);
         return json(req, { ok: true });
       }
@@ -787,11 +789,11 @@ const app = {
         const porPessoa = await all(DB, `select f.id, f.nome funcionario, s.nome setor, count(*) operacoes, sum(op.qtd) pecas,
             sum(oo.minutos) minutos_reais, sum(oo.tempo_unit_min*op.qtd) minutos_padrao,
             sum(case when oo.minutos>=1 then oo.tempo_unit_min*op.qtd else 0 end) padrao_medido,
-            sum(case when oo.minutos>=1 then oo.minutos else 0 end) minutos_medidos
+            sum(case when oo.minutos>=1 then oo.minutos else 0 end) minutos_medidos, sum(oo.sem_registro) sem_registro
           from op_operacao oo join op on op.id=oo.op_id join operacao_tipo t on t.id=oo.operacao_tipo_id
           join funcionario f on f.id=oo.funcionario_id left join setor s on s.id=f.setor_id
           where oo.status='finalizado' and t.espera=0 and oo.fim between ? and ? group by f.id order by s.id, f.nome`, de, ate);
-        const detalhe = await all(DB, `select oo.fim, f.nome funcionario, t.nome operacao, op.codigo, i.nome item, op.qtd, oo.minutos, oo.tempo_unit_min*op.qtd padrao
+        const detalhe = await all(DB, `select oo.fim, f.nome funcionario, t.nome operacao, op.codigo, i.nome item, op.qtd, oo.minutos, oo.sem_registro, oo.tempo_unit_min*op.qtd padrao
           from op_operacao oo join op on op.id=oo.op_id join operacao_tipo t on t.id=oo.operacao_tipo_id join item i on i.id=op.item_id
           left join funcionario f on f.id=oo.funcionario_id
           where oo.status='finalizado' and t.espera=0 and oo.fim between ? and ? order by oo.fim desc limit 300`, de, ate);
