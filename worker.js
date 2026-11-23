@@ -81,6 +81,7 @@ async function syncV8(DB, body) {
   return r;
 }
 
+const RT_BASE = 100000, ESTAGIO_RT = 13;
 const ESTAGIO_INICIAL = 1, ESTAGIO_FINAL = 12, DEP_PA = 1, DEP_PA_SP = 3, DEP_PATIO = 11, DEP_DEFEITO = 6, DEP_INSUMOS = 2;
 
 const all = async (DB, sql, ...b) => (await DB.prepare(sql).bind(...b).all()).results;
@@ -99,6 +100,19 @@ async function recalcularOp(DB, op_id) {
     }
     return;
   }
+  if (op.tipo === 'RT') {
+    const nome = 'RT ' + (op.codigo - RT_BASE);
+    const st = [DB.prepare("update op set status='finalizada', estagio_id=?, finalizado_em=? where id=?").bind(ESTAGIO_FINAL, agora(), op_id)];
+    const d = op.defeito_id ? await one(DB, 'select * from defeito where id=?', op.defeito_id) : null;
+    if (d && d.situacao === 'retrabalho') {
+      st.push(DB.prepare("update defeito set situacao='recuperado', resolvido_em=?, resolucao_obs=? where id=?").bind(agora(), 'Recuperada pelo ' + nome, d.id),
+        DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(d.item_id, DEP_DEFEITO, -d.qtd, 'Recuperada pelo ' + nome, op_id),
+        DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(d.item_id, DEP_PA, d.qtd, 'Recuperada pelo ' + nome, op_id),
+        evento(DB, op_id, nome + ' finalizado: peça saiu do Defeito e entrou no P.A. Manaus'));
+    } else st.push(evento(DB, op_id, nome + ' finalizado'));
+    await DB.batch(st);
+    return;
+  }
   // todas as operações finalizadas: finaliza a OP e dá entrada no P.A. (os blocos já saíram na criação da OP)
   const st = [
     DB.prepare("update op set status='finalizada', estagio_id=?, finalizado_em=? where id=?").bind(ESTAGIO_FINAL, agora(), op_id),
@@ -109,7 +123,7 @@ async function recalcularOp(DB, op_id) {
 }
 
 async function opsAbertas(DB, where = "op.status='aberta'", ...b) {
-  return all(DB, `select op.id, op.codigo, op.qtd, op.estagio_id, op.previsao_inicio, op.previsao_fim, op.pedido, op.status, op.origem,
+  return all(DB, `select op.id, op.codigo, op.qtd, op.estagio_id, op.previsao_inicio, op.previsao_fim, op.pedido, op.status, op.origem, op.tipo, op.motivo, op.defeito_id,
       i.id item_id, i.codigo item_codigo, i.nome item_nome, op.pedido_item_id, pd.numero pedido_numero, pd.cliente pedido_cliente,
       (select t.nome || '|' || oo.status || '|' || coalesce(f.nome,'') from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id
          left join funcionario f on f.id=oo.funcionario_id where oo.op_id=op.id and oo.status<>'finalizado' order by oo.ordem limit 1) atual
@@ -132,7 +146,7 @@ const PERM = [
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
-  [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos']],
+  [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos']],
   [/^\/api\/sync\//, 'POST', ['admin']],
 ];
 const lePerm = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a.filter(t => TELAS.includes(t)) : []; } catch (e) { return []; } };
@@ -310,7 +324,7 @@ const app = {
 
       // ---------- defeitos (depósito Defeito = 6, Retrabalho = 4)
       if (p === '/api/defeitos' && req.method === 'GET') {
-        const sel = `select d.*, i.codigo, i.nome item, s.nome setor, f.nome funcionario, o.codigo op_codigo
+        const sel = `select d.*, i.codigo, i.nome item, s.nome setor, f.nome funcionario, o.codigo op_codigo, (select x.codigo from op x where x.defeito_id=d.id and x.status='aberta') rt_codigo
           from defeito d join item i on i.id=d.item_id left join setor s on s.id=d.setor_id left join funcionario f on f.id=d.funcionario_id left join op o on o.id=d.op_id`;
         if (q('situacao') === 'todos') return json(req, await all(DB, sel + ' where d.data between ? and ? order by d.id desc limit 500', q('de'), q('ate') + ' 23:59:59'));
         return json(req, await all(DB, sel + " where d.situacao in ('em_defeito','retrabalho') order by d.id desc"));
@@ -340,6 +354,8 @@ const app = {
       if ((m = p.match(/^\/api\/defeitos\/(\d+)\/(recuperar|retrabalho|descartar)$/)) && req.method === 'POST') {
         const d = await one(DB, 'select * from defeito where id=?', Number(m[1]));
         if (!d || !['em_defeito', 'retrabalho'].includes(d.situacao) || (m[2] === 'retrabalho' && d.situacao === 'retrabalho')) return json(req, { erro: 'Defeito já resolvido' }, 400);
+        const rtAberto = await one(DB, "select codigo from op where defeito_id=? and status='aberta'", d.id);
+        if (rtAberto) return json(req, { erro: `Essa peça está no RT ${rtAberto.codigo - RT_BASE}. Finalize ou cancele o RT.` }, 400);
         const acao = m[2], nomes = { recuperar: 'recuperado', retrabalho: 'retrabalho', descartar: 'descartado' };
         const mov = (dep, qtd, motivo) => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(d.item_id, dep, qtd, motivo, d.op_id);
         // conserto (retrabalho) não tira do depósito Defeito: a peça fica lá até ser recuperada ou descartada
@@ -348,6 +364,32 @@ const app = {
         if (acao === 'recuperar') st.push(mov(DEP_PA, d.qtd, 'Recuperada do defeito'));
         await DB.batch(st);
         return json(req, { ok: true });
+      }
+
+      // ---------- RT (retrabalho): ordem com uma etapa só, "Retrabalho"
+      if (p === '/api/rt' && req.method === 'POST') {
+        const motivo = String(body.motivo || '').trim();
+        if (!motivo) return json(req, { erro: 'Escreva o motivo do retrabalho' }, 400);
+        let d = null, itemId = Number(body.item_id), qtd = Number(body.qtd);
+        if (body.defeito_id) {
+          d = await one(DB, 'select * from defeito where id=?', Number(body.defeito_id));
+          if (!d || d.situacao !== 'em_defeito') return json(req, { erro: 'Esse defeito não está mais em aberto' }, 400);
+          itemId = d.item_id; qtd = d.qtd;
+        }
+        const item = await one(DB, 'select * from item where id=?', itemId);
+        if (!item || !(qtd > 0)) return json(req, { erro: 'Escolha o item e a quantidade' }, 400);
+        const tipoRt = await one(DB, "select id from operacao_tipo where nome='Retrabalho'");
+        const mx = await one(DB, "select max(codigo) m from op where tipo='RT'");
+        const codigo = Math.max(RT_BASE, (mx && mx.m) || 0) + 1, nome = 'RT ' + (codigo - RT_BASE);
+        await DB.prepare("insert into op(codigo, item_id, qtd, previsao_inicio, estagio_id, tipo, motivo, defeito_id, obs) values(?,?,?,?,?,'RT',?,?,?)")
+          .bind(codigo, item.id, qtd, agora().slice(0, 10), ESTAGIO_RT, motivo, d ? d.id : null, body.obs || null).run();
+        const op = await one(DB, 'select id from op where codigo=?', codigo);
+        await DB.batch([
+          DB.prepare('insert into op_operacao(op_id, ordem, operacao_tipo_id, tempo_unit_min) values(?,?,?,?)').bind(op.id, 1, tipoRt.id, Number(body.tempo_min) || 0),
+          evento(DB, op.id, `${nome} criado: ${qtd} × ${item.nome}. Motivo: ${motivo}` + (d ? ' (peça do Defeito: ao finalizar volta pro P.A. Manaus)' : '')),
+          ...(d ? [DB.prepare("update defeito set situacao='retrabalho' where id=?").bind(d.id)] : []),
+        ]);
+        return json(req, { ok: true, codigo, nome });
       }
 
       // ---------- OPs
@@ -365,7 +407,7 @@ const app = {
           from composicao c join item i on i.id=c.insumo_id where c.item_id=?`, DEP_PATIO, item.id);
         const falta = comps.filter(c => c.saldo + 1e-9 < c.qtd * body.qtd);
         if (falta.length) return json(req, { erro: 'Sem bloco no Pátio: ' + falta.map(c => `${c.nome} (precisa ${+(c.qtd * body.qtd).toFixed(3)}, tem ${+(+c.saldo).toFixed(3)})`).join('; ') }, 400);
-        const max = await one(DB, 'select max(codigo) m from op where origem is null');
+        const max = await one(DB, "select max(codigo) m from op where origem is null and tipo='OP'");
         const codigo = Math.max(5000, (max && max.m) || 0) + 1;
         let pi = null;
         if (body.pedido_item_id) {
@@ -408,7 +450,8 @@ const app = {
         const op = await one(DB, 'select * from op where codigo=?', Number(m[1]));
         if (!op || op.status !== 'aberta') return json(req, { erro: 'OP não está aberta' }, 400);
         const baixas = await all(DB, 'select item_id, sum(qtd) q from estoque_mov where op_id=? and deposito_id=? group by item_id having q<0', op.id, DEP_PATIO);
-        await DB.batch([DB.prepare("update op set status='cancelada' where id=?").bind(op.id), evento(DB, op.id, 'OP cancelada' + (body.motivo ? ': ' + body.motivo : '') + (baixas.length ? ' (blocos devolvidos ao Pátio)' : '')),
+        await DB.batch([DB.prepare("update op set status='cancelada' where id=?").bind(op.id), evento(DB, op.id, (op.tipo === 'RT' ? 'RT cancelado' : 'OP cancelada') + (body.motivo ? ': ' + body.motivo : '') + (baixas.length ? ' (blocos devolvidos ao Pátio)' : '') + (op.defeito_id ? ' (peça continua no Defeito)' : '')),
+          ...(op.defeito_id ? [DB.prepare("update defeito set situacao='em_defeito' where id=? and situacao='retrabalho'").bind(op.defeito_id)] : []),
           ...baixas.map(b => DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo, op_id) values(?,?,?,?,?)').bind(b.item_id, DEP_PATIO, -b.q, 'Devolução do cancelamento da OP ' + op.codigo, op.id))]);
         return json(req, { ok: true });
       }
@@ -458,7 +501,7 @@ const app = {
       if (p === '/api/fila') {
         const setor = Number(q('setor_id'));
         const r = await all(DB, `select oo.id, oo.status, oo.ordem, oo.tempo_unit_min, oo.minutos, oo.inicio_atual, t.nome operacao, t.setor_id,
-            op.codigo, op.qtd, op.previsao_fim, i.nome item_nome, f.nome funcionario, oo.funcionario_id,
+            op.codigo, op.qtd, op.previsao_fim, op.motivo, i.nome item_nome, f.nome funcionario, oo.funcionario_id,
             (select count(*) from op_operacao x where x.op_id=oo.op_id and x.ordem<oo.ordem and x.status<>'finalizado') antes
           from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id join op on op.id=oo.op_id join item i on i.id=op.item_id
           left join funcionario f on f.id=oo.funcionario_id
