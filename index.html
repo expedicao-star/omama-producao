@@ -33,6 +33,8 @@ body.logado #side{display:block}body.menu #side{transform:none}
 @media(min-width:1000px){body.logado #side{transform:none;box-shadow:none}body.logado main{margin-left:240px}#sideBg{display:none!important}body.logado #hamb{display:none}}
 .t-blue{background:#e1eefb;color:#2d6aa3}
 @media(max-width:600px){header .sub{display:none}}
+@media print{#side,#sideBg,header,.noprint,.toast{display:none!important}body.logado main{margin:0;max-width:none}body{background:#fff}.card{box-shadow:none;break-inside:avoid}}
+body.tv #side,body.tv #sideBg{display:none!important}body.tv main{margin-left:0!important;max-width:none}body.tv{font-size:18px}
 .st{border:2px solid var(--line);background:#fff;border-radius:20px;padding:5px 10px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;color:var(--mut)}
 .st.on.ok{background:var(--ok);border-color:var(--ok);color:#fff}.st.on.bad{background:var(--bad);border-color:var(--bad);color:#fff}.st.on.midc{background:var(--mid);border-color:var(--mid);color:#fff}.st.on.blue{background:var(--blue);border-color:var(--blue);color:#fff}.st.on.mut{background:var(--mut);border-color:var(--mut);color:#fff}
 .pess{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line)}.pess:last-child{border:0}.pess .nm{flex:1;min-width:140px;font-weight:700}
@@ -101,7 +103,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['fila','ops','ped','exp','itens','estoque','inv','defeitos','func','assid','rel'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -137,7 +139,7 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição']]],['Estoque',[['estoque','▤','Estoque'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção']]]];
+const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['sem','▤','Semana']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 function menu(){
   $('#side').innerHTML=MENU.map(([g,its])=>`<button class="gh ${fechados.includes(g)?'fechado':''}" data-g="${g}">${g}<i>▾</i></button>
@@ -150,7 +152,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); ({fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
+function render(){ if(!B) return; modal(''); ({painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -249,9 +251,11 @@ const abrirOp = tenta(async codigo=>{
         <td class="mut">${brHora(x.inicio)}${x.fim?' → '+brHora(x.fim):''}</td><td style="white-space:nowrap" data-i="${i}">${o.status==='aberta'?botoes(x):''}</td></tr>`).join('')||'<tr><td colspan=8 class="vazio">Item sem roteiro cadastrado.</td></tr>'}</table></div>
     <h2>Blocos ${o.origem==='sensio'?'(OP veio do Sensio: blocos não baixados aqui)':'(baixados do Pátio na criação da OP)'}</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio agora</th></tr>
       ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<0?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>
+    <h2>Fotos</h2><div class="card" id="fts">Carregando…</div>
     <h2>Eventos</h2><div class="card">${o.eventos.map(e=>`<div><span class="mut">${brHora(e.data)}</span> · ${esc(e.texto)}</div>`).join('')}</div>
     <br><div class="row"><button class="btn mid sm" id="def">Registrar defeito</button>${o.status==='aberta'?'<button class="btn bad sm" id="canc">Cancelar OP</button>':''}</div>`);
   $('#def').onclick=()=>registrarDefeito({op_codigo:o.codigo,item_id:o.item_id,item_nome:o.item_nome,depois:()=>abrirOp(codigo)});
+  galeria($('#fts'),{op_id:o.id});
   $('#mx').onclick=()=>{ modal(''); render(); };
   const re=()=>abrirOp(codigo); ligaPed($('#modal'));
   if($('#vinc')) $('#vinc').onclick=tenta(async()=>{ const pis=await api('/api/pedido-itens?item_id='+o.item_id);
@@ -405,6 +409,128 @@ const abrirInv=tenta(async id=>{
     $('#vg').onclick=tenta(async()=>{ const r=await api(`/api/inventarios/${v.id}/fechar`,{zerar_nao_contados:!!($('#vz')&&$('#vz').checked)}); toast('Inventário fechado · '+r.ajustes+' ajuste(s) no estoque'); abrirInv(v.id); }); };
 });
 
+// ===== fotos (OP, defeito) e zip do pedido
+const reduzFoto=file=>new Promise((res,rej)=>{ const img=new Image(), u=URL.createObjectURL(file); img.onload=()=>{ const s=Math.min(1,1280/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg',0.75)); }; img.onerror=()=>rej(new Error('Não consegui ler a foto')); img.src=u; });
+const fotoUrl=id=>`${API()}/api/fotos/${id}?c=${encodeURIComponent(ls.get('codigo')||'')}`;
+async function galeria(el,ref){
+  const k=Object.keys(ref)[0], l=await api(`/api/fotos?${k}=${ref[k]}`);
+  el.innerHTML=`<div class="row" style="gap:8px">${l.map(f=>`<div style="position:relative"><a href="${fotoUrl(f.id)}" target="_blank"><img src="${fotoUrl(f.id)}" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:10px;border:1px solid var(--line)"></a><span class="link" data-x="${f.id}" style="position:absolute;top:2px;right:6px;font-size:12px;background:#fff;border-radius:6px;padding:0 4px">apagar</span></div>`).join('')}
+    <label class="btn sec sm" style="cursor:pointer">+ Foto<input type="file" accept="image/*" capture="environment" multiple style="display:none"></label></div>`;
+  el.querySelector('input').onchange=tenta(async e=>{ const fs=[...e.target.files]; for(const f of fs){ await api('/api/fotos',{...ref,nome:f.name,dados:await reduzFoto(f)}); } toast(fs.length+' foto(s) salva(s)'); galeria(el,ref); });
+  el.querySelectorAll('[data-x]').forEach(b=>b.onclick=tenta(async()=>{ await api(`/api/fotos/${b.dataset.x}/apagar`,{}); galeria(el,ref); }));
+}
+const fotosDefeito=d=>{ modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Fotos do defeito · ${esc(d.item)}</h2><button class="btn sec sm" id="mx">Fechar</button></div><br><div class="card" id="fts">Carregando…</div>`); $('#mx').onclick=()=>modal(''); galeria($('#fts'),{defeito_id:d.id}); };
+// zip simples (sem compressão; foto já é comprimida)
+function fazZip(arqs){ const T=new Uint32Array(256).map((_,n)=>{ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; return c>>>0; });
+  const crc=d=>{ let c=0xFFFFFFFF; for(let i=0;i<d.length;i++) c=T[(c^d[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; };
+  const enc=new TextEncoder(), partes=[], central=[]; let off=0;
+  const h=(n,campos)=>{ const b=new DataView(new ArrayBuffer(n)); let i=0; for(const [v,t] of campos){ if(t===4){b.setUint32(i,v,true);i+=4;} else {b.setUint16(i,v,true);i+=2;} } return new Uint8Array(b.buffer); };
+  for(const [nome,dados] of arqs){ const nm=enc.encode(nome), c=crc(dados);
+    const loc=h(30,[[0x04034b50,4],[20,2],[0x0800,2],[0,2],[0,2],[0,2],[c,4],[dados.length,4],[dados.length,4],[nm.length,2],[0,2]]);
+    partes.push(loc,nm,dados);
+    central.push(h(46,[[0x02014b50,4],[20,2],[20,2],[0x0800,2],[0,2],[0,2],[0,2],[c,4],[dados.length,4],[dados.length,4],[nm.length,2],[0,2],[0,2],[0,2],[0,2],[0,4],[off,4]]),nm);
+    off+=30+nm.length+dados.length; }
+  const tam=central.reduce((s,x)=>s+x.length,0);
+  return new Blob([...partes,...central,h(22,[[0x06054b50,4],[0,2],[0,2],[arqs.length,2],[arqs.length,2],[tam,4],[off,4],[0,2]])],{type:'application/zip'}); }
+const zipPedido=tenta(async p=>{
+  const l=await api('/api/fotos?pedido='+encodeURIComponent(p.numero)); if(!l.length) throw new Error('Nenhuma foto nas OPs desse pedido');
+  const pasta=`${p.numero} - ${(p.cliente||'').replace(/[\\/:*?"<>|]/g,'')}`, cont={}, n={}, arqs=[];
+  l.forEach(f=>cont[f.codigo]=(cont[f.codigo]||0)+1);
+  for(const f of l){ n[f.codigo]=(n[f.codigo]||0)+1; arqs.push([`${pasta}/${f.codigo} - ${n[f.codigo]} de ${cont[f.codigo]}.jpg`,new Uint8Array(await (await fetch(fotoUrl(f.id))).arrayBuffer())]); }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(fazZip(arqs)); a.download=pasta+'.zip'; a.click(); toast(l.length+' foto(s) no zip');
+});
+
+// ===== entrada de madeira
+async function tEntrada(){
+  const blocos=await api('/api/itens?tipo='+encodeURIComponent('Matéria-prima')), opt=`<option value="">Bloco…</option>${blocos.filter(b=>b.ativo).map(b=>`<option value="${b.id}">${esc(b.nome)}</option>`).join('')}`;
+  app.innerHTML=`<h2>Entrada de madeira no Pátio</h2><div class="card"><div class="row"><div><div class="mut">Data</div><input type="date" id="ed" value="${hojeISO()}"></div><div style="flex:1;min-width:180px"><div class="mut">Fornecedor</div><input id="ef" style="width:100%"></div><div><div class="mut">NF</div><input id="en" style="width:130px"></div></div>
+    <div id="el" style="margin-top:10px"></div><button class="btn sec sm" id="ea">+ Outro bloco</button>
+    <div class="mut" style="margin-top:10px">Observação</div><input id="eo" style="width:100%"><br><br><button class="btn" id="eg">Dar entrada no Pátio</button></div>
+    <h2>Últimas entradas</h2><div class="card" id="eh">Carregando…</div>`;
+  const linha=()=>{ const d=document.createElement('div'); d.className='row'; d.style.marginBottom='6px'; d.innerHTML=`<select style="flex:1;min-width:200px">${opt}</select><input type="number" min="0" step="any" placeholder="Qtd" style="width:100px">`; $('#el').appendChild(d); };
+  linha(); linha(); $('#ea').onclick=linha;
+  $('#eg').onclick=tenta(async()=>{ const itens=[...$('#el').children].map(d=>({item_id:+d.children[0].value,qtd:parseFloat((d.children[1].value||'').replace(',','.'))})).filter(x=>x.item_id&&x.qtd>0);
+    if(!itens.length) throw new Error('Escolha o bloco e a quantidade');
+    const r=await api('/api/entradas',{itens,data:$('#ed').value,fornecedor:$('#ef').value.trim()||null,nf:$('#en').value.trim()||null,obs:$('#eo').value.trim()||null}); toast('Entrada nº '+r.id+' lançada no Pátio'); tEntrada(); });
+  const h=await api('/api/entradas');
+  $('#eh').innerHTML=h.length?`<table><tr><th>Nº</th><th>Data</th><th>Fornecedor / NF</th><th>Blocos</th></tr>${h.map(e=>`<tr><td>${e.id}</td><td>${brData(e.data)}</td><td>${esc(e.fornecedor||'')}${e.nf?' · NF '+esc(e.nf):''}${e.obs?`<br><span class="mut">${esc(e.obs)}</span>`:''}</td><td>${esc(e.itens||'')}</td></tr>`).join('')}</table>`:'<span class="mut">Nenhuma entrada ainda.</span>';
+}
+
+// ===== PCP quinzenal
+async function tPcp(){
+  const hoje=hojeISO(), f=new Date(hoje+'T12:00'); f.setDate(f.getDate()+13);
+  app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">PCP · plano da quinzena</h2></div>
+    <div class="card" style="margin-top:8px"><div class="row"><div><div class="mut">De</div><input type="date" id="pi" value="${hoje}"></div><div><div class="mut">Até</div><input type="date" id="pf" value="${f.toISOString().slice(0,10)}"></div><button class="btn" id="pn" style="align-self:flex-end">Montar novo PCP</button></div>
+    <p class="mut">O sistema olha as peças dos pedidos que ainda não têm OP (por ordem de prazo) e diz quantas dá pra fazer com o bloco que tem no Pátio. Você escolhe e ele cria as OPs.</p></div>
+    <h2>PCPs (plano x realizado)</h2><div class="card" id="pl">Carregando…</div>`;
+  $('#pn').onclick=tenta(async()=>{ const r=await api('/api/pcp',{inicio:$('#pi').value,fim:$('#pf').value}); abrirPcp(r.id,true); });
+  const l=await api('/api/pcp');
+  $('#pl').innerHTML=l.length?`<table><tr><th>Nº</th><th>Quinzena</th><th class="n">OPs</th><th class="n">Peças</th><th class="n">Finalizadas</th><th>Realizado</th><th></th></tr>${l.map(c=>{ const pc=c.pecas?Math.round(c.prontas/c.pecas*100):0; return `<tr><td>${c.id}</td><td>${brData(c.inicio)} a ${brData(c.fim)}</td><td class="n">${c.itens}</td><td class="n">${fmt(c.pecas)}</td><td class="n">${fmt(c.prontas)}</td><td style="min-width:120px"><div class="bar"><i style="width:${pc}%"></i></div><span class="mut">${pc}%</span></td><td class="n"><button class="btn sec sm" data-c="${c.id}">Abrir</button></td></tr>`}).join('')}</table>`:'<span class="mut">Nenhum PCP ainda.</span>';
+  $('#pl').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>abrirPcp(+b.dataset.c));
+}
+const abrirPcp=tenta(async(id,novo)=>{
+  const [c,s]=await Promise.all([api('/api/pcp/'+id),api('/api/pcp/sugestao')]);
+  const prontas=c.itens.filter(i=>i.op_status==='finalizada').reduce((a,i)=>a+i.qtd,0), total=c.itens.reduce((a,i)=>a+i.qtd,0);
+  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">PCP nº ${c.id} · ${brData(c.inicio)} a ${brData(c.fim)}</h2><div class="mut">Plano: ${fmt(total)} peça(s) em ${c.itens.length} OP(s) · realizado: ${fmt(prontas)} finalizada(s)</div></div><div class="row"><button class="btn sec sm" id="pp">Imprimir</button><button class="btn sec sm" id="mx">Fechar</button></div></div>
+    <h2>No plano (plano x realizado)</h2><div class="card" style="overflow-x:auto">${c.itens.length?`<table><tr><th>OP</th><th>Peça</th><th class="n">Qtd</th><th>Pedido</th><th>Situação</th></tr>${c.itens.map(i=>`<tr><td><span class="link" data-op="${i.op_codigo}">${i.op_codigo}</span></td><td>${esc(i.nome)}</td><td class="n">${fmt(i.qtd)}</td><td>${i.numero?esc(i.numero+' · '+(i.cliente||'')):'<span class="mut">estoque</span>'}</td>
+      <td>${i.op_status==='finalizada'?`<span class="tag t-produzindo">Finalizada</span> <span class="mut">${brHora(i.finalizado_em)}</span>`:i.op_status==='cancelada'?'<span class="tag t-pendente">Cancelada</span>':`<span class="tag t-pausado">${esc(i.estagio||'')}</span>`}</td></tr>`).join('')}</table>`:'<span class="mut">Nada no plano ainda. Escolha abaixo o que cortar.</span>'}</div>
+    <h2>Sugestão: peças de pedido sem OP</h2><div class="card" style="overflow-x:auto">${s.itens.length?`<table><tr><th></th><th>Pedido</th><th>Prazo</th><th>Peça</th><th class="n">Falta</th><th class="n">Dá pra fazer</th><th>Blocos</th></tr>${s.itens.map((x,k)=>`<tr style="${x.pode||x.sem_composicao?'':'opacity:.55'}"><td><input type="checkbox" data-k="${k}" ${x.pode>0?'checked':''}></td><td>${esc(x.numero)} · ${esc(x.cliente||'')}</td><td class="${diasAte(x.prazo)<0?'bad':''}">${brData(x.prazo)}</td><td>${esc(x.nome)}</td><td class="n">${fmt(x.falta)}</td>
+      <td class="n"><input type="number" min="1" data-q="${k}" value="${x.sem_composicao?x.falta:x.pode}" style="width:70px;text-align:right"></td><td class="mut" style="font-size:12px">${x.sem_composicao?'sem composição cadastrada':esc(x.blocos)}</td></tr>`).join('')}</table>
+      <br><button class="btn" id="pc">Criar OPs marcadas</button>`:'<span class="mut">Todas as peças dos pedidos já têm OP.</span>'}</div>
+    ${s.madeira.some(m=>m.falta>0)?`<h2>Madeira que falta para fazer tudo</h2><div class="card"><table><tr><th>Bloco</th><th class="n">Precisa</th><th class="n">Tem no Pátio</th><th class="n">Falta</th></tr>${s.madeira.filter(m=>m.falta>0).map(m=>`<tr><td>${esc(m.nome)}</td><td class="n">${fmt(m.q,3)}</td><td class="n">${fmt(m.tem,3)}</td><td class="n bad"><b>${fmt(m.falta,3)}</b></td></tr>`).join('')}</table></div>`:''}`);
+  $('#mx').onclick=()=>{ modal(''); if(S.tab==='pcp') tPcp(); };
+  $('#modal').querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
+  $('#pp').onclick=()=>{ const w=window.open('','_blank'); if(!w) return toast('O navegador bloqueou a impressão',1);
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>PCP ${c.id}</title><style>@page{size:A4;margin:12mm}body{font-family:Helvetica,Arial,sans-serif;font-size:11px}h1{font-size:16px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:5px}th{background:#eee;text-align:left}</style></head><body>
+      <h1>OMAMA · PCP nº ${c.id} · ${brData(c.inicio)} a ${brData(c.fim)}</h1><table><tr><th>OP</th><th>Peça</th><th>Qtd</th><th>Pedido</th><th>Feito</th></tr>${c.itens.map(i=>`<tr><td>${i.op_codigo}</td><td>${esc(i.nome)}</td><td>${fmt(i.qtd)}</td><td>${esc(i.numero||'estoque')}</td><td></td></tr>`).join('')}</table><script>setTimeout(()=>print(),300)<\/script></body></html>`); w.document.close(); };
+  if($('#pc')) $('#pc').onclick=tenta(async()=>{ let ok=0; const erros=[];
+    for(const cb of $('#modal').querySelectorAll('[data-k]:checked')){ const x=s.itens[+cb.dataset.k], qtd=+$('#modal').querySelector(`[data-q="${cb.dataset.k}"]`).value;
+      if(!(qtd>0)) continue;
+      try{ const r=await api('/api/ops',{item_id:x.item_id,qtd,pedido_item_id:x.pedido_item_id,previsao_fim:x.prazo||null}); await api(`/api/pcp/${c.id}/item`,{op_codigo:r.codigo}); ok++; }catch(e){ erros.push(x.nome+': '+e.message); } }
+    toast(ok+' OP(s) criada(s)'+(erros.length?' · '+erros.length+' com erro':''),erros.length&&!ok); if(erros.length) setTimeout(()=>alert(erros.join('\n')),300); abrirPcp(c.id); });
+});
+
+// ===== painel da fábrica
+let tvTimer=null;
+async function tPainel(tv){
+  clearInterval(tvTimer);
+  const d=await api('/api/painel');
+  const k=(n,t,c)=>`<div class="card" style="text-align:center"><div style="font-size:34px;font-weight:800;color:${c||'var(--amb)'}">${n}</div><div class="mut">${t}</div></div>`;
+  const maxE=Math.max(1,...d.estagios.map(e=>e.pecas));
+  const ST={falta_injustificada:'falta',falta_justificada:'falta justificada',atestado:'atestado',atraso:'atraso',folga:'folga/férias'};
+  app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Painel da fábrica · ${new Date().toLocaleString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</h2><button class="btn sec sm" id="tv">${tv?'Sair do modo TV':'Modo TV'}</button></div><br>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">${k(d.ops.n,'OPs abertas')}${k(fmt(d.ops.pecas),'peças em produção')}${k(d.atrasadas.length,'OPs atrasadas',d.atrasadas.length?'var(--bad)':'var(--ok)')}${k(d.hojeProd.ops,'operações finalizadas hoje')}${k(fmt(d.semanaProd.pecas),'peças finalizadas na semana','var(--ok)')}${k(fmt(d.envios.pecas),'peças enviadas na semana')}${k(fmt(d.defeitos),'defeitos na semana',d.defeitos?'var(--bad)':'var(--ok)')}${k(d.faltas.length,'faltas/atrasos hoje',d.faltas.length?'var(--mid)':'var(--ok)')}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:10px">
+      <div class="card"><b>Peças por estágio</b>${d.estagios.map(e=>`<div style="margin-top:6px"><div class="row" style="justify-content:space-between"><span style="font-size:13px">${esc(e.nome)}</span><b>${fmt(e.pecas)}</b></div><div class="bar"><i style="width:${e.pecas/maxE*100}%"></i></div></div>`).join('')}</div>
+      <div class="card"><b>Pedidos vencendo em 7 dias</b>${d.pedidos.map(p=>{ const x=diasAte(p.prazo); return `<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span>${esc(p.numero)} · ${esc(p.cliente||'')}<br><span class="mut">${fmt(p.conferidas)}/${fmt(p.pecas)} conferidas</span></span><b class="${x<0?'bad':'midc'}">${x<0?Math.abs(x)+' d atrasado':x===0?'hoje':x+' d'}</b></div>`}).join('')||'<div class="mut" style="margin-top:6px">Nenhum.</div>'}</div>
+      <div class="card"><b>OPs atrasadas</b>${d.atrasadas.map(o=>`<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.nome)} · ${fmt(o.qtd)} un<br><span class="mut">${esc(o.estagio)} · previsto ${brData(o.previsao_fim)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nenhuma.</div>'}</div>
+      <div class="card"><b>Parado na estufa há mais de 10 dias</b>${d.parados.map(o=>`<div style="padding:4px 0"><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.nome)} <span class="mut">· ${esc(o.operacao)} desde ${brData(o.inicio)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nada parado.</div>'}
+        <br><b>Faltas e atrasos hoje</b>${d.faltas.map(f=>`<div>${esc(f.nome)} <span class="mut">· ${ST[f.status]||f.status}${f.minutos?' '+f.minutos+' min':''}</span></div>`).join('')||'<div class="mut">Ninguém.</div>'}</div></div>`;
+  app.querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
+  $('#tv').onclick=()=>{ document.body.classList.toggle('tv',!tv); if(!tv&&document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); if(tv&&document.fullscreenElement) document.exitFullscreen(); tPainel(!tv); };
+  if(tv) tvTimer=setInterval(()=>{ if(S.tab==='painel'&&!$('#mbg')) tPainel(true); else clearInterval(tvTimer); },60000);
+}
+
+// ===== relatório semanal
+async function tSemana(){
+  const base=S.semana||hojeISO(), d=new Date(base+'T12:00'); d.setDate(d.getDate()-((d.getDay()+6)%7)); const de=d.toISOString().slice(0,10); d.setDate(d.getDate()+6); const ate=d.toISOString().slice(0,10);
+  const mv=n=>{ const x=new Date(de+'T12:00'); x.setDate(x.getDate()+7*n); S.semana=x.toISOString().slice(0,10); tSemana(); };
+  app.innerHTML=`<div class="row noprint"><button class="btn sec sm" id="sp">◀</button><button class="btn sec sm" id="sh">Esta semana</button><button class="btn sec sm" id="sn">▶</button><div class="sp" style="flex:1"></div><button class="btn" id="si">Imprimir / PDF</button></div><div id="sr" class="vazio">Carregando…</div>`;
+  $('#sp').onclick=()=>mv(-1); $('#sn').onclick=()=>mv(1); $('#sh').onclick=()=>{S.semana=null;tSemana();}; $('#si').onclick=()=>print();
+  const [s,r,df,pr]=await Promise.all([api(`/api/semana?de=${de}&ate=${ate}`),api(`/api/relatorio?de=${de}&ate=${ate}`),api(`/api/defeitos/resumo?de=${de}&ate=${ate}`),api(`/api/presenca?de=${de}&ate=${ate}`)]);
+  const pecas=s.finalizadas.reduce((a,o)=>a+o.qtd,0), env=s.envios.reduce((a,e)=>a+(e.pecas||0),0), cor=p=>p>=100?'ok':p>=80?'midc':'bad';
+  const ST={falta_injustificada:'Falta não justificada',falta_justificada:'Falta justificada',atestado:'Atestado',atraso:'Atraso / saída cedo',folga:'Folga / férias'};
+  $('#sr').className='';
+  $('#sr').innerHTML=`<h2 style="font-size:18px;color:var(--txt);letter-spacing:0;text-transform:none">Relatório da semana · ${brData(de)} a ${brData(ate)}</h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${[[s.finalizadas.length,'OPs finalizadas'],[fmt(pecas),'peças finalizadas'],[s.criadas.n,'OPs criadas'],[fmt(env),'peças enviadas'],[fmt(df.porMotivo.reduce((a,x)=>a+x.qtd,0)),'peças com defeito'],[pr.filter(x=>x.status&&x.status.startsWith('falta')).length,'faltas']].map(([n,t])=>`<div class="card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--amb)">${n}</div><div class="mut">${t}</div></div>`).join('')}</div>
+    <h2>Eficiência por pessoa</h2><div class="card"><table><tr><th>Pessoa</th><th>Setor</th><th class="n">Operações</th><th class="n">Tempo real</th><th class="n">Eficiência</th></tr>${r.porPessoa.map(p=>{ const e=p.minutos_medidos>0?p.padrao_medido/p.minutos_medidos*100:null; return `<tr><td>${esc(p.funcionario)}</td><td class="mut">${esc(p.setor||'')}</td><td class="n">${p.operacoes}</td><td class="n">${dur(p.minutos_reais)}</td><td class="n ${e===null?'':cor(e)}"><b>${e===null?'–':fmt(e,0)+'%'}</b></td></tr>`}).join('')||'<tr><td colspan=5 class="mut">Nenhuma operação finalizada.</td></tr>'}</table></div>
+    <h2>OPs finalizadas</h2><div class="card">${s.finalizadas.map(o=>`<div>OP ${o.codigo} · ${esc(o.nome)} · ${fmt(o.qtd)} un${o.numero?' · pedido '+esc(o.numero):''}</div>`).join('')||'<span class="mut">Nenhuma.</span>'}</div>
+    <h2>Expedição</h2><div class="card">${s.envios.map(e=>`<div>${brData(e.data)} · pedido ${esc(e.numero)} · ${esc(e.cliente||'')} · ${fmt(e.pecas)} peça(s)${e.transportadora?' · '+esc(e.transportadora):''}</div>`).join('')||'<span class="mut">Nenhum envio.</span>'}</div>
+    <h2>Defeitos</h2><div class="card">${df.porMotivo.map(x=>`<div>${esc(x.motivo)}: <b>${fmt(x.qtd)}</b></div>`).join('')||'<span class="mut">Nenhum defeito.</span>'}</div>
+    <h2>Assiduidade</h2><div class="card">${pr.map(x=>`<div>${brData(x.data)} · ${esc(x.nome)} · ${ST[x.status]||x.status}${x.minutos?' ('+x.minutos+' min)':''}${x.obs?' · '+esc(x.obs):''}</div>`).join('')||'<span class="mut">Nenhuma falta ou atraso.</span>'}</div>
+    <h2>Madeira e estoque</h2><div class="card">${s.entradas.map(e=>`<div>Entrada ${brData(e.data)}${e.fornecedor?' · '+esc(e.fornecedor):''}: ${fmt(e.qtd,3)} bloco(s)</div>`).join('')}${s.inventarios.map(v=>`<div>Inventário nº ${v.id} (${esc(v.deposito)}) fechado: ${v.ajustes} ajuste(s)</div>`).join('')||(s.entradas.length?'':'<span class="mut">Nenhuma entrada de madeira nem inventário.</span>')}</div>`;
+}
+
 // ===== relatório de produção
 function periodo(){ const d=new Date(hojeISO()+'T12:00'), iso=x=>x.toISOString().slice(0,10);
   if(S.per==='dia') return [iso(d),iso(d)];
@@ -460,7 +586,7 @@ const abrirExp=tenta(async numero=>{
   const ctl=(it,campo,n)=>`<div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sec sm" data-i="${it.id}" data-c="${campo}" data-v="${n-1}" ${n<=0?'disabled':''}>−</button><b style="min-width:42px;text-align:center">${fmt(n)}/${fmt(it.qtd)}</b><button class="btn sec sm" data-i="${it.id}" data-c="${campo}" data-v="${n+1}" ${n>=it.qtd?'disabled':''}>+</button></div>`;
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Expedição · Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
       <div class="mut">${esc(p.status)}${p.prazo?' · prazo '+brData(p.prazo):''}</div></div><button class="btn sec sm" id="mx">Fechar</button></div>
-    <br><div class="row"><button class="btn" id="env" ${paraEnviar?'':'disabled'}>Registrar envio${paraEnviar?' ('+fmt(paraEnviar)+' embalada'+(paraEnviar>1?'s':'')+')':''}</button><button class="btn sec" id="chk">Imprimir check</button>
+    <br><div class="row"><button class="btn" id="env" ${paraEnviar?'':'disabled'}>Registrar envio${paraEnviar?' ('+fmt(paraEnviar)+' embalada'+(paraEnviar>1?'s':'')+')':''}</button><button class="btn sec" id="chk">Imprimir check</button><button class="btn sec" id="zip">Baixar fotos</button>
       ${!falta&&p.status!=='Entregue'?'<button class="btn ok" id="ent">Marcar entregue</button>':''}<button class="btn sec" id="tc">Conferir tudo que está pronto</button></div>
     <h2>Peças</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Situação</th><th>Conferidas</th><th>Embaladas</th><th class="n">Enviadas</th></tr>
     ${p.itens.map(it=>`<tr><td><b>${esc(it.descricao)}</b>${it.item_id?'':' <span class="mut">(sem cadastro)</span>'}</td><td class="n">${fmt(it.qtd)}</td><td style="font-size:13px">${resumoUn(unidades(it))}</td>
@@ -470,6 +596,7 @@ const abrirExp=tenta(async numero=>{
   $('#mx').onclick=()=>{ modal(''); render(); };
   $('#modal').querySelectorAll('[data-c][data-i]').forEach(b=>b.onclick=tenta(async()=>{ await api(`/api/pedido-itens/${b.dataset.i}/exp`,{[b.dataset.c]:+b.dataset.v}); re(); }));
   $('#chk').onclick=()=>imprimirCheck([p.numero]);
+  $('#zip').onclick=()=>zipPedido(p);
   $('#tc').onclick=tenta(async()=>{ let n=0; for(const it of p.itens){ const un=unidades(it), alvo=it.conferida+un.filter(k=>k==='pronta').length; if(alvo>it.conferida){ await api(`/api/pedido-itens/${it.id}/exp`,{conferida:alvo}); n+=alvo-it.conferida; } }
     toast(n?n+' peça(s) conferida(s)':'Nenhuma peça pronta esperando conferência',!n); re(); });
   if($('#ent')) $('#ent').onclick=tenta(async()=>{ await api(`/api/pedidos/${encodeURIComponent(p.numero)}/status`,{status:'Entregue'}); toast('Pedido '+p.numero+' entregue'); modal(''); render(); });
@@ -530,9 +657,10 @@ async function tDefeitos(){
     ${its.map(it=>it.regs.map((d,i)=>`<tr>${i===0?`<td rowspan="${it.regs.length}"><b>${esc(it.item)}</b><br><span class="mut">${it.codigo} · total ${fmt(it.qtd)} em defeito</span></td>`:''}
       <td class="n"><b>${fmt(d.qtd)}</b></td><td class="mut">${brHora(d.data)}</td><td>${esc(d.motivo)}${d.obs?`<br><span class="mut">${esc(d.obs)}</span>`:''}</td>
       <td class="mut">${[d.op_codigo?'OP '+d.op_codigo:'',d.origem==='pa'?'veio do P.A.':'',d.setor,d.funcionario].filter(Boolean).map(esc).join(' · ')}</td>
-      <td style="white-space:nowrap"><button class="btn ok sm" data-r="${d.id}" data-a="recuperar">Recuperar</button> <button class="btn mid sm" data-r="${d.id}" data-a="retrabalho">Retrabalho</button> <button class="btn bad sm" data-r="${d.id}" data-a="descartar">Descartar</button></td></tr>`).join('')).join('')}</table></div>`
+      <td style="white-space:nowrap"><button class="btn ok sm" data-r="${d.id}" data-a="recuperar">Recuperar</button> <button class="btn mid sm" data-r="${d.id}" data-a="retrabalho">Retrabalho</button> <button class="btn bad sm" data-r="${d.id}" data-a="descartar">Descartar</button> <button class="btn sec sm" data-ft="${d.id}">Fotos</button></td></tr>`).join('')).join('')}</table></div>`
     :'<div class="card vazio">Nenhuma peça em defeito agora.</div>';
   $('#dl').querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>resolverDefeito(l.find(d=>d.id===+b.dataset.r),b.dataset.a));
+  $('#dl').querySelectorAll('[data-ft]').forEach(b=>b.onclick=()=>fotosDefeito(l.find(d=>d.id===+b.dataset.ft)));
   const tot=x=>x.reduce((s,y)=>s+y.qtd,0);
   const lista=(x,k)=>x.length?`<table>${x.map(y=>`<tr><td>${esc(y[k])}</td><td class="n"><b>${fmt(y.qtd)}</b></td></tr>`).join('')}</table>`:'<span class="mut">Nada no período.</span>';
   $('#dr').className='';
