@@ -430,7 +430,7 @@ const app = {
         const op = (await opsAbertas(DB, 'op.codigo=?', Number(m[1])))[0];
         if (!op) return json(req, { erro: 'OP não encontrada' }, 404);
         const [operacoes, eventos, materiais] = await Promise.all([
-          all(DB, `select oo.*, t.nome, t.setor_id, t.espera, t.estagio_id, f.nome funcionario from op_operacao oo
+          all(DB, `select oo.*, t.nome, t.setor_id, t.espera, t.estagio_id, f.nome funcionario, (select x.motivo || coalesce(' – ' || x.obs, '') from op_pausa x where x.op_operacao_id=oo.id and x.fim is null order by x.id desc limit 1) pausa_motivo from op_operacao oo
             join operacao_tipo t on t.id=oo.operacao_tipo_id left join funcionario f on f.id=oo.funcionario_id where oo.op_id=? order by oo.ordem`, op.id),
           all(DB, 'select * from op_evento where op_id=? order by id desc', op.id),
           all(DB, `select i.codigo, i.nome, c.qtd, c.qtd*? total,
@@ -473,6 +473,7 @@ const app = {
             .bind(func ? func.id : null, now, now, oo.id);
         } else if (acao === 'pausar') {
           if (oo.status !== 'produzindo') return json(req, { erro: 'Só dá para pausar o que está produzindo' }, 400);
+          if (!String(body.motivo || '').trim()) return json(req, { erro: 'Escolha o motivo da pausa' }, 400);
           upd = DB.prepare("update op_operacao set status='pausado', minutos=minutos+?, inicio_atual=null where id=?").bind(minDesde(oo.inicio_atual), oo.id);
         } else if (acao === 'finalizar') {
           if (oo.status === 'finalizado') return json(req, { erro: 'Já finalizada' }, 400);
@@ -491,8 +492,12 @@ const app = {
           upd = DB.prepare("update op_operacao set status='pausado', fim=null, sem_registro=0 where id=?").bind(oo.id);
         }
         const verbo = { iniciar: 'iniciou', pausar: 'pausou', finalizar: 'finalizou', reabrir: 'reabriu' }[acao];
+        const motivoPausa = acao === 'pausar' ? ` (motivo: ${String(body.motivo).trim()}${body.obs ? ' – ' + String(body.obs).trim() : ''})` : '';
+        const pausaSt = acao === 'pausar'
+          ? [DB.prepare('insert into op_pausa(op_operacao_id, motivo, obs, funcionario_id) values(?,?,?,?)').bind(oo.id, String(body.motivo).trim(), body.obs ? String(body.obs).trim() : null, oo.funcionario_id || null)]
+          : ['iniciar', 'finalizar'].includes(acao) ? [DB.prepare("update op_pausa set fim=datetime('now') where op_operacao_id=? and fim is null").bind(oo.id)] : [];
         const semTempo = generico ? ' (sem registro: tempo padrão usado como estimado)' : acao === 'finalizar' && !oo.espera && oo.status === 'pendente' ? ' (sem registro de tempo: não foi iniciada)' : '';
-        await DB.batch([upd, evento(DB, oo.op_id, `${quem} ${verbo} ${oo.nome}${semTempo}`)]);
+        await DB.batch([upd, ...pausaSt, evento(DB, oo.op_id, `${quem} ${verbo} ${oo.nome}${semTempo}${motivoPausa}`)]);
         await recalcularOp(DB, oo.op_id);
         return json(req, { ok: true });
       }
@@ -502,6 +507,7 @@ const app = {
         const setor = Number(q('setor_id'));
         const r = await all(DB, `select oo.id, oo.status, oo.ordem, oo.tempo_unit_min, oo.minutos, oo.inicio_atual, t.nome operacao, t.setor_id,
             op.codigo, op.qtd, op.previsao_fim, op.motivo, i.nome item_nome, f.nome funcionario, oo.funcionario_id,
+            (select x.motivo || coalesce(' – ' || x.obs, '') from op_pausa x where x.op_operacao_id=oo.id and x.fim is null order by x.id desc limit 1) pausa_motivo,
             (select count(*) from op_operacao x where x.op_id=oo.op_id and x.ordem<oo.ordem and x.status<>'finalizado') antes
           from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id join op on op.id=oo.op_id join item i on i.id=op.item_id
           left join funcionario f on f.id=oo.funcionario_id
@@ -798,7 +804,7 @@ const app = {
           one(DB, 'select count(*) n, coalesce(sum(ei.qtd),0) pecas from envio e join envio_item ei on ei.envio_id=e.id where e.data >= ?', seg),
         ]);
         // quem está produzindo agora (etapas iniciadas ou pausadas, fora as de espera)
-        const agoraProd = await all(DB, `select oo.status, oo.minutos, oo.inicio_atual, oo.tempo_unit_min*o.qtd padrao, o.codigo, o.qtd, i.nome item, t.nome operacao, f.nome funcionario, s.nome setor
+        const agoraProd = await all(DB, `select oo.status, oo.minutos, oo.inicio_atual, (select x.motivo || coalesce(' – ' || x.obs, '') from op_pausa x where x.op_operacao_id=oo.id and x.fim is null order by x.id desc limit 1) pausa_motivo, (select x.inicio from op_pausa x where x.op_operacao_id=oo.id and x.fim is null order by x.id desc limit 1) pausa_inicio, oo.tempo_unit_min*o.qtd padrao, o.codigo, o.qtd, i.nome item, t.nome operacao, f.nome funcionario, s.nome setor
           from op_operacao oo join op o on o.id=oo.op_id join item i on i.id=o.item_id join operacao_tipo t on t.id=oo.operacao_tipo_id
           left join funcionario f on f.id=oo.funcionario_id left join setor s on s.id=t.setor_id
           where o.status='aberta' and t.espera=0 and oo.status in ('produzindo','pausado') order by oo.status='pausado', s.id, f.nome`);
