@@ -658,12 +658,12 @@ const abrirExp=tenta(async numero=>{
   $('#env').onclick=()=>{ const its=p.itens.filter(i=>i.embalada>i.enviada);
     modal(`<h2 style="margin-top:0">Envio · Pedido ${esc(p.numero)}</h2><div class="card"><table><tr><th>Peça</th><th class="n">Embaladas</th><th class="n">Vai agora</th></tr>
       ${its.map(i=>`<tr><td>${esc(i.descricao)}</td><td class="n">${fmt(i.embalada-i.enviada)}</td><td class="n"><input type="number" min="0" max="${i.embalada-i.enviada}" value="${i.embalada-i.enviada}" data-e="${i.id}" style="width:80px"></td></tr>`).join('')}</table></div><br>
-      <div class="row"><div><div class="mut">Data</div><input type="date" id="ed" value="${hojeISO()}"></div><div><div class="mut">Transportadora</div><input id="et"></div><div><div class="mut">NF</div><input id="enf" style="width:120px"></div><div><div class="mut">Volumes</div><input id="ev" type="number" min="1" style="width:90px"></div></div>
+      <div class="row"><div><div class="mut">Sai do estoque</div><select id="edp"><option value="1">P.A. Manaus</option><option value="3">P.A. São Paulo</option></select></div><div><div class="mut">Data</div><input type="date" id="ed" value="${hojeISO()}"></div><div><div class="mut">Transportadora</div><input id="et"></div><div><div class="mut">NF</div><input id="enf" style="width:120px"></div><div><div class="mut">Volumes</div><input id="ev" type="number" min="1" style="width:90px"></div></div>
       <div class="mut" style="margin-top:8px">Observação</div><input id="eo" style="width:100%"><br><br>
-      <div class="row"><button class="btn" id="eg">Confirmar envio</button><button class="btn sec" id="ex">Voltar</button></div><p class="mut">As peças saem do estoque P.A.</p>`);
+      <div class="row"><button class="btn" id="eg">Confirmar envio</button><button class="btn sec" id="ex">Voltar</button></div><p class="mut">As peças saem do estoque escolhido (P.A. Manaus ou P.A. São Paulo).</p>`);
     $('#ex').onclick=re;
     $('#eg').onclick=tenta(async()=>{ const itens=[...$('#modal').querySelectorAll('[data-e]')].map(x=>({pedido_item_id:+x.dataset.e,qtd:+x.value})).filter(x=>x.qtd>0);
-      const r=await api(`/api/pedidos/${encodeURIComponent(p.numero)}/envio`,{itens,data:$('#ed').value,transportadora:$('#et').value.trim()||null,nf:$('#enf').value.trim()||null,volumes:+$('#ev').value||null,obs:$('#eo').value.trim()||null});
+      const r=await api(`/api/pedidos/${encodeURIComponent(p.numero)}/envio`,{itens,deposito_id:+$('#edp').value,data:$('#ed').value,transportadora:$('#et').value.trim()||null,nf:$('#enf').value.trim()||null,volumes:+$('#ev').value||null,obs:$('#eo').value.trim()||null});
       toast(r.completo?'Pedido completo enviado':'Envio registrado'); re(); }); };
 });
 // check por pedido (folha da prateleira, mesmo layout do PDF)
@@ -696,11 +696,11 @@ const imprimirCheck=tenta(async numeros=>{
 
 // ===== defeitos
 const MOTIVOS=['Rachadura / fissura','Trinca na estufa','Defeito de torno','Acabamento','Madeira (nó, broca, mancha)','Quebra no transporte','Outro'];
-const SIT={em_defeito:['Em defeito','t-pausado'],recuperado:['Recuperada → P.A.','t-produzindo'],retrabalho:['Foi p/ Retrabalho','t-finalizado'],descartado:['Descartada (perda)','t-pendente']};
+const SIT={em_defeito:['Em defeito','t-pausado'],recuperado:['Recuperada → P.A.','t-produzindo'],retrabalho:['Em conserto','t-finalizado'],descartado:['Descartada (perda)','t-pendente']};
 async function tDefeitos(){
   const [de,ate]=periodo();
   app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Estoque de defeito</h2><button class="btn" id="nd">+ Registrar defeito</button></div>
-    <p class="mut">Peça com defeito entra no depósito Defeito. Daqui ela pode ser recuperada (volta pro P.A.), ir pro Retrabalho ou ser descartada (perda).</p><div id="dl" class="vazio">Carregando…</div>
+    <p class="mut">Peça com defeito entra no depósito Defeito. Daqui ela pode ir pro conserto (continua no Defeito), ser recuperada (volta pro P.A. Manaus) ou ser descartada (perda).</p><div id="dl" class="vazio">Carregando…</div>
     <div class="row" style="justify-content:space-between;margin-top:18px"><h2 style="margin:0">Resumo · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2><div class="row">${['dia','semana','mes'].map(p=>`<button class="btn ${S.per===p?'':'sec'} sm" data-p="${p}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div><div id="dr" class="vazio">Carregando…</div>`;
   $('#nd').onclick=()=>registrarDefeito({});
   app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.per=b.dataset.p; tDefeitos();});
@@ -712,7 +712,7 @@ async function tDefeitos(){
     ${its.map(it=>it.regs.map((d,i)=>`<tr>${i===0?`<td rowspan="${it.regs.length}"><b>${esc(it.item)}</b><br><span class="mut">${it.codigo} · total ${fmt(it.qtd)} em defeito</span></td>`:''}
       <td class="n"><b>${fmt(d.qtd)}</b></td><td class="mut">${brHora(d.data)}</td><td>${esc(d.motivo)}${d.obs?`<br><span class="mut">${esc(d.obs)}</span>`:''}</td>
       <td class="mut">${[d.op_codigo?'OP '+d.op_codigo:'',d.origem==='pa'?'veio do P.A.':'',d.setor,d.funcionario].filter(Boolean).map(esc).join(' · ')}</td>
-      <td style="white-space:nowrap"><button class="btn ok sm" data-r="${d.id}" data-a="recuperar">Recuperar</button> <button class="btn mid sm" data-r="${d.id}" data-a="retrabalho">Retrabalho</button> <button class="btn bad sm" data-r="${d.id}" data-a="descartar">Descartar</button> <button class="btn sec sm" data-ft="${d.id}">Fotos</button></td></tr>`).join('')).join('')}</table></div>`
+      <td style="white-space:nowrap"><button class="btn ok sm" data-r="${d.id}" data-a="recuperar">Recuperar</button> ${d.situacao==='retrabalho'?'<span class="tag t-finalizado">Em conserto</span>':`<button class="btn mid sm" data-r="${d.id}" data-a="retrabalho">Conserto</button>`} <button class="btn bad sm" data-r="${d.id}" data-a="descartar">Descartar</button> <button class="btn sec sm" data-ft="${d.id}">Fotos</button></td></tr>`).join('')).join('')}</table></div>`
     :'<div class="card vazio">Nenhuma peça em defeito agora.</div>';
   $('#dl').querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>resolverDefeito(l.find(d=>d.id===+b.dataset.r),b.dataset.a));
   $('#dl').querySelectorAll('[data-ft]').forEach(b=>b.onclick=()=>fotosDefeito(l.find(d=>d.id===+b.dataset.ft)));
@@ -724,8 +724,8 @@ async function tDefeitos(){
     <h2>Histórico do período (${h.length})</h2><div class="card" style="overflow-x:auto">${h.length?`<table><tr><th>Quando</th><th>Peça</th><th class="n">Qtd</th><th>Motivo</th><th>Onde / quem</th><th>Situação</th></tr>${h.map(d=>`<tr><td class="mut">${brHora(d.data)}</td><td>${esc(d.item)}</td><td class="n">${fmt(d.qtd)}</td><td>${esc(d.motivo)}</td><td class="mut">${[d.op_codigo?'OP '+d.op_codigo:'',d.setor,d.funcionario].filter(Boolean).map(esc).join(' · ')}</td><td><span class="tag ${(SIT[d.situacao]||[])[1]||''}">${esc((SIT[d.situacao]||[d.situacao])[0])}</span>${d.resolvido_em?`<br><span class="mut">${brHora(d.resolvido_em)}</span>`:''}</td></tr>`).join('')}</table>`:'<span class="mut">Nenhum defeito registrado no período.</span>'}</div>`;
 }
 const resolverDefeito=tenta(async(d,a)=>{
-  const txt={recuperar:`Recuperar ${fmt(d.qtd)} × ${d.item}? Volta pro estoque P.A.`,retrabalho:`Mandar ${fmt(d.qtd)} × ${d.item} pro depósito Retrabalho?`,descartar:`Descartar ${fmt(d.qtd)} × ${d.item}? Conta como perda e sai do estoque.`}[a];
-  modal(`<h2 style="margin-top:0">${a==='recuperar'?'Recuperar peça':a==='retrabalho'?'Mandar pro retrabalho':'Descartar peça'}</h2><p>${esc(txt)}</p>
+  const txt={recuperar:`Recuperar ${fmt(d.qtd)} × ${d.item}? Volta pro estoque P.A. Manaus.`,retrabalho:`Mandar ${fmt(d.qtd)} × ${d.item} pro conserto? Ela continua no estoque de Defeito até você clicar em Recuperar.`,descartar:`Descartar ${fmt(d.qtd)} × ${d.item}? Conta como perda e sai do estoque.`}[a];
+  modal(`<h2 style="margin-top:0">${a==='recuperar'?'Recuperar peça':a==='retrabalho'?'Mandar pro conserto':'Descartar peça'}</h2><p>${esc(txt)}</p>
     <input id="ro" placeholder="Observação (opcional)" style="width:100%"><br><br><div class="row"><button class="btn ${a==='descartar'?'bad':a==='retrabalho'?'mid':'ok'}" id="rc">Confirmar</button><button class="btn sec" id="rx">Voltar</button></div>`);
   $('#rx').onclick=()=>modal('');
   $('#rc').onclick=tenta(async()=>{ await api(`/api/defeitos/${d.id}/${a}`,{obs:$('#ro').value.trim()||null}); toast('Pronto'); modal(''); if(S.tab==='defeitos') tDefeitos(); });
