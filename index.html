@@ -104,7 +104,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -152,7 +152,7 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]],['Financeiro',[['fin','$','Financeiro']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 const pode=t=>!!EU&&(EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
@@ -167,7 +167,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -744,6 +744,184 @@ function periodo(){ const d=new Date(hojeISO()+'T12:00'), iso=x=>x.toISOString()
   if(S.per==='dia') return [iso(d),iso(d)];
   if(S.per==='semana'){ const s=new Date(d); s.setDate(d.getDate()-((d.getDay()+6)%7)); return [iso(s),iso(d)]; }
   return [iso(new Date(d.getFullYear(),d.getMonth(),1,12)),iso(d)]; }
+// ===== FINANCEIRO: resumo, lançamentos (a pagar / a receber / transferência), fluxo de caixa, DRE, cadastros
+const brl = n => Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const FIN_TIPO = {P:['A pagar','bad'],R:['A receber','ok'],T:['Transferência','mut']};
+const GRUPOS_DRE = ['Receita de Vendas','(+) Receitas Financeiras','(-) Deduções','(-) Custo Variável (CPV ou CMV)','(-) Despesas Operacionais','(-) Despesas Administrativas','(-) Despesas Financeiras','Não aparecer no DRE'];
+let FB = null; const finBase = async (forca) => (FB && !forca) ? FB : (FB = await api('/api/fin/base'));
+async function tFin(){
+  S.fsub = S.fsub || 'resumo';
+  const subs = [['resumo','Resumo'],['lanc','Lançamentos'],['fluxo','Fluxo de caixa'],['dre','DRE'],['cad','Contas e categorias']];
+  app.innerHTML = `<div class="row" style="justify-content:space-between"><div class="row">${subs.map(([k,n])=>`<button class="btn ${S.fsub===k?'':'sec'} sm" data-fs="${k}">${n}</button>`).join('')}</div>
+    <button class="btn sm" id="fnovo">+ Novo lançamento</button></div><div id="fc" class="vazio" style="margin-top:12px">Carregando…</div>`;
+  app.querySelectorAll('[data-fs]').forEach(b=>b.onclick=()=>{ S.fsub=b.dataset.fs; tFin(); });
+  $('#fnovo').onclick = () => finForm(null);
+  await finBase(true);
+  ({resumo:finResumo, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
+}
+const finK = (v,t,c,sub) => `<div class="card" style="text-align:center"><div style="font-size:24px;font-weight:800;color:${c||'var(--amb)'}">${v}</div><div class="mut">${t}</div>${sub?`<div class="mut" style="font-size:12px">${sub}</div>`:''}</div>`;
+async function finResumo(){
+  const r = await api('/api/fin/resumo'); $('#fc').className='';
+  $('#fc').innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
+      ${finK(brl(r.saldo),'Saldo nas contas',r.saldo<0?'var(--bad)':'var(--ok)')}
+      ${finK(brl(r.receber_vencido),'A receber VENCIDO',r.receber_vencido?'var(--bad)':'var(--ok)','clientes atrasados')}
+      ${finK(brl(r.pagar_vencido),'A pagar vencido',r.pagar_vencido?'var(--bad)':'var(--ok)')}
+      ${finK(brl(r.receber_7),'A receber · 7 dias','var(--ok)','hoje: '+brl(r.receber_hoje))}
+      ${finK(brl(r.pagar_7),'A pagar · 7 dias','var(--bad)','hoje: '+brl(r.pagar_hoje))}
+      ${finK(brl(r.recebido_mes),'Recebido no mês','var(--ok)','falta receber: '+brl(r.receber_mes))}
+      ${finK(brl(r.pago_mes),'Pago no mês','var(--bad)','falta pagar: '+brl(r.pagar_mes))}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr));margin-top:10px">
+      <div class="card"><h3 style="margin-top:0">Contas</h3><table>${r.contas.filter(c=>c.ativo).map(c=>`<tr><td>${esc(c.nome)}</td><td class="n ${c.saldo<0?'bad':''}"><b>${brl(c.saldo)}</b></td></tr>`).join('')}</table></div>
+      <div class="card"><h3 style="margin-top:0">Próximos 7 dias</h3>${r.proximos.length?`<table>${r.proximos.map(x=>`<tr data-l="${x.id}" style="cursor:pointer"><td>${brData(x.vencimento)}</td><td><span class="${FIN_TIPO[x.tipo][1]}">${FIN_TIPO[x.tipo][0]}</span></td><td>${esc(x.descricao)}<br><span class="mut">${esc(x.pessoa||'')}</span></td><td class="n">${brl(x.aberto)}</td></tr>`).join('')}</table>`:'<div class="mut">Nada vencendo.</div>'}</div></div>
+    <div class="card" style="margin-top:10px"><h3 style="margin-top:0">A receber vencido · pra cobrar (${r.vencidosR.length})</h3>${r.vencidosR.length?`<table><tr><th>Venceu</th><th class="n">Dias</th><th>Cliente</th><th>Descrição</th><th class="n">Em aberto</th><th></th></tr>${r.vencidosR.map(x=>`<tr><td>${brData(x.vencimento)}</td><td class="n ${x.dias>60?'bad':x.dias>30?'midc':''}"><b>${x.dias}</b></td><td>${esc(x.pessoa||'')}</td><td>${esc(x.descricao)}</td><td class="n"><b>${brl(x.aberto)}</b></td><td><button class="btn sec sm" data-q="${x.id}">Recebeu</button></td></tr>`).join('')}</table>`:'<div class="mut">Nenhum cliente atrasado.</div>'}</div>`;
+  $('#fc').querySelectorAll('[data-l]').forEach(t=>t.onclick=()=>finAbrir(+t.dataset.l));
+  $('#fc').querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>finAbrir(+b.dataset.q,true));
+}
+async function finLanc(){
+  const F = S.ff = S.ff || {tipo:'',status:'aberto',campo:'vencimento',de:'',ate:'',q:'',conta_id:'',categoria_id:'',centro_id:''};
+  const opt = (l,v,vazio) => `<option value="">${vazio}</option>`+l.map(x=>`<option value="${x.id}" ${String(v)===String(x.id)?'selected':''}>${esc(x.nome)}${x.tipo&&x.tipo.length===1?' ('+(x.tipo==='R'?'receita':'despesa')+')':''}</option>`).join('');
+  $('#fc').className='';
+  $('#fc').innerHTML = `<div class="card"><div class="row">${[['','Todos'],['P','A pagar'],['R','A receber'],['T','Transferências']].map(([k,n])=>`<button class="btn ${F.tipo===k?'':'sec'} sm" data-ft="${k}">${n}</button>`).join('')}
+      <span style="width:12px"></span>${[['aberto','Em aberto'],['vencido','Vencidos'],['quitado','Quitados'],['todos','Todos'],['cancelado','Cancelados']].map(([k,n])=>`<button class="btn ${F.status===k?'':'sec'} sm" data-fst="${k}">${n}</button>`).join('')}</div>
+    <div class="row" style="margin-top:8px"><select id="fcampo"><option value="vencimento">Vencimento</option><option value="quitacao">Quitação</option><option value="competencia">Competência</option></select>
+      de <input type="date" id="fde" value="${F.de}"> até <input type="date" id="fate" value="${F.ate}">
+      <select id="fconta">${opt(FB.contas,F.conta_id,'Todas as contas')}</select><select id="fcat">${opt(FB.categorias,F.categoria_id,'Todas as categorias')}</select><select id="fcen">${opt(FB.centros,F.centro_id,'Todos os centros')}</select>
+      <input id="fq" placeholder="Buscar descrição, cliente, NF…" value="${esc(F.q)}" style="min-width:220px"><button class="btn sm" id="fbus">Buscar</button></div></div>
+    <div id="flist" class="vazio">Carregando…</div>`;
+  $('#fcampo').value = F.campo;
+  $('#fc').querySelectorAll('[data-ft]').forEach(b=>b.onclick=()=>{ F.tipo=b.dataset.ft; finLanc(); });
+  $('#fc').querySelectorAll('[data-fst]').forEach(b=>b.onclick=()=>{ F.status=b.dataset.fst; finLanc(); });
+  const ler = () => Object.assign(F,{campo:$('#fcampo').value,de:$('#fde').value,ate:$('#fate').value,q:$('#fq').value.trim(),conta_id:$('#fconta').value,categoria_id:$('#fcat').value,centro_id:$('#fcen').value});
+  $('#fbus').onclick = () => { ler(); finLanc(); }; $('#fq').onkeydown = e => { if(e.key==='Enter') $('#fbus').click(); };
+  ['#fcampo','#fde','#fate','#fconta','#fcat','#fcen'].forEach(s=>$(s).onchange=()=>{ ler(); finLanc(); });
+  const qs = new URLSearchParams(Object.entries(F).filter(([k,v])=>v)).toString();
+  const r = await api('/api/fin/lancamentos?'+qs+(F.status==='quitado'&&F.campo==='quitacao'?'&ordem=desc':''));
+  const T = Object.fromEntries(r.totais.map(t=>[t.tipo,t]));
+  $('#flist').className='';
+  $('#flist').innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin:10px 0">
+      ${T.R?finK(brl(T.R.aberto),'A receber em aberto','var(--ok)',`${T.R.n} lanç. · total ${brl(T.R.valor)}`):''}${T.P?finK(brl(T.P.aberto),'A pagar em aberto','var(--bad)',`${T.P.n} lanç. · total ${brl(T.P.valor)}`):''}
+      ${T.R&&T.P?finK(brl(T.R.aberto-T.P.aberto),'Saldo (receber − pagar)',(T.R.aberto-T.P.aberto)<0?'var(--bad)':'var(--ok)'):''}</div>
+    ${r.limite?'<p class="midc">Mostrando só os primeiros 1500. Use o período ou a busca pra filtrar.</p>':''}
+    <div class="card" style="overflow-x:auto">${r.lista.length?`<table><tr><th>Vencimento</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th class="n">Valor</th><th class="n">Em aberto</th><th>Situação</th><th></th></tr>
+    ${r.lista.map(x=>`<tr data-l="${x.id}" style="cursor:pointer"><td>${brData(x.vencimento)}${x.parcela?`<br><span class="mut">${esc(x.parcela)}</span>`:''}</td><td><span class="${FIN_TIPO[x.tipo][1]}">${FIN_TIPO[x.tipo][0]}</span></td>
+      <td><b>${esc(x.descricao)}</b>${x.pessoa?`<br><span class="mut">${esc(x.pessoa)}</span>`:''}${x.nf?` <span class="mut">· NF ${esc(x.nf)}</span>`:''}</td><td>${esc(x.categoria||'')}${x.centro?`<br><span class="mut">${esc(x.centro)}</span>`:''}</td>
+      <td>${esc(x.conta||'')}${x.conta_destino?' → '+esc(x.conta_destino):''}</td><td class="n">${brl(x.valor)}</td><td class="n">${x.status==='aberto'?'<b>'+brl(x.aberto)+'</b>':'–'}</td>
+      <td>${x.status==='cancelado'?'<span class="tag t-pendente">Cancelado</span>':x.status==='quitado'?`<span class="tag t-produzindo">Quitado</span><br><span class="mut">${brData(x.quitacao)}</span>`:x.vencido?'<span class="tag" style="background:var(--bad);color:#fff">Vencido</span>':x.pago>0?'<span class="tag t-pausado">Parcial</span>':'<span class="tag t-pausado">Em aberto</span>'}</td>
+      <td>${x.status==='aberto'&&x.tipo!=='T'?`<button class="btn sec sm" data-q="${x.id}">${x.tipo==='R'?'Recebeu':'Pagou'}</button>`:''}</td></tr>`).join('')}</table>`:'<div class="vazio">Nenhum lançamento com esse filtro.</div>'}</div>`;
+  $('#flist').querySelectorAll('[data-q]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); finAbrir(+b.dataset.q,true); });
+  $('#flist').querySelectorAll('[data-l]').forEach(t=>t.onclick=()=>finAbrir(+t.dataset.l));
+}
+const finRecarrega = () => ({resumo:finResumo, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
+const finAbrir = tenta(async (id, quitar) => { const l = await api('/api/fin/lancamentos/'+id); if (quitar) return finQuitar(l); finForm(l); });
+function finQuitar(l){
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${l.tipo==='R'?'Recebimento':'Pagamento'}</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+    <p><b>${esc(l.descricao)}</b>${l.pessoa?' · '+esc(l.pessoa):''}<br><span class="mut">Venc. ${brData(l.vencimento)} · valor ${brl(l.valor)}${l.pago>0?' · já pago '+brl(l.pago):''}</span></p>
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr"><label>Valor<input id="qv" type="number" step="0.01" value="${(l.valor-l.pago).toFixed(2)}" style="width:100%"></label>
+    <label>Data<input id="qd" type="date" value="${FB.hoje}" style="width:100%"></label>
+    <label>Conta<select id="qc" style="width:100%">${FB.contas.filter(c=>c.ativo||c.id===l.conta_id).map(c=>`<option value="${c.id}" ${c.id===l.conta_id?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></label></div>
+    <p class="mut">Pra pagamento parcial, diminua o valor: o resto continua em aberto.</p><button class="btn ok" id="qok">Confirmar</button>`);
+  $('#mx').onclick=()=>modal('');
+  $('#qok').onclick=tenta(async()=>{ await api(`/api/fin/lancamentos/${l.id}/quitar`,{valor:$('#qv').value,data:$('#qd').value,conta_id:$('#qc').value}); toast('✓ Baixa feita'); modal(''); FB=null; await finBase(true); finRecarrega(); });
+}
+function finForm(l){
+  const novo=!l, t0=l?l.tipo:(S.ff&&S.ff.tipo)||'P';
+  const sel=(id,lista,v,vazio)=>`<select id="${id}" style="width:100%"><option value="">${vazio}</option>${lista.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.nome)}</option>`).join('')}</select>`;
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${novo?'Novo lançamento':'Lançamento'}${l&&l.origem==='sensio'?' <span class="mut" style="font-size:13px">(veio do Sensio)</span>':''}</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+    ${l?`<p class="mut">${l.status==='cancelado'?'CANCELADO':l.status==='quitado'?'Quitado em '+brData(l.quitacao):l.pago>0?'Parcial: pago '+brl(l.pago)+' de '+brl(l.valor):'Em aberto'}</p>`:''}
+    <div class="row" style="margin:8px 0">${novo?[['P','A pagar'],['R','A receber'],['T','Transferência']].map(([k,n])=>`<button class="btn ${t0===k?'':'sec'} sm" data-tp="${k}">${n}</button>`).join(''):`<b class="${FIN_TIPO[t0][1]}">${FIN_TIPO[t0][0]}</b>`}</div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <label>Descrição<input id="ld" value="${esc(l?l.descricao:'')}" style="width:100%"></label>
+      <label class="nT">${t0==='R'?'Cliente':'Fornecedor / pessoa'}<input id="lp" value="${esc(l?l.pessoa||'':'')}" style="width:100%"></label>
+      <label>Valor${novo?' (total)':''}<input id="lv" type="number" step="0.01" value="${l?l.valor:''}" style="width:100%"></label>
+      <label>Vencimento${novo?' (1ª parcela)':''}<input id="lvenc" type="date" value="${l?l.vencimento:FB.hoje}" style="width:100%"></label>
+      <label class="nT">Categoria<span id="lcatw"></span></label>
+      <label class="nT">Centro de custo${sel('lcen',FB.centros.filter(c=>c.ativo),l?l.centro_id:null,'—')}</label>
+      <label>${t0==='T'?'Conta de saída':'Conta'}${sel('lcon',FB.contas.filter(c=>c.ativo||(l&&c.id===l.conta_id)),l?l.conta_id:null,'—')}</label>
+      <label class="sT">Conta de entrada${sel('lcd',FB.contas.filter(c=>c.ativo),l?l.conta_destino_id:null,'—')}</label>
+      <label class="nT">Competência<input id="lcomp" type="date" value="${l?l.competencia||'':''}" style="width:100%"></label>
+      <label class="nT">Forma de pagamento<input id="lmet" list="lmets" value="${esc(l?l.metodo||'':'')}" style="width:100%"><datalist id="lmets">${['PIX','Boleto Bancário','Cartão de Crédito','Cartão de Débito','Depósito/Transferência','Dinheiro','Débito em conta'].map(x=>`<option value="${x}">`).join('')}</datalist></label>
+      <label class="nT">Nº da NF<input id="lnf" value="${esc(l?l.nf||'':'')}" style="width:100%"></label>
+      ${novo?`<label class="nT">Parcelas<input id="lpar" type="number" min="1" max="120" value="1" style="width:100%"></label>`:''}
+    </div>
+    <label>Observação<input id="lobs" value="${esc(l?l.obs||'':'')}" style="width:100%"></label>
+    ${novo?`<div class="nT" style="margin-top:8px"><label><input type="checkbox" id="lpg"> Já foi ${t0==='R'?'recebido':'pago'} (1ª parcela)</label> <input type="date" id="lpgd" value="${FB.hoje}"></div>`:''}
+    <br><div class="row"><button class="btn" id="lok">${novo?'Salvar':'Salvar alterações'}</button>
+      ${l&&l.status==='aberto'&&l.tipo!=='T'?`<button class="btn ok" id="lq">${l.tipo==='R'?'Recebeu':'Pagou'}</button>`:''}
+      ${l&&l.pago>0&&l.tipo!=='T'&&l.status!=='cancelado'?'<button class="btn sec" id="les">Estornar baixa</button>':''}
+      ${l&&l.status!=='cancelado'?'<button class="btn bad" id="lcan">Cancelar lançamento</button>':''}${l&&l.status==='cancelado'?'<button class="btn sec" id="lre">Reativar</button>':''}</div>`);
+  let tipo=t0;
+  const ajusta=()=>{ document.querySelectorAll('#modal .nT').forEach(e=>e.style.display=tipo==='T'?'none':''); document.querySelectorAll('#modal .sT').forEach(e=>e.style.display=tipo==='T'?'':'none');
+    const v=$('#lcat')?$('#lcat').value:(l?l.categoria_id:''); $('#lcatw').innerHTML=sel('lcat',FB.categorias.filter(c=>(c.ativo||(l&&c.id===l.categoria_id))&&c.tipo===(tipo==='R'?'R':'D')),+v||null,'—'); };
+  ajusta();
+  document.querySelectorAll('#modal [data-tp]').forEach(b=>b.onclick=()=>{ tipo=b.dataset.tp; document.querySelectorAll('#modal [data-tp]').forEach(x=>x.className='btn sm '+(x.dataset.tp===tipo?'':'sec')); ajusta(); });
+  $('#mx').onclick=()=>modal('');
+  const depois=async(msg)=>{ toast(msg); modal(''); await finBase(true); finRecarrega(); };
+  $('#lok').onclick=tenta(async()=>{
+    const b={tipo,descricao:$('#ld').value,pessoa:$('#lp').value,valor:$('#lv').value,vencimento:$('#lvenc').value,categoria_id:$('#lcat').value,centro_id:$('#lcen').value,conta_id:$('#lcon').value,conta_destino_id:$('#lcd').value,competencia:$('#lcomp').value,metodo:$('#lmet').value,nf:$('#lnf').value,obs:$('#lobs').value};
+    if(novo){ b.parcelas=$('#lpar').value; b.quitado=$('#lpg').checked; b.quitacao=$('#lpgd').value; const r=await api('/api/fin/lancamentos',b); return depois(r.criados>1?`✓ ${r.criados} parcelas criadas`:'✓ Lançamento criado'); }
+    await api('/api/fin/lancamentos/'+l.id,b); depois('✓ Salvo');
+  });
+  if($('#lq')) $('#lq').onclick=()=>finQuitar(l);
+  if($('#les')) $('#les').onclick=tenta(async()=>{ if(!confirm('Desfazer a baixa? O lançamento volta pra em aberto.')) return; await api(`/api/fin/lancamentos/${l.id}/estornar`,{}); depois('Baixa desfeita'); });
+  if($('#lcan')) $('#lcan').onclick=tenta(async()=>{ if(!confirm('Cancelar esse lançamento? Ele sai das contas e dos relatórios (dá pra reativar depois).')) return; await api(`/api/fin/lancamentos/${l.id}/cancelar`,{}); depois('Lançamento cancelado'); });
+  if($('#lre')) $('#lre').onclick=tenta(async()=>{ await api(`/api/fin/lancamentos/${l.id}/reativar`,{}); depois('Reativado'); });
+}
+async function finFluxo(){
+  const F=S.fflu=S.fflu||{agrupar:'semana',de:'',ate:''};
+  const r=await api(`/api/fin/fluxo?agrupar=${F.agrupar}${F.de?'&de='+F.de:''}${F.ate?'&ate='+F.ate:''}`);
+  const nomeP=p=>F.agrupar==='mes'?new Date(p+'-15T12:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'}):F.agrupar==='semana'?'Semana de '+brData(p):brData(p);
+  const mx=Math.max(1,...r.linhas.map(x=>Math.max(x.entrou+x.a_receber,x.saiu+x.a_pagar)));
+  $('#fc').className='';
+  $('#fc').innerHTML=`<div class="card"><div class="row">${[['dia','Por dia'],['semana','Por semana'],['mes','Por mês']].map(([k,n])=>`<button class="btn ${F.agrupar===k?'':'sec'} sm" data-ag="${k}">${n}</button>`).join('')}
+      <span style="width:10px"></span>de <input type="date" id="xde" value="${r.de}"> até <input type="date" id="xate" value="${r.ate}"></div></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin:10px 0">${finK(brl(r.saldo),'Saldo hoje nas contas',r.saldo<0?'var(--bad)':'var(--ok)')}${finK(brl(r.vencidos.receber),'A receber vencido (fora da previsão)','var(--mid)')}${finK(brl(r.vencidos.pagar),'A pagar vencido (fora da previsão)','var(--mid)')}</div>
+    <p class="mut">Até hoje mostra o que <b>entrou e saiu de verdade</b> (pela data de quitação). De hoje em diante mostra o <b>previsto</b> (em aberto, pela data de vencimento) e o saldo que vai ficar. Transferências entre contas não entram. Vencidos ficam fora da previsão porque não se sabe quando vão ser pagos.</p>
+    <div class="card" style="overflow-x:auto">${r.linhas.length?`<table><tr><th>Período</th><th class="n">Entrou</th><th class="n">Saiu</th><th class="n">A receber</th><th class="n">A pagar</th><th style="min-width:160px"></th><th class="n">Saldo previsto</th></tr>
+    ${r.linhas.map(x=>`<tr><td>${nomeP(x.per)}</td><td class="n ok">${x.entrou?brl(x.entrou):''}</td><td class="n bad">${x.saiu?brl(x.saiu):''}</td><td class="n ok">${x.a_receber?brl(x.a_receber):''}</td><td class="n bad">${x.a_pagar?brl(x.a_pagar):''}</td>
+      <td><div style="height:7px;background:#2e9e5b;border-radius:4px;width:${(x.entrou+x.a_receber)/mx*100}%;opacity:${x.entrou?1:.45}"></div><div style="height:7px;background:#d14343;border-radius:4px;margin-top:2px;width:${(x.saiu+x.a_pagar)/mx*100}%;opacity:${x.saiu?1:.45}"></div></td>
+      <td class="n ${x.saldo_previsto<0?'bad':''}"><b>${x.a_receber||x.a_pagar?brl(x.saldo_previsto):''}</b></td></tr>`).join('')}</table>`:'<div class="vazio">Nada no período.</div>'}</div>`;
+  $('#fc').querySelectorAll('[data-ag]').forEach(b=>b.onclick=()=>{ F.agrupar=b.dataset.ag; finFluxo(); });
+  $('#xde').onchange=$('#xate').onchange=()=>{ F.de=$('#xde').value; F.ate=$('#xate').value; finFluxo(); };
+}
+async function finDre(){
+  S.fano=S.fano||FB.hoje.slice(0,4);
+  const r=await api('/api/fin/dre?ano='+S.fano), M=[...Array(12)].map((_,i)=>i+1);
+  const G={}; r.linhas.forEach(x=>{ const g=G[x.grupo]=G[x.grupo]||{cats:{},m:{}}; const s=x.tipo==='R'?1:-1; const c=g.cats[x.categoria]=g.cats[x.categoria]||{}; c[x.mes]=(c[x.mes]||0)+s*x.total; g.m[x.mes]=(g.m[x.mes]||0)+s*x.total; });
+  const ordem=Object.keys(G).sort((a,b)=>{ const ia=GRUPOS_DRE.indexOf(a), ib=GRUPOS_DRE.indexOf(b); return (ia<0?50:ia)-(ib<0?50:ib)||a.localeCompare(b); });
+  const soma=o=>M.reduce((a,m)=>a+(o[m]||0),0), cel=v=>`<td class="n ${v<0?'bad':''}" style="white-space:nowrap">${v?fmt(v,0):''}</td>`;
+  const res={}; ordem.filter(g=>g!=='Não aparecer no DRE').forEach(g=>M.forEach(m=>res[m]=(res[m]||0)+(G[g].m[m]||0)));
+  $('#fc').className='';
+  $('#fc').innerHTML=`<div class="row"><b>Ano</b>${[+FB.hoje.slice(0,4)-1,+FB.hoje.slice(0,4)].map(a=>`<button class="btn ${S.fano==a?'':'sec'} sm" data-an="${a}">${a}</button>`).join('')}<span class="mut">Regime de competência (data de competência; se não tiver, o vencimento). Valores em R$. Clique no grupo pra ver as categorias.</span></div>
+    <div class="card" style="overflow-x:auto;margin-top:10px"><table style="font-size:13px"><tr><th>Grupo / categoria</th>${M.map(m=>`<th class="n">${new Date(2026,m-1,1).toLocaleDateString('pt-BR',{month:'short'})}</th>`).join('')}<th class="n">Total</th></tr>
+    ${ordem.map((g,i)=>`<tr data-g="${i}" style="cursor:pointer;background:var(--card2)"><td><b>▸ ${esc(g)}</b></td>${M.map(m=>cel(G[g].m[m])).join('')}<td class="n"><b>${fmt(soma(G[g].m),0)}</b></td></tr>`+
+      Object.entries(G[g].cats).sort((a,b)=>soma(a[1])-soma(b[1])).map(([c,o])=>`<tr class="dg${i}" style="display:none"><td style="padding-left:22px">${esc(c)}</td>${M.map(m=>cel(o[m])).join('')}<td class="n">${fmt(soma(o),0)}</td></tr>`).join('')).join('')}
+    <tr style="border-top:2px solid var(--txt)"><td><b>Resultado</b></td>${M.map(m=>`<td class="n ${res[m]<0?'bad':'ok'}"><b>${res[m]?fmt(res[m],0):''}</b></td>`).join('')}<td class="n ${soma(res)<0?'bad':'ok'}"><b>${fmt(soma(res),0)}</b></td></tr></table></div>
+    <p class="mut">O grupo de cada categoria vem do Sensio e dá pra mudar em "Contas e categorias". "Não aparecer no DRE" fica fora do resultado.</p>`;
+  $('#fc').querySelectorAll('[data-an]').forEach(b=>b.onclick=()=>{ S.fano=b.dataset.an; finDre(); });
+  $('#fc').querySelectorAll('[data-g]').forEach(t=>t.onclick=()=>$('#fc').querySelectorAll('.dg'+t.dataset.g).forEach(x=>x.style.display=x.style.display==='none'?'':'none'));
+}
+function finCad(){
+  $('#fc').className='';
+  const grs=[...new Set([...GRUPOS_DRE,...FB.categorias.map(c=>c.grupo_dre).filter(Boolean)])];
+  $('#fc').innerHTML=`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(380px,1fr))">
+    <div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Contas bancárias e caixas</h3><button class="btn sec sm" data-nv="contas">+ Conta</button></div><table>
+      ${FB.contas.map(c=>`<tr data-e="contas" data-id="${c.id}" style="cursor:pointer;${c.ativo?'':'opacity:.5'}"><td>${esc(c.nome)}${c.tipo?`<br><span class="mut">${esc(c.tipo)}</span>`:''}</td><td class="n ${c.saldo<0?'bad':''}"><b>${brl(c.saldo)}</b></td></tr>`).join('')}</table></div>
+    <div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Centros de custo</h3><button class="btn sec sm" data-nv="centros">+ Centro</button></div><table>
+      ${FB.centros.map(c=>`<tr data-e="centros" data-id="${c.id}" style="cursor:pointer;${c.ativo?'':'opacity:.5'}"><td>${esc(c.nome)}</td></tr>`).join('')}</table></div></div>
+    <div class="card" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Categorias</h3><button class="btn sec sm" data-nv="categorias">+ Categoria</button></div>
+      <table><tr><th>Categoria</th><th>Tipo</th><th>Grupo no DRE</th></tr>${FB.categorias.map(c=>`<tr data-e="categorias" data-id="${c.id}" style="cursor:pointer;${c.ativo?'':'opacity:.5'}"><td>${esc(c.nome)}</td><td class="${c.tipo==='R'?'ok':'bad'}">${c.tipo==='R'?'Receita':'Despesa'}</td><td>${esc(c.grupo_dre||'—')}</td></tr>`).join('')}</table></div>`;
+  const ed=(k,x)=>{ x=x||{ativo:1};
+    modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${x.id?'Editar':'Novo'} · ${{contas:'conta',centros:'centro de custo',categorias:'categoria'}[k]}</h2><button class="btn sec sm" id="mx">Fechar</button></div><br>
+      <label>Nome<input id="cn" value="${esc(x.nome||'')}" style="width:100%"></label>
+      ${k==='contas'?`<label>Tipo<input id="ct" value="${esc(x.tipo||'')}" placeholder="Ex.: Banco, Caixa interno" style="width:100%"></label><label>Saldo inicial (ajuste)<input id="cs" type="number" step="0.01" value="${x.saldo_inicial||0}" style="width:100%"></label><p class="mut">O saldo da conta = saldo inicial + recebimentos − pagamentos. Mude o saldo inicial só pra acertar com o extrato do banco.</p>`:''}
+      ${k==='categorias'?`<label>Tipo<select id="ct" style="width:100%"><option value="D" ${x.tipo==='D'?'selected':''}>Despesa</option><option value="R" ${x.tipo==='R'?'selected':''}>Receita</option></select></label><label>Grupo no DRE<select id="cg" style="width:100%"><option value="">—</option>${grs.map(g=>`<option ${x.grupo_dre===g?'selected':''}>${esc(g)}</option>`).join('')}</select></label>`:''}
+      <label style="display:block;margin-top:8px"><input type="checkbox" id="ca" ${x.ativo?'checked':''}> Ativo</label><br><button class="btn" id="cok">Salvar</button>`);
+    $('#mx').onclick=()=>modal('');
+    $('#cok').onclick=tenta(async()=>{ await api('/api/fin/'+k,{id:x.id,nome:$('#cn').value,tipo:$('#ct')?$('#ct').value:undefined,saldo_inicial:$('#cs')?$('#cs').value:undefined,grupo_dre:$('#cg')?$('#cg').value:undefined,ativo:$('#ca').checked}); toast('✓ Salvo'); modal(''); await finBase(true); finCad(); });
+  };
+  $('#fc').querySelectorAll('[data-nv]').forEach(b=>b.onclick=()=>ed(b.dataset.nv));
+  $('#fc').querySelectorAll('[data-e]').forEach(t=>t.onclick=()=>ed(t.dataset.e,FB[t.dataset.e].find(x=>x.id===+t.dataset.id)));
+}
 // ===== eficiência por funcionário = peças feitas ÷ meta de peças por dia (por dia trabalhado)
 async function tEfic(){
   const [de,ate]=periodo(); S.esetor=S.esetor||0;
