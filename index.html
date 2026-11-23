@@ -156,7 +156,7 @@ async function iniciar(){
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
 const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
-const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['cad','◫','Contas e categorias']]]];
+const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['cad','◫','Contas e categorias']]]];
 const MENU_PERM=[...MENU,['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 const pode=t=>!!EU&&(EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
@@ -368,7 +368,7 @@ const abrirPedido = tenta(async numero=>{
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
       <div class="mut">${p.prazo?'prazo '+brData(p.prazo)+' · <b class="'+(d<0?'bad':'')+'">'+(d<0?Math.abs(d)+' dias atrasado':d+' dias')+'</b>':'sem prazo'}${p.data_pagamento?' · pago em '+brData(p.data_pagamento):''}</div></div>
       <div class="row"><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select><button class="btn sec sm" id="mx">Fechar</button></div></div>
-    <h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th>Fotos</th><th></th></tr>
+    <div id="pfin"></div><h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th>Fotos</th><th></th></tr>
     ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return `<tr><td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td><td class="mut">${esc(x.etapa_v8||'')}</td>
       <td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
       <td><button class="btn sec sm" data-fp="${x.id}">📷 ${x.fotos||0}</button></td>
@@ -378,6 +378,9 @@ const abrirPedido = tenta(async numero=>{
     modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Fotos · Pedido ${esc(p.numero)}</h2><div style="font-weight:800">${esc(x.descricao)}</div><div class="mut">Fotos da peça no pedido. As fotos tiradas nas OPs dessa peça também entram no zip do pedido.</div></div><button class="btn sec sm" id="fv">Voltar</button></div><br><div class="card" id="fts">Carregando…</div>`);
     $('#fv').onclick=()=>abrirPedido(numero); galeria($('#fts'),{pedido_item_id:x.id}); });
   if($('#pzip')) $('#pzip').onclick=()=>zipPedido(p);
+  if(pode('fin')) api('/api/fin/pedido/'+encodeURIComponent(numero)).then(f=>{ const el=$('#pfin'); if(!el) return;
+    el.innerHTML=`<h2>Financeiro do pedido</h2><div class="card">${f.lancs.length?`<div class="row" style="gap:18px;margin-bottom:6px"><span>Total <b>${brl(f.total)}</b></span><span class="ok">Recebido <b>${brl(f.pago)}</b></span><span>Em aberto <b>${brl(f.aberto)}</b></span>${f.vencido?`<span class="bad">Vencido <b>${brl(f.vencido)}</b></span>`:''}</div>
+      <table>${f.lancs.map(l=>`<tr><td>${brData(l.vencimento)}</td><td>${esc(l.descricao)}${l.nf?' · NF '+esc(l.nf):''}</td><td class="n">${brl(l.valor)}</td><td>${l.status==='quitado'?'<span class="tag t-produzindo">Recebido</span>':l.vencido?'<span class="tag" style="background:var(--bad);color:#fff">Vencido</span>':'<span class="tag t-pausado">Em aberto</span>'}</td></tr>`).join('')}</table>`:'<span class="mut">Nenhum lançamento ligado a este pedido. No lançamento a receber, preencha "Pedido (nº)" pra ligar (os do Sensio com "Pedido N" na descrição já ligam sozinhos).</span>'}</div>`; }).catch(()=>{});
   $('#mx').onclick=()=>{ modal(''); render(); };
   $('#pst').onchange=tenta(async e=>{ await api('/api/pedidos/'+encodeURIComponent(numero)+'/status',{status:e.target.value}); toast('Status: '+e.target.value); });
   document.querySelectorAll('#modal [data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
@@ -765,7 +768,7 @@ async function tFin(){
     <button class="btn sm" id="fnovo">+ Novo lançamento</button></div><div id="fc" class="vazio" style="margin-top:12px">Carregando…</div>`;
   $('#fnovo').onclick = () => finForm(null);
   await finBase(true);
-  ({resumo:finResumo, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
+  ({resumo:finResumo, cob:finCob, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
 }
 const finK = (v,t,c,sub) => `<div class="card" style="text-align:center"><div style="font-size:24px;font-weight:800;color:${c||'var(--amb)'}">${v}</div><div class="mut">${t}</div>${sub?`<div class="mut" style="font-size:12px">${sub}</div>`:''}</div>`;
 async function finResumo(){
@@ -781,9 +784,10 @@ async function finResumo(){
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr));margin-top:10px">
       <div class="card"><h3 style="margin-top:0">Contas</h3><table>${r.contas.filter(c=>c.ativo).map(c=>`<tr><td>${esc(c.nome)}</td><td class="n ${c.saldo<0?'bad':''}"><b>${brl(c.saldo)}</b></td></tr>`).join('')}</table></div>
       <div class="card"><h3 style="margin-top:0">Próximos 7 dias</h3>${r.proximos.length?`<table>${r.proximos.map(x=>`<tr data-l="${x.id}" style="cursor:pointer"><td>${brData(x.vencimento)}</td><td><span class="${FIN_TIPO[x.tipo][1]}">${FIN_TIPO[x.tipo][0]}</span></td><td>${esc(x.descricao)}<br><span class="mut">${esc(x.pessoa||'')}</span></td><td class="n">${brl(x.aberto)}</td></tr>`).join('')}</table>`:'<div class="mut">Nada vencendo.</div>'}</div></div>
-    <div class="card" style="margin-top:10px"><h3 style="margin-top:0">A receber vencido · pra cobrar (${r.vencidosR.length})</h3>${r.vencidosR.length?`<table><tr><th>Venceu</th><th class="n">Dias</th><th>Cliente</th><th>Descrição</th><th class="n">Em aberto</th><th></th></tr>${r.vencidosR.map(x=>`<tr><td>${brData(x.vencimento)}</td><td class="n ${x.dias>60?'bad':x.dias>30?'midc':''}"><b>${x.dias}</b></td><td>${esc(x.pessoa||'')}</td><td>${esc(x.descricao)}</td><td class="n"><b>${brl(x.aberto)}</b></td><td><button class="btn sec sm" data-q="${x.id}">Recebeu</button></td></tr>`).join('')}</table>`:'<div class="mut">Nenhum cliente atrasado.</div>'}</div>`;
+    <div class="card" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">A receber vencido · pra cobrar (${r.vencidosR.length})</h3><button class="btn sec sm" id="ircob">Abrir cobrança</button></div>${r.vencidosR.length?`<table><tr><th>Venceu</th><th class="n">Dias</th><th>Cliente</th><th>Descrição</th><th class="n">Em aberto</th><th></th></tr>${r.vencidosR.map(x=>`<tr><td>${brData(x.vencimento)}</td><td class="n ${x.dias>60?'bad':x.dias>30?'midc':''}"><b>${x.dias}</b></td><td>${esc(x.pessoa||'')}</td><td>${esc(x.descricao)}</td><td class="n"><b>${brl(x.aberto)}</b></td><td><button class="btn sec sm" data-q="${x.id}">Recebeu</button></td></tr>`).join('')}</table>`:'<div class="mut">Nenhum cliente atrasado.</div>'}</div>`;
   $('#fc').querySelectorAll('[data-l]').forEach(t=>t.onclick=()=>finAbrir(+t.dataset.l));
   $('#fc').querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>finAbrir(+b.dataset.q,true));
+  if($('#ircob')) $('#ircob').onclick=()=>{ S.fsub='cob'; ls.set('fsub','cob'); menu(); render(); };
 }
 async function finLanc(){
   const F = S.ff = S.ff || {tipo:'',status:'aberto',campo:'vencimento',de:'',ate:'',q:'',conta_id:'',categoria_id:'',centro_id:''};
@@ -819,7 +823,7 @@ async function finLanc(){
   $('#flist').querySelectorAll('[data-q]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); finAbrir(+b.dataset.q,true); });
   $('#flist').querySelectorAll('[data-l]').forEach(t=>t.onclick=()=>finAbrir(+t.dataset.l));
 }
-const finRecarrega = () => ({resumo:finResumo, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
+const finRecarrega = () => ({resumo:finResumo, cob:finCob, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
 const finAbrir = tenta(async (id, quitar) => { const l = await api('/api/fin/lancamentos/'+id); if (quitar) return finQuitar(l); finForm(l); });
 function finQuitar(l){
   modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${l.tipo==='R'?'Recebimento':'Pagamento'}</h2><button class="btn sec sm" id="mx">Fechar</button></div>
@@ -848,6 +852,7 @@ function finForm(l){
       <label class="sT">Conta de entrada${sel('lcd',FB.contas.filter(c=>c.ativo),l?l.conta_destino_id:null,'—')}</label>
       <label class="nT">Competência<input id="lcomp" type="date" value="${l?l.competencia||'':''}" style="width:100%"></label>
       <label class="nT">Forma de pagamento<input id="lmet" list="lmets" value="${esc(l?l.metodo||'':'')}" style="width:100%"><datalist id="lmets">${['PIX','Boleto Bancário','Cartão de Crédito','Cartão de Débito','Depósito/Transferência','Dinheiro','Débito em conta'].map(x=>`<option value="${x}">`).join('')}</datalist></label>
+      <label class="sR">Pedido (nº)<input id="lped" value="${esc(l?l.pedido_numero||'':'')}" placeholder="Ex.: 633" style="width:100%"></label>
       <label class="nT">Nº da NF<input id="lnf" value="${esc(l?l.nf||'':'')}" style="width:100%"></label>
       ${novo?`<label class="nT">Parcelas<input id="lpar" type="number" min="1" max="120" value="1" style="width:100%"></label>`:''}
     </div>
@@ -858,14 +863,14 @@ function finForm(l){
       ${l&&l.pago>0&&l.tipo!=='T'&&l.status!=='cancelado'?'<button class="btn sec" id="les">Estornar baixa</button>':''}
       ${l&&l.status!=='cancelado'?'<button class="btn bad" id="lcan">Cancelar lançamento</button>':''}${l&&l.status==='cancelado'?'<button class="btn sec" id="lre">Reativar</button>':''}</div>`);
   let tipo=t0;
-  const ajusta=()=>{ document.querySelectorAll('#modal .nT').forEach(e=>e.style.display=tipo==='T'?'none':''); document.querySelectorAll('#modal .sT').forEach(e=>e.style.display=tipo==='T'?'':'none');
+  const ajusta=()=>{ document.querySelectorAll('#modal .nT').forEach(e=>e.style.display=tipo==='T'?'none':''); document.querySelectorAll('#modal .sT').forEach(e=>e.style.display=tipo==='T'?'':'none'); document.querySelectorAll('#modal .sR').forEach(e=>e.style.display=tipo==='R'?'':'none');
     const v=$('#lcat')?$('#lcat').value:(l?l.categoria_id:''); $('#lcatw').innerHTML=sel('lcat',FB.categorias.filter(c=>(c.ativo||(l&&c.id===l.categoria_id))&&c.tipo===(tipo==='R'?'R':'D')),+v||null,'—'); };
   ajusta();
   document.querySelectorAll('#modal [data-tp]').forEach(b=>b.onclick=()=>{ tipo=b.dataset.tp; document.querySelectorAll('#modal [data-tp]').forEach(x=>x.className='btn sm '+(x.dataset.tp===tipo?'':'sec')); ajusta(); });
   $('#mx').onclick=()=>modal('');
   const depois=async(msg)=>{ toast(msg); modal(''); await finBase(true); finRecarrega(); };
   $('#lok').onclick=tenta(async()=>{
-    const b={tipo,descricao:$('#ld').value,pessoa:$('#lp').value,valor:$('#lv').value,vencimento:$('#lvenc').value,categoria_id:$('#lcat').value,centro_id:$('#lcen').value,conta_id:$('#lcon').value,conta_destino_id:$('#lcd').value,competencia:$('#lcomp').value,metodo:$('#lmet').value,nf:$('#lnf').value,obs:$('#lobs').value};
+    const b={tipo,descricao:$('#ld').value,pessoa:$('#lp').value,valor:$('#lv').value,vencimento:$('#lvenc').value,categoria_id:$('#lcat').value,centro_id:$('#lcen').value,conta_id:$('#lcon').value,conta_destino_id:$('#lcd').value,competencia:$('#lcomp').value,metodo:$('#lmet').value,nf:$('#lnf').value,obs:$('#lobs').value}; if(tipo==='R') b.pedido_numero=$('#lped').value.trim();
     if(novo){ b.parcelas=$('#lpar').value; b.quitado=$('#lpg').checked; b.quitacao=$('#lpgd').value; const r=await api('/api/fin/lancamentos',b); return depois(r.criados>1?`✓ ${r.criados} parcelas criadas`:'✓ Lançamento criado'); }
     await api('/api/fin/lancamentos/'+l.id,b); depois('✓ Salvo');
   });
@@ -929,6 +934,58 @@ function finCad(){
   };
   $('#fc').querySelectorAll('[data-nv]').forEach(b=>b.onclick=()=>ed(b.dataset.nv));
   $('#fc').querySelectorAll('[data-e]').forEach(t=>t.onclick=()=>ed(t.dataset.e,FB[t.dataset.e].find(x=>x.id===+t.dataset.id)));
+}
+// ===== COBRANÇA: vencidos a receber por cliente, faixas de atraso, contatos, promessas e mensagem pronta
+const TIPO_COB = {ligacao:'Ligação',whatsapp:'WhatsApp',email:'E-mail',mensagem:'Mensagem',visita:'Visita',outro:'Outro'};
+async function finCob(){
+  const r = await api('/api/fin/cobranca'); S.cobF = S.cobF || '';
+  const fx = [['a30','Até 30 dias','var(--mid)'],['a60','31 a 60 dias','#e07b2a'],['a90','61 a 90 dias','var(--bad)'],['mais','Mais de 90 dias','#8b1f1f']];
+  const lista = r.clientes.filter(c=>!S.cobF||c.faixas[S.cobF]>0);
+  $('#fc').className='';
+  $('#fc').innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">
+      <div class="card" style="text-align:center;cursor:pointer;${!S.cobF?'outline:2px solid var(--amb)':''}" data-fx=""><div style="font-size:24px;font-weight:800;color:var(--bad)">${brl(r.total)}</div><div class="mut">Total vencido · ${r.clientes.length} cliente(s)</div></div>
+      ${fx.map(([k,n,c])=>`<div class="card" style="text-align:center;cursor:pointer;${S.cobF===k?'outline:2px solid var(--amb)':''}" data-fx="${k}"><div style="font-size:22px;font-weight:800;color:${c}">${brl(r.faixas[k])}</div><div class="mut">${n}</div></div>`).join('')}</div>
+    ${r.promessas.length?`<div class="card" style="margin-top:10px;border-color:var(--mid)"><h3 style="margin-top:0">Promessas de pagamento pra conferir hoje (${r.promessas.length})</h3><table>${r.promessas.map(p=>`<tr><td><b>${esc(p.pessoa)}</b></td><td>prometeu pra <b class="${p.vencida?'bad':''}">${brData(p.data)}</b>${p.vencida?' (passou)':' (hoje)'}</td><td class="mut">${esc(p.texto||'')}</td><td class="n">${brl(p.total)}</td></tr>`).join('')}</table><p class="mut" style="margin:6px 0 0">Se pagou, dê baixa no lançamento. Se não, registre um novo contato.</p></div>`:''}
+    <p class="mut">Clique no cliente pra ver as parcelas. "Contato" registra ligação/mensagem e promessa de pagamento. "Mensagem" monta o texto de cobrança pra você copiar e mandar.</p>
+    <div class="card" style="overflow-x:auto">${lista.length?`<table><tr><th>Cliente</th><th class="n">Vencido</th><th class="n">Atraso</th><th>Último contato</th><th>Promessa</th><th></th></tr>
+    ${lista.map((c,i)=>`<tr data-cl="${i}" style="cursor:pointer"><td><b>▸ ${esc(c.pessoa)}</b><br><span class="mut">${c.n} parcela(s)${[...new Set(c.lancs.map(l=>l.pedido).filter(Boolean))].map(p=>' · pedido '+esc(p)).join('')}</span></td>
+      <td class="n"><b>${brl(c.total)}</b></td><td class="n"><b class="${c.maior_atraso>90?'bad':c.maior_atraso>30?'midc':''}">${c.maior_atraso} dias</b></td>
+      <td>${c.ultimo?`${brData(c.ultimo.criado_em)} · ${TIPO_COB[c.ultimo.tipo]||c.ultimo.tipo}<br><span class="mut">${esc((c.ultimo.texto||'').slice(0,60))}</span>`:'<span class="bad">nunca cobrado</span>'}</td>
+      <td>${c.promessa?`<b class="${c.promessa.vencida?'bad':''}">${brData(c.promessa.data)}</b>`:'–'}</td>
+      <td style="white-space:nowrap"><button class="btn sec sm" data-ct="${i}">Contato</button> <button class="btn sec sm" data-msg="${i}">Mensagem</button></td></tr>
+      <tr class="cl${i}" style="display:none"><td colspan="6" style="background:var(--card2)"><table>${c.lancs.map(l=>`<tr><td>${brData(l.vencimento)}</td><td class="n ${l.dias>60?'bad':''}">${l.dias} dias</td><td>${esc(l.descricao)}${l.nf?' · NF '+esc(l.nf):''}</td><td class="n"><b>${brl(l.aberto)}</b></td><td><button class="btn sec sm" data-q="${l.id}">Recebeu</button> <button class="btn sec sm" data-l="${l.id}">Abrir</button></td></tr>`).join('')}</table></td></tr>`).join('')}</table>`:'<div class="vazio">Nenhum cliente atrasado nessa faixa. 🎉</div>'}</div>`;
+  $('#fc').querySelectorAll('[data-fx]').forEach(b=>b.onclick=()=>{ S.cobF=b.dataset.fx; finCob(); });
+  $('#fc').querySelectorAll('[data-cl]').forEach(t=>t.onclick=()=>$('#fc').querySelectorAll('.cl'+t.dataset.cl).forEach(x=>x.style.display=x.style.display==='none'?'':'none'));
+  $('#fc').querySelectorAll('[data-ct]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); cobContato(lista[+b.dataset.ct]); });
+  $('#fc').querySelectorAll('[data-msg]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); cobMensagem(lista[+b.dataset.msg]); });
+  $('#fc').querySelectorAll('[data-q]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); finAbrir(+b.dataset.q,true); });
+  $('#fc').querySelectorAll('[data-l]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); finAbrir(+b.dataset.l); });
+}
+const cobContato = tenta(async (c, tipo0, texto0) => {
+  const h = await api('/api/fin/cobranca/historico?pessoa='+encodeURIComponent(c.pessoa));
+  let tipo = tipo0||'ligacao';
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Contato de cobrança</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+    <p><b>${esc(c.pessoa)}</b> · vencido <b class="bad">${brl(c.total)}</b> · ${c.n} parcela(s) · maior atraso ${c.maior_atraso} dias</p>
+    <div class="row">${Object.entries(TIPO_COB).map(([k,n])=>`<button class="btn ${k===tipo?'':'sec'} sm" data-tc="${k}">${n}</button>`).join('')}</div>
+    <label style="display:block;margin-top:8px">O que foi falado<input id="cbt" value="${esc(texto0||'')}" placeholder="Ex.: falei com o financeiro, vai pagar na sexta" style="width:100%"></label>
+    <label style="display:block;margin-top:8px">Prometeu pagar em (opcional) <input type="date" id="cbp"></label><br>
+    <button class="btn" id="cbok">Salvar contato</button>
+    <h3>Histórico (${h.length})</h3><div class="card" style="max-height:30vh;overflow:auto">${h.map(x=>`<div style="padding:4px 0;border-bottom:1px solid var(--line)"><b>${brHora(x.criado_em)}</b> · ${TIPO_COB[x.tipo]||esc(x.tipo)}${x.criado_nome?' · '+esc(x.criado_nome):''}${x.promessa_data?` · <b>prometeu ${brData(x.promessa_data)}</b>`:''}<br><span class="mut">${esc(x.texto||'')}</span></div>`).join('')||'<span class="mut">Nenhum contato ainda.</span>'}</div>`);
+  $('#mx').onclick=()=>modal('');
+  document.querySelectorAll('#modal [data-tc]').forEach(b=>b.onclick=()=>{ tipo=b.dataset.tc; document.querySelectorAll('#modal [data-tc]').forEach(x=>x.className='btn sm '+(x.dataset.tc===tipo?'':'sec')); });
+  $('#cbok').onclick=tenta(async()=>{ await api('/api/fin/cobranca',{pessoa:c.pessoa,tipo,texto:$('#cbt').value,promessa_data:$('#cbp').value||null}); toast('✓ Contato registrado'); modal(''); finRecarrega(); });
+});
+function cobMensagem(c){
+  const emp = /\b(LTDA|S\/A|S\.A|EIRELI|ME|EPP|COMERCIO|COM[ÉE]RCIO|DECORA[ÇC][OÕ]ES|DESIGN|M[ÓO]VEIS|EMPREENDIMENTOS|CLINIC|PRODU[ÇC][OÕ]ES)\b/i.test(c.pessoa), nome = c.pessoa.split(/\s+/)[0], nm = emp||c.pessoa==='(sem cliente)' ? '' : ', '+nome[0]+nome.slice(1).toLowerCase();
+  const linhas = c.lancs.map(l=>`• ${l.descricao}${l.pedido&&!/pedido/i.test(l.descricao)?' (pedido '+l.pedido+')':''}${l.nf&&!/nf/i.test(l.descricao)?' · NF '+l.nf:''} – venceu em ${brData(l.vencimento)} – ${brl(l.aberto)}`).join('\n');
+  const txt = `Olá${nm}! Tudo bem?\n\nAqui é da OMAMA. Passando pra lembrar que consta em aberto no nosso financeiro:\n\n${linhas}\n\nTotal: ${brl(c.total)}\n\nConsegue verificar pra gente? Se já foi pago, por favor desconsidere e nos mande o comprovante pra darmos baixa.\n\nObrigado!`;
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Mensagem de cobrança</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+    <p class="mut">Confira e ajuste antes de mandar. O sistema não envia nada sozinho.</p>
+    <textarea id="mtx" style="width:100%;height:260px;font:inherit;padding:8px;border:1px solid var(--line);border-radius:10px">${esc(txt)}</textarea><br><br>
+    <div class="row"><button class="btn" id="mcp">Copiar</button><button class="btn sec" id="mreg">Já mandei: registrar contato</button></div>`);
+  $('#mx').onclick=()=>modal('');
+  $('#mcp').onclick=async()=>{ try{ await navigator.clipboard.writeText($('#mtx').value); toast('✓ Copiado'); }catch(e){ $('#mtx').select(); document.execCommand('copy'); toast('✓ Copiado'); } };
+  $('#mreg').onclick=()=>cobContato(c,'whatsapp','Mandei mensagem de cobrança ('+brl(c.total)+')');
 }
 // ===== eficiência por funcionário = peças feitas ÷ meta de peças por dia (por dia trabalhado)
 async function tEfic(){
@@ -1017,12 +1074,13 @@ async function tExped(){
   $('#imp').onclick=()=>{ const ns=[...$('#el').querySelectorAll('[data-c]:checked')].map(c=>c.dataset.c); if(!ns.length) return toast('Marque os pedidos que quer imprimir',1); imprimirCheck(ns); };
 }
 const abrirExp=tenta(async numero=>{
-  const p=await api('/api/pedidos/'+encodeURIComponent(numero));
+  const [p,al]=await Promise.all([api('/api/pedidos/'+encodeURIComponent(numero)),api('/api/alerta-financeiro/'+encodeURIComponent(numero)).catch(()=>null)]);
   const re=()=>abrirExp(numero);
   const paraEnviar=p.itens.reduce((s,i)=>s+i.embalada-i.enviada,0), falta=p.itens.reduce((s,i)=>s+i.qtd-i.enviada,0);
   const ctl=(it,campo,n)=>`<div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sec sm" data-i="${it.id}" data-c="${campo}" data-v="${n-1}" ${n<=0?'disabled':''}>−</button><b style="min-width:42px;text-align:center">${fmt(n)}/${fmt(it.qtd)}</b><button class="btn sec sm" data-i="${it.id}" data-c="${campo}" data-v="${n+1}" ${n>=it.qtd?'disabled':''}>+</button></div>`;
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Expedição · Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
       <div class="mut">${esc(p.status)}${p.prazo?' · prazo '+brData(p.prazo):''}</div></div><button class="btn sec sm" id="mx">Fechar</button></div>
+    ${al&&al.vencido>0?`<div class="card" style="margin-top:10px;border:2px solid var(--bad);background:#fdecec"><b class="bad">⚠ Este pedido tem ${brl(al.vencido)} vencido no financeiro.</b> Confira com o financeiro antes de enviar.</div>`:''}
     <br><div class="row"><button class="btn" id="env" ${paraEnviar?'':'disabled'}>Registrar envio${paraEnviar?' ('+fmt(paraEnviar)+' embalada'+(paraEnviar>1?'s':'')+')':''}</button><button class="btn sec" id="chk">Imprimir check</button><button class="btn sec" id="zip">Baixar fotos</button>
       ${!falta&&p.status!=='Entregue'?'<button class="btn ok" id="ent">Marcar entregue</button>':''}<button class="btn sec" id="tc">Conferir tudo que está pronto</button></div>
     <h2>Peças</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Situação</th><th>Conferidas</th><th>Embaladas</th><th class="n">Enviadas</th></tr>
@@ -1037,7 +1095,7 @@ const abrirExp=tenta(async numero=>{
   $('#tc').onclick=tenta(async()=>{ let n=0; for(const it of p.itens){ const un=unidades(it), alvo=it.conferida+un.filter(k=>k==='pronta').length; if(alvo>it.conferida){ await api(`/api/pedido-itens/${it.id}/exp`,{conferida:alvo}); n+=alvo-it.conferida; } }
     toast(n?n+' peça(s) conferida(s)':'Nenhuma peça pronta esperando conferência',!n); re(); });
   if($('#ent')) $('#ent').onclick=tenta(async()=>{ await api(`/api/pedidos/${encodeURIComponent(p.numero)}/status`,{status:'Entregue'}); toast('Pedido '+p.numero+' entregue'); modal(''); render(); });
-  $('#env').onclick=()=>{ const its=p.itens.filter(i=>i.embalada>i.enviada);
+  $('#env').onclick=()=>{ if(al&&al.vencido>0&&!confirm('Atenção: o pedido '+p.numero+' tem '+brl(al.vencido)+' vencido no financeiro. Enviar mesmo assim?')) return; const its=p.itens.filter(i=>i.embalada>i.enviada);
     modal(`<h2 style="margin-top:0">Envio · Pedido ${esc(p.numero)}</h2><div class="card"><table><tr><th>Peça</th><th class="n">Embaladas</th><th class="n">Vai agora</th></tr>
       ${its.map(i=>`<tr><td>${esc(i.descricao)}</td><td class="n">${fmt(i.embalada-i.enviada)}</td><td class="n"><input type="number" min="0" max="${i.embalada-i.enviada}" value="${i.embalada-i.enviada}" data-e="${i.id}" style="width:80px"></td></tr>`).join('')}</table></div><br>
       <div class="row"><div><div class="mut">Sai do estoque</div><select id="edp"><option value="1">P.A. Manaus</option><option value="3">P.A. São Paulo</option></select></div><div><div class="mut">Data</div><input type="date" id="ed" value="${hojeISO()}"></div><div><div class="mut">Transportadora</div><input id="et"></div><div><div class="mut">NF</div><input id="enf" style="width:120px"></div><div><div class="mut">Volumes</div><input id="ev" type="number" min="1" style="width:90px"></div></div>
