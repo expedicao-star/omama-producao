@@ -342,11 +342,16 @@ const abrirPedido = tenta(async numero=>{
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
       <div class="mut">${p.prazo?'prazo '+brData(p.prazo)+' · <b class="'+(d<0?'bad':'')+'">'+(d<0?Math.abs(d)+' dias atrasado':d+' dias')+'</b>':'sem prazo'}${p.data_pagamento?' · pago em '+brData(p.data_pagamento):''}</div></div>
       <div class="row"><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select><button class="btn sec sm" id="mx">Fechar</button></div></div>
-    <h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th></th></tr>
+    <h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th>Fotos</th><th></th></tr>
     ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return `<tr><td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td><td class="mut">${esc(x.etapa_v8||'')}</td>
       <td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
-      <td style="white-space:nowrap">${x.item_id&&falta>0?`<button class="btn sm" data-cria="${x.id}">+ OP (${fmt(falta)})</button>`:''}</td></tr>`}).join('')||'<tr><td colspan=5 class="vazio">Sem peças.</td></tr>'}</table></div>
-    <br><button class="btn sec sm" id="addi">+ Adicionar peça ao pedido</button>`);
+      <td><button class="btn sec sm" data-fp="${x.id}">📷 ${x.fotos||0}</button></td>
+      <td style="white-space:nowrap">${x.item_id&&falta>0?`<button class="btn sm" data-cria="${x.id}">+ OP (${fmt(falta)})</button>`:''}</td></tr>`}).join('')||'<tr><td colspan=6 class="vazio">Sem peças.</td></tr>'}</table></div>
+    <br><div class="row"><button class="btn sec sm" id="addi">+ Adicionar peça ao pedido</button>${p.itens.some(x=>x.fotos)?'<button class="btn sec sm" id="pzip">Baixar fotos do pedido (zip)</button>':''}</div>`);
+  document.querySelectorAll('#modal [data-fp]').forEach(b=>b.onclick=()=>{ const x=p.itens.find(i=>i.id===+b.dataset.fp);
+    modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Fotos · Pedido ${esc(p.numero)}</h2><div style="font-weight:800">${esc(x.descricao)}</div><div class="mut">Fotos da peça no pedido. As fotos tiradas nas OPs dessa peça também entram no zip do pedido.</div></div><button class="btn sec sm" id="fv">Voltar</button></div><br><div class="card" id="fts">Carregando…</div>`);
+    $('#fv').onclick=()=>abrirPedido(numero); galeria($('#fts'),{pedido_item_id:x.id}); });
+  if($('#pzip')) $('#pzip').onclick=()=>zipPedido(p);
   $('#mx').onclick=()=>{ modal(''); render(); };
   $('#pst').onchange=tenta(async e=>{ await api('/api/pedidos/'+encodeURIComponent(numero)+'/status',{status:e.target.value}); toast('Status: '+e.target.value); });
   document.querySelectorAll('#modal [data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
@@ -481,7 +486,7 @@ function fazZip(arqs){ const T=new Uint32Array(256).map((_,n)=>{ let c=n; for(le
   const tam=central.reduce((s,x)=>s+x.length,0);
   return new Blob([...partes,...central,h(22,[[0x06054b50,4],[0,2],[0,2],[arqs.length,2],[arqs.length,2],[tam,4],[off,4],[0,2]])],{type:'application/zip'}); }
 const zipPedido=tenta(async p=>{
-  const l=await api('/api/fotos?pedido='+encodeURIComponent(p.numero)); if(!l.length) throw new Error('Nenhuma foto nas OPs desse pedido');
+  const l=await api('/api/fotos?pedido='+encodeURIComponent(p.numero)); if(!l.length) throw new Error('Nenhuma foto nesse pedido');
   const pasta=`${p.numero} - ${(p.cliente||'').replace(/[\\/:*?"<>|]/g,'')}`, cont={}, n={}, arqs=[];
   l.forEach(f=>cont[f.codigo]=(cont[f.codigo]||0)+1);
   for(const f of l){ n[f.codigo]=(n[f.codigo]||0)+1; arqs.push([`${pasta}/${f.codigo} - ${n[f.codigo]} de ${cont[f.codigo]}.jpg`,new Uint8Array(await (await fetch(fotoUrl(f.id))).arrayBuffer())]); }
