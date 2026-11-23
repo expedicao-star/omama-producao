@@ -415,12 +415,13 @@ const app = {
 
       // ---------- operações (iniciar / pausar / finalizar)
       if ((m = p.match(/^\/api\/operacoes\/(\d+)\/(iniciar|pausar|finalizar|reabrir)$/)) && req.method === 'POST') {
-        const oo = await one(DB, `select oo.*, t.nome, t.setor_id, t.espera, op.status op_status, op.codigo from op_operacao oo
+        const oo = await one(DB, `select oo.*, t.nome, t.setor_id, t.espera, op.status op_status, op.codigo, op.qtd op_qtd from op_operacao oo
           join operacao_tipo t on t.id=oo.operacao_tipo_id join op on op.id=oo.op_id where oo.id=?`, Number(m[1]));
         if (!oo || oo.op_status !== 'aberta') return json(req, { erro: 'Operação não encontrada ou OP fechada' }, 400);
         const acao = m[2], now = agora();
         const func = body.funcionario_id ? await one(DB, 'select * from funcionario where id=?', body.funcionario_id) : null;
-        const quem = func ? func.nome : 'Líder';
+        const generico = !!body.operador && acao === 'finalizar';
+        const quem = func ? func.nome : generico ? 'Operador' : 'Líder';
         let upd;
         if (acao === 'iniciar') {
           if (!['pendente', 'pausado'].includes(oo.status)) return json(req, { erro: 'Operação já está ' + oo.status }, 400);
@@ -432,17 +433,22 @@ const app = {
           upd = DB.prepare("update op_operacao set status='pausado', minutos=minutos+?, inicio_atual=null where id=?").bind(minDesde(oo.inicio_atual), oo.id);
         } else if (acao === 'finalizar') {
           if (oo.status === 'finalizado') return json(req, { erro: 'Já finalizada' }, 400);
-          if (oo.setor_id && !func && !oo.funcionario_id) return json(req, { erro: 'Escolha quem fez' }, 400);
+          if (oo.setor_id && !func && !oo.funcionario_id && !generico) return json(req, { erro: 'Escolha quem fez' }, 400);
+          if (generico) {
+            const est = Math.round((Number(oo.tempo_unit_min) || 0) * (Number(oo.op_qtd) || 0) * 100) / 100;
+            upd = DB.prepare("update op_operacao set status='finalizado', minutos=?, inicio=coalesce(inicio,?), fim=?, inicio_atual=null, sem_registro=2 where id=?").bind(est, now, now, oo.id);
+          } else {
           const extra = oo.status === 'produzindo' ? minDesde(oo.inicio_atual) : 0;
           const semReg = !oo.espera && (oo.status === 'pendente' || (Number(oo.minutos) || 0) + extra < 0.01) ? 1 : 0;
           upd = DB.prepare("update op_operacao set status='finalizado', funcionario_id=coalesce(?,funcionario_id), minutos=minutos+?, inicio=coalesce(inicio,?), fim=?, inicio_atual=null, sem_registro=? where id=?")
             .bind(func ? func.id : null, extra, now, now, semReg, oo.id);
+          }
         } else {
           if (oo.status !== 'finalizado') return json(req, { erro: 'Só reabre operação finalizada' }, 400);
           upd = DB.prepare("update op_operacao set status='pausado', fim=null, sem_registro=0 where id=?").bind(oo.id);
         }
         const verbo = { iniciar: 'iniciou', pausar: 'pausou', finalizar: 'finalizou', reabrir: 'reabriu' }[acao];
-        const semTempo = acao === 'finalizar' && !oo.espera && oo.status === 'pendente' ? ' (sem registro de tempo: não foi iniciada)' : '';
+        const semTempo = generico ? ' (sem registro: tempo padrão usado como estimado)' : acao === 'finalizar' && !oo.espera && oo.status === 'pendente' ? ' (sem registro de tempo: não foi iniciada)' : '';
         await DB.batch([upd, evento(DB, oo.op_id, `${quem} ${verbo} ${oo.nome}${semTempo}`)]);
         await recalcularOp(DB, oo.op_id);
         return json(req, { ok: true });
@@ -788,8 +794,8 @@ const app = {
         const de = q('de') + ' 00:00:00', ate = q('ate') + ' 23:59:59';
         const porPessoa = await all(DB, `select f.id, f.nome funcionario, s.nome setor, count(*) operacoes, sum(op.qtd) pecas,
             sum(oo.minutos) minutos_reais, sum(oo.tempo_unit_min*op.qtd) minutos_padrao,
-            sum(case when oo.minutos>=1 then oo.tempo_unit_min*op.qtd else 0 end) padrao_medido,
-            sum(case when oo.minutos>=1 then oo.minutos else 0 end) minutos_medidos, sum(oo.sem_registro) sem_registro
+            sum(case when oo.minutos>=1 and oo.sem_registro=0 then oo.tempo_unit_min*op.qtd else 0 end) padrao_medido,
+            sum(case when oo.minutos>=1 and oo.sem_registro=0 then oo.minutos else 0 end) minutos_medidos, sum(oo.sem_registro=1) sem_registro
           from op_operacao oo join op on op.id=oo.op_id join operacao_tipo t on t.id=oo.operacao_tipo_id
           join funcionario f on f.id=oo.funcionario_id left join setor s on s.id=f.setor_id
           where oo.status='finalizado' and t.espera=0 and oo.fim between ? and ? group by f.id order by s.id, f.nome`, de, ate);
