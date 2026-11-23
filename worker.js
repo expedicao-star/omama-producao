@@ -142,7 +142,7 @@ const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
 const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem'];
 const PERM = [
-  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
+  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
@@ -881,35 +881,69 @@ const app = {
         return json(req, { ok: true, id: r.id });
       }
 
-      // ---------- eficiência por funcionário: ranking do período + defeitos/RT + evolução semanal (8 semanas)
+      // ---------- metas de peças por dia (por família de peça e setor)
+      if (p === '/api/metas' && req.method === 'GET') return json(req, await all(DB, 'select * from meta order by nome, setor_id'));
+      if (p === '/api/metas' && req.method === 'POST') {
+        if (!usuario.admin) return json(req, { erro: 'Só o administrador muda as metas' }, 403);
+        const l = Array.isArray(body.metas) ? body.metas : [];
+        await DB.batch(l.map(x => Number(x.pecas_dia) > 0
+          ? DB.prepare('insert into meta(chave, nome, setor_id, pecas_dia) values(?,?,?,?) on conflict(chave, setor_id) do update set pecas_dia=excluded.pecas_dia, nome=excluded.nome').bind(x.chave, x.nome, x.setor_id, Number(x.pecas_dia))
+          : DB.prepare('delete from meta where chave=? and setor_id=?').bind(x.chave, x.setor_id)));
+        return json(req, { ok: true });
+      }
+
+      // ---------- eficiência por funcionário = peças feitas ÷ meta de peças por dia (por dia trabalhado), + defeitos/RT + evolução semanal
       if (p === '/api/eficiencia') {
-        const de = q('de') + ' 00:00:00', ate = q('ate') + ' 23:59:59', setor = Number(q('setor_id')) || 0;
+        const de = q('de'), ate = q('ate'), setor = Number(q('setor_id')) || 0;
         const fs = setor ? 'and f.setor_id=' + setor : '';
-        // eficiência só com operação cronometrada (>= 1 min, sem "sem registro"/estimado) e fora de RT
-        const base = `from op_operacao oo join op on op.id=oo.op_id join operacao_tipo t on t.id=oo.operacao_tipo_id join funcionario f on f.id=oo.funcionario_id
-          where oo.status='finalizado' and t.espera=0 ${fs}`;
-        const [lista, defs, sem] = await Promise.all([
-          all(DB, `select f.id, f.nome, f.setor_id, (select nome from setor where id=f.setor_id) setor,
-              sum(op.tipo='OP') operacoes, sum(case when op.tipo='OP' then op.qtd else 0 end) pecas,
+        const desde = new Date(Date.parse(ate + 'T12:00:00Z') - 63 * 864e5).toISOString().slice(0, 10);
+        const ini = de < desde ? de : desde;
+        const sem = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+        const [metas, etapas, somas, extra, defs, funcs] = await Promise.all([
+          all(DB, 'select chave, nome, setor_id, pecas_dia from meta'),
+          all(DB, `select oo.funcionario_id fid, oo.op_id, oo.tempo_unit_min tu, t.setor_id, op.qtd, i.nome item, date(oo.fim, '-4 hours') dia
+            from op_operacao oo join op on op.id=oo.op_id join operacao_tipo t on t.id=oo.operacao_tipo_id join item i on i.id=op.item_id join funcionario f on f.id=oo.funcionario_id
+            where oo.status='finalizado' and t.espera=0 and op.tipo='OP' and t.setor_id is not null and date(oo.fim, '-4 hours') between ? and ? ${fs}`, ini, ate),
+          all(DB, `select oo.op_id, t.setor_id, sum(oo.tempo_unit_min) s, count(*) n from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id
+            where t.espera=0 and oo.op_id in (select op_id from op_operacao where status='finalizado' and date(fim, '-4 hours') between ? and ?) group by oo.op_id, t.setor_id`, ini, ate),
+          all(DB, `select f.id, sum(op.tipo='OP' and oo.sem_registro=1) sem_registro, sum(op.tipo='RT') rt_feitos, sum(case when op.tipo='RT' then oo.minutos else 0 end) rt_minutos,
               sum(case when op.tipo='OP' and oo.sem_registro=0 and oo.minutos>=1 then oo.minutos else 0 end) minutos,
-              sum(case when op.tipo='OP' and oo.sem_registro=0 and oo.minutos>=1 then oo.tempo_unit_min*op.qtd else 0 end) padrao,
-              sum(op.tipo='OP' and oo.sem_registro=1) sem_registro,
-              sum(op.tipo='RT') rt_feitos, sum(case when op.tipo='RT' then oo.minutos else 0 end) rt_minutos
-            ${base} and oo.fim between ? and ? group by f.id`, de, ate),
-          all(DB, `select d.funcionario_id id, count(*) regs, sum(d.qtd) pecas, (select count(*) from op x where x.defeito_id in (select id from defeito d2 where d2.funcionario_id=d.funcionario_id and d2.data between ? and ?)) rts
-            from defeito d where d.funcionario_id is not null and d.data between ? and ? group by d.funcionario_id`, de, ate, de, ate),
-          all(DB, `select f.id, strftime('%Y-%m-%d', date(oo.fim, '-' || ((cast(strftime('%w', oo.fim) as int) + 6) % 7) || ' days')) semana,
-              sum(oo.minutos) minutos, sum(oo.tempo_unit_min*op.qtd) padrao
-            ${base} and op.tipo='OP' and oo.sem_registro=0 and oo.minutos>=1 and oo.fim >= date(?, '-56 days') group by f.id, semana`, q('ate')),
+              sum(case when op.tipo='OP' and oo.sem_registro=0 and oo.minutos>=1 then oo.tempo_unit_min*op.qtd else 0 end) padrao
+            from op_operacao oo join op on op.id=oo.op_id join operacao_tipo t on t.id=oo.operacao_tipo_id join funcionario f on f.id=oo.funcionario_id
+            where oo.status='finalizado' and t.espera=0 and date(oo.fim, '-4 hours') between ? and ? ${fs} group by f.id`, de, ate),
+          all(DB, `select d.funcionario_id id, count(*) regs, sum(d.qtd) pecas, sum((select count(*) from op x where x.defeito_id=d.id)) rts
+            from defeito d where d.funcionario_id is not null and date(d.data, '-4 hours') between ? and ? group by d.funcionario_id`, de, ate),
+          all(DB, `select f.id, f.nome, f.setor_id, s.nome setor from funcionario f left join setor s on s.id=f.setor_id where f.ativo=1 ${fs} order by f.nome`),
         ]);
-        const funcs = await all(DB, `select f.id, f.nome, f.setor_id, s.nome setor from funcionario f left join setor s on s.id=f.setor_id where f.ativo=1 ${fs.replace('f.', 'f.')} order by f.nome`);
-        const porId = {}; funcs.forEach(f => porId[f.id] = { ...f, operacoes: 0, pecas: 0, minutos: 0, padrao: 0, sem_registro: 0, rt_feitos: 0, rt_minutos: 0, defeitos: 0, pecas_defeito: 0, rts_gerados: 0, semanas: {} });
-        lista.forEach(l => porId[l.id] = { ...(porId[l.id] || { semanas: {}, defeitos: 0, pecas_defeito: 0, rts_gerados: 0 }), ...l });
-        defs.forEach(d => { if (porId[d.id]) Object.assign(porId[d.id], { defeitos: d.regs, pecas_defeito: d.pecas, rts_gerados: d.rts }); });
-        sem.forEach(x => { if (porId[x.id]) porId[x.id].semanas[x.semana] = x.minutos > 0 ? Math.round(x.padrao / x.minutos * 100) : null; });
-        const r = Object.values(porId).map(f => ({ ...f, eficiencia: f.minutos > 0 ? Math.round(f.padrao / f.minutos * 100) : null }))
-          .sort((a, b) => (b.eficiencia ?? -1) - (a.eficiencia ?? -1) || b.operacoes - a.operacoes || a.nome.localeCompare(b.nome));
-        return json(req, { lista: r });
+        const M = {}, NM = {}; metas.forEach(m => { (M[m.chave] = M[m.chave] || {})[m.setor_id] = m.pecas_dia; NM[m.chave] = m.nome; });
+        const chaves = Object.keys(M).sort((a, b) => b.length - a.length);
+        const S = {}; somas.forEach(x => S[x.op_id + '|' + x.setor_id] = x);
+        const seg = d => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7)); return x.toISOString().slice(0, 10); };
+        const P = {}; funcs.forEach(f => P[f.id] = { ...f, credito: 0, pecas_meta: 0, dias: new Set(), sem_meta: 0, semanas: {}, porPeca: {} });
+        for (const e of etapas) {
+          const f = P[e.fid]; if (!f) continue;
+          const so = S[e.op_id + '|' + e.setor_id], share = so && so.s > 0 ? (Number(e.tu) || 0) / so.s : 1 / ((so && so.n) || 1);
+          const eq = Number(e.qtd) * share, ch = chaves.find(k => sem(e.item).includes(k)), meta = ch && M[ch][e.setor_id];
+          const w = seg(e.dia), sw = f.semanas[w] = f.semanas[w] || { credito: 0, dias: new Set() };
+          sw.dias.add(e.dia);
+          if (meta) sw.credito += eq / meta;
+          if (e.dia >= de && e.dia <= ate) {
+            f.dias.add(e.dia);
+            if (meta) { f.credito += eq / meta; f.pecas_meta += eq; const pp = f.porPeca[ch] = f.porPeca[ch] || { pecas: 0, meta }; pp.pecas += eq; } else f.sem_meta++;
+          }
+        }
+        const X = {}; extra.forEach(x => X[x.id] = x); const D = {}; defs.forEach(d => D[d.id] = d);
+        const lista = Object.values(P).map(f => {
+          const x = X[f.id] || {}, d = D[f.id] || {}, dias = f.dias.size;
+          const semanas = {}; Object.entries(f.semanas).forEach(([w, v]) => { if (v.dias.size) semanas[w] = Math.round(v.credito / v.dias.size * 100); });
+          return { id: f.id, nome: f.nome, setor: f.setor, setor_id: f.setor_id, dias, pecas: Math.round(f.pecas_meta * 10) / 10, sem_meta: f.sem_meta,
+            eficiencia: dias ? Math.round(f.credito / dias * 100) : null, metas_cumpridas: Math.round(f.credito * 100) / 100,
+            porPeca: Object.entries(f.porPeca).map(([k, v]) => ({ peca: NM[k] || k, pecas: Math.round(v.pecas * 10) / 10, meta: v.meta })),
+            eficiencia_tempo: x.minutos > 0 ? Math.round(x.padrao / x.minutos * 100) : null,
+            sem_registro: x.sem_registro || 0, rt_feitos: x.rt_feitos || 0, rt_minutos: x.rt_minutos || 0,
+            defeitos: d.regs || 0, pecas_defeito: d.pecas || 0, rts_gerados: d.rts || 0, semanas };
+        }).sort((a, b) => (b.eficiencia ?? -1) - (a.eficiencia ?? -1) || b.pecas - a.pecas || a.nome.localeCompare(b.nome));
+        return json(req, { lista });
       }
 
       // ---------- relatório de produção (operações finalizadas no período)
