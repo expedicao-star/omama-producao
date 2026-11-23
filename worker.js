@@ -165,6 +165,8 @@ async function hashSenha(senha, salt) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(senha), 'PBKDF2', false, ['deriveBits']);
   return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: new TextEncoder().encode(salt), iterations: 100000 }, k, 256));
 }
+// limite de usuários: conta todos os ativos menos o administrador principal (o primeiro criado)
+const USADOS = 'select count(*) n from usuario where ativo=1 and id != (select min(id) from usuario where admin=1)';
 const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
 const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem', 'fin'];
@@ -275,26 +277,29 @@ const app = {
       }
       if (p.startsWith('/api/usuarios') && !usuario.admin) return json(req, { erro: 'Só o administrador mexe em usuários' }, 403);
       if (p === '/api/usuarios' && req.method === 'GET') {
-        return json(req, { max: MAX_USUARIOS, telas: TELAS, lista: (await all(DB, `select id, login, nome, admin, ativo, criado_em, permissoes,
+        return json(req, { max: MAX_USUARIOS, usados: (await one(DB, USADOS)).n, eu: usuario.id, telas: TELAS, lista: (await all(DB, `select id, login, nome, admin, ativo, criado_em, permissoes,
           (select max(criado_em) from sessao where usuario_id=usuario.id) ultimo_acesso from usuario order by admin desc, ativo desc, nome`)).map(u => ({ ...u, permissoes: u.admin ? TELAS : lePerm(u.permissoes) })) });
       }
       if (p === '/api/usuarios' && req.method === 'POST') {
         const login = String(body.login || '').trim().toLowerCase();
         if (!loginOk(login)) return json(req, { erro: 'Usuário: de 3 a 30 letras minúsculas, números, ponto ou traço (sem espaço)' }, 400);
         if (String(body.senha || '').length < 6) return json(req, { erro: 'A senha precisa de pelo menos 6 caracteres' }, 400);
-        if ((await one(DB, 'select count(*) n from usuario where admin=0 and ativo=1')).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo). Desative um antes.` }, 400);
+        if ((await one(DB, USADOS)).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo). Desative um antes.` }, 400);
         if (await one(DB, 'select id from usuario where login=?', login)) return json(req, { erro: 'Esse usuário já existe' }, 400);
         const salt = crypto.randomUUID();
         await DB.prepare('insert into usuario(login, nome, senha_hash, salt, admin, permissoes) values(?,?,?,?,0,?)').bind(login, String(body.nome || '').trim() || login, await hashSenha(String(body.senha), salt), salt, JSON.stringify(Array.isArray(body.permissoes) ? lePerm(JSON.stringify(body.permissoes)) : TELAS.filter(t => t !== 'fin'))).run();
+        if (body.admin) await DB.prepare('update usuario set admin=1 where login=?').bind(login).run();
         return json(req, { ok: true });
       }
       if ((m = p.match(/^\/api\/usuarios\/(\d+)$/)) && req.method === 'POST') {
         const u = await one(DB, 'select * from usuario where id=?', Number(m[1]));
         if (!u) return json(req, { erro: 'Usuário não encontrado' }, 404);
-        const ativo = body.ativo === undefined ? u.ativo : (body.ativo ? 1 : 0);
-        if (u.admin && !ativo) return json(req, { erro: 'Não dá para desativar o administrador' }, 400);
-        if (ativo && !u.ativo && (await one(DB, 'select count(*) n from usuario where admin=0 and ativo=1')).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo)` }, 400);
-        const st = [DB.prepare('update usuario set nome=?, ativo=?, permissoes=? where id=?').bind(body.nome === undefined ? u.nome : (String(body.nome).trim() || u.nome), ativo, Array.isArray(body.permissoes) ? JSON.stringify(lePerm(JSON.stringify(body.permissoes))) : u.permissoes, u.id)];
+        const ativo = body.ativo === undefined ? u.ativo : (body.ativo ? 1 : 0), admin = body.admin === undefined ? u.admin : (body.admin ? 1 : 0);
+        if ((!ativo || !admin) && u.id === (await one(DB, 'select min(id) id from usuario where admin=1')).id && u.id !== usuario.id) return json(req, { erro: 'O administrador principal não pode ser desativado nem perder o acesso de administrador' }, 400);
+        if (u.id === usuario.id && (!ativo || !admin)) return json(req, { erro: 'Você não pode tirar o seu próprio acesso de administrador nem se desativar' }, 400);
+        if (u.admin && u.ativo && (!ativo || !admin) && (await one(DB, 'select count(*) n from usuario where admin=1 and ativo=1')).n <= 1) return json(req, { erro: 'Precisa ficar pelo menos um administrador ativo' }, 400);
+        if (ativo && !u.ativo && (await one(DB, USADOS)).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo)` }, 400);
+        const st = [DB.prepare('update usuario set admin=? where id=?').bind(admin, u.id), DB.prepare('update usuario set nome=?, ativo=?, permissoes=? where id=?').bind(body.nome === undefined ? u.nome : (String(body.nome).trim() || u.nome), ativo, Array.isArray(body.permissoes) ? JSON.stringify(lePerm(JSON.stringify(body.permissoes))) : u.permissoes, u.id)];
         if (body.senha) {
           if (String(body.senha).length < 6) return json(req, { erro: 'A senha precisa de pelo menos 6 caracteres' }, 400);
           const salt = crypto.randomUUID();
