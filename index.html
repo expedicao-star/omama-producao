@@ -193,6 +193,7 @@ const botoes = o => o.status==='finalizado' ? `<button class="btn sec sm" data-a
   : o.status==='produzindo' ? `<button class="btn mid sm" data-a="pausar">⏸ Pausar</button> <button class="btn ok sm" data-a="finalizar">✓ Finalizar</button>`
   : `<button class="btn sm" data-a="iniciar">▶ Iniciar</button> <button class="btn sec sm" data-a="finalizar">✓ Finalizar</button>`;
 const tag = s => `<span class="tag t-${s}">${s}</span>`;
+const nomeOp = c => +c>=100000 ? 'RT '+(c-100000) : 'OP '+c;
 const pedTag = o => o.pedido_numero ? `<span class="ped" data-ped="${esc(o.pedido_numero)}">Pedido ${esc(o.pedido_numero)} · ${esc(o.pedido_cliente||'')}</span>` : `<span class="ped est">Estoque</span>`;
 const ligaPed = root => root.querySelectorAll('[data-ped]').forEach(c=>c.onclick=e=>{e.stopPropagation(); abrirPedido(c.dataset.ped);});
 const diasAte = s => s ? Math.round((new Date(s.slice(0,10)+'T12:00')-new Date(hojeISO()+'T12:00'))/864e5) : null;
@@ -206,7 +207,7 @@ async function tFila(){
   const t = (B.tipos.find(x=>x.setor_id===S.setor)||{});
   $('#fila').innerHTML = l.length ? l.map((o,i)=>`<div class="card ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-i="${i}">
       <div class="info"><b>${esc(o.operacao)}</b> ${tag(o.status)}<br>
-        <span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.item_nome)} · <b>${fmt(o.qtd)} un</b><br>
+        <span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.item_nome)} · <b>${fmt(o.qtd)} un</b>${o.motivo?`<br><span class="bad">Motivo: ${esc(o.motivo)}</span>`:''}<br>
         <span class="mut">${o.funcionario?'👤 '+esc(o.funcionario)+' · ':''}tempo <span data-tempo='${JSON.stringify({minutos:o.minutos,status:o.status,inicio_atual:o.inicio_atual})}'>${dur(decorrido(o))}</span> / padrão ${dur(o.tempo_unit_min*o.qtd)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</span></div>
       <div>${botoes(o)}</div></div>`).join('') : '<div class="vazio">Nada na fila desse setor agora.</div>';
   $('#fila').querySelectorAll('[data-i]').forEach(c=>{ const o=l[+c.dataset.i]; c.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>acao(o,b.dataset.a,tFila)); });
@@ -215,15 +216,15 @@ async function tFila(){
 
 // ===== OPs (kanban por estágio)
 async function tOps(){
-  app.innerHTML = `<div class="row"><input id="busca" placeholder="Buscar OP, item, pedido ou cliente" value="${esc(S.busca)}" style="flex:1;min-width:180px"><button class="btn" id="nova">+ Nova OP</button></div><br><div id="kb" class="vazio">Carregando…</div>`;
-  $('#nova').onclick=novaOp;
+  app.innerHTML = `<div class="row"><input id="busca" placeholder="Buscar OP, item, pedido ou cliente" value="${esc(S.busca)}" style="flex:1;min-width:180px"><button class="btn" id="nova">+ Nova OP</button><button class="btn mid" id="novort">+ Novo RT</button></div><br><div id="kb" class="vazio">Carregando…</div>`;
+  $('#nova').onclick=novaOp; $('#novort').onclick=()=>novoRt({});
   const ops = await api('/api/ops');
   const desenha = ()=>{
     const b=S.busca.toLowerCase(), f=ops.filter(o=>!b||String(o.codigo).includes(b)||o.item_nome.toLowerCase().includes(b)||String(o.pedido_numero||'').includes(b)||(o.pedido_cliente||'').toLowerCase().includes(b));
     $('#kb').className='kanban';
-    $('#kb').innerHTML = B.estagios.filter(e=>e.ordem<12).map(e=>{ const l=f.filter(o=>o.estagio_id===e.id);
+    $('#kb').innerHTML = B.estagios.filter(e=>e.id!==12).map(e=>{ const l=f.filter(o=>o.estagio_id===e.id);
       return `<div class="col ${l.length?'':'vz'}"><h3><span>${esc(e.nome)}</span><span>${l.length}</span></h3>${l.map(o=>{ const a=(o.atual||'').split('|');
-        return `<div class="op ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-op="${o.codigo}"><b>OP ${o.codigo} · ${fmt(o.qtd)} un</b>${esc(o.item_nome)}<div style="margin:3px 0">${pedTag(o)}</div>
+        return `<div class="op ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-op="${o.codigo}"><b>${nomeOp(o.codigo)} · ${fmt(o.qtd)} un</b>${esc(o.item_nome)}<div style="margin:3px 0">${o.tipo==='RT'?`<span class="ped" style="background:#fde8e8;color:#b42318">${esc(o.motivo||'Retrabalho')}</span>`:pedTag(o)}</div>
           <div class="mut">${a[0]?esc(a[0])+' · '+a[1]+(a[2]?' · '+esc(a[2]):''):''}${o.previsao_fim?'<br>entrega '+brData(o.previsao_fim):''}</div></div>`}).join('')||'<div class="mut" style="padding:6px">—</div>'}</div>`}).join('');
     $('#kb').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op)); ligaPed($('#kb'));
   };
@@ -258,27 +259,49 @@ const novaOp = tenta(async (pre={})=>{
     modal(''); if(n===1){ toast('OP '+feitas[0]+' criada · blocos baixados do Pátio'); abrirOp(feitas[0]); } else { toast(n+' OPs criadas: '+feitas[0]+' a '+feitas[n-1]+' · blocos baixados do Pátio'); render(); } });
 });
 
+// ===== RT (retrabalho): uma etapa só, "Retrabalho"
+const novoRt = tenta(async (pre={})=>{
+  const d=pre.defeito;
+  modal(`<h2 style="margin-top:0">Novo RT (retrabalho)</h2>
+    ${d?`<div class="card"><b>${fmt(d.qtd)} × ${esc(d.item)}</b><br><span class="mut">Peça do Defeito: quando o RT finalizar, ela sai do Defeito e entra no P.A. Manaus.</span></div>`
+      :`<input id="rb" placeholder="Buscar item (nome ou código)" style="width:100%"><div id="rl2" class="grid" style="margin-top:8px;max-height:34vh;overflow:auto"></div>
+    <div id="rsel" class="mut" style="margin:10px 0">Nenhum item escolhido</div><div class="mut" style="margin-bottom:8px">RT livre: só controla o trabalho e o tempo, não mexe no estoque.</div>
+    <div class="row"><label>Qtd <input id="rq" type="number" min="1" value="1" style="width:90px"></label></div>`}
+    <div style="margin-top:10px"><div class="mut">Motivo do retrabalho</div><textarea id="rm" rows="2" style="width:100%">${esc(d&&d.motivo!=='Veio do Sensio'?d.motivo||'':'')}</textarea></div>
+    <div class="row" style="margin-top:8px"><label>Tempo estimado (min, opcional) <input id="rt" type="number" min="0" style="width:90px"></label></div><br>
+    <div class="row"><button class="btn" id="rc">Criar RT</button><button class="btn sec" id="mx">Cancelar</button></div>`);
+  $('#mx').onclick=()=>modal('');
+  let item=null, t;
+  if(!d){ const busca=async()=>{ const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent($('#rb').value)); $('#rl2').innerHTML=l.filter(i=>i.ativo).slice(0,60).map(i=>`<div class="chip" data-id="${i.id}" data-n="${esc(i.nome)}">${esc(i.nome)}<small>${i.codigo}</small></div>`).join('');
+      $('#rl2').querySelectorAll('[data-id]').forEach(c=>c.onclick=()=>{ item=+c.dataset.id; $('#rl2').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c)); $('#rsel').innerHTML='Item: <b>'+c.dataset.n+'</b>'; }); };
+    $('#rb').oninput=()=>{clearTimeout(t); t=setTimeout(busca,300)}; await busca(); }
+  $('#rc').onclick=tenta(async()=>{ if(!d&&!item) throw new Error('Escolha o item');
+    const tq=d?d.qtd:(+$('#rq').value||0), tm=+$('#rt').value||0;
+    const r=await api('/api/rt', d?{defeito_id:d.id,motivo:$('#rm').value,tempo_min:tq?tm/tq:0}:{item_id:item,qtd:tq,motivo:$('#rm').value,tempo_min:tq?tm/tq:0});
+    toast(r.nome+' criado'); modal(''); if(pre.depois) pre.depois(); else render(); });
+});
+
 // ===== detalhe da OP
 const abrirOp = tenta(async codigo=>{
   const o = await api('/api/ops/'+codigo);
   const est = B.estagios.find(e=>e.id===o.estagio_id)||{};
   const fe = o.operacoes.filter(x=>x.status==='finalizado').length;
-  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">OP ${o.codigo}${o.origem==='sensio'?' · veio do Sensio':''}</h2>
-      <div style="font-size:20px;font-weight:800">${esc(o.item_nome)}</div><div style="margin:4px 0">${pedTag(o)} ${o.status==='aberta'?`<span class="link" id="vinc" style="font-size:13px">${o.pedido_numero?'trocar / tirar pedido':'vincular a um pedido'}</span>`:''}</div><div class="mut">${o.item_codigo} · ${fmt(o.qtd)} un · início ${brData(o.previsao_inicio)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</div></div>
+  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">${nomeOp(o.codigo)}${o.origem==='sensio'?' · veio do Sensio':''}</h2>
+      <div style="font-size:20px;font-weight:800">${esc(o.item_nome)}</div>${o.tipo==='RT'?`<div style="margin:4px 0" class="bad"><b>Motivo:</b> ${esc(o.motivo||'')}${o.defeito_id?' <span class="mut">· peça do Defeito: ao finalizar volta pro P.A. Manaus</span>':''}</div>`:''}<div style="margin:4px 0">${o.tipo==='RT'?'':pedTag(o)} ${o.status==='aberta'&&o.tipo!=='RT'?`<span class="link" id="vinc" style="font-size:13px">${o.pedido_numero?'trocar / tirar pedido':'vincular a um pedido'}</span>`:''}</div><div class="mut">${o.item_codigo} · ${fmt(o.qtd)} un · início ${brData(o.previsao_inicio)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</div></div>
       <button class="btn sec sm" id="mx">Fechar</button></div>
     <br><div class="row"><span class="mut">Estágio</span>
-      ${o.status==='aberta'?`<select id="est">${B.estagios.filter(e=>e.ordem<12).map(e=>`<option value="${e.id}" ${e.id===o.estagio_id?'selected':''}>${esc(e.nome)}</option>`).join('')}</select>`:`<b>${esc(est.nome)}</b> (${o.status})`}
+      ${o.status==='aberta'&&o.tipo!=='RT'?`<select id="est">${B.estagios.filter(e=>e.ordem<12).map(e=>`<option value="${e.id}" ${e.id===o.estagio_id?'selected':''}>${esc(e.nome)}</option>`).join('')}</select>`:`<b>${esc(est.nome)}</b> (${o.status})`}
       <span class="mut">${fe}/${o.operacoes.length} operações</span></div>
     <div class="bar" style="margin:8px 0"><i style="width:${o.operacoes.length?fe/o.operacoes.length*100:0}%"></i></div>
     <h2>Roteiro</h2><div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Operação</th><th>Status</th><th>Quem</th><th class="n">Real</th><th class="n">Padrão</th><th>Início / fim</th><th></th></tr>
       ${o.operacoes.map((x,i)=>`<tr><td>${x.ordem}</td><td>${esc(x.nome)}</td><td>${tag(x.status)}</td><td>${esc(x.funcionario||(x.sem_registro===2?'Operador':''))}</td>
         <td class="n">${x.sem_registro===2?'<span class="mut">~'+dur(x.minutos)+' estimado</span>':x.sem_registro?'<span class="mut">sem registro</span>':x.status!=='produzindo'&&!x.minutos?'–':dur(decorrido(x))}</td><td class="n">${dur(x.tempo_unit_min*o.qtd)}</td>
         <td class="mut">${brHora(x.inicio)}${x.fim?' → '+brHora(x.fim):''}</td><td style="white-space:nowrap" data-i="${i}">${o.status==='aberta'?botoes(x):''}</td></tr>`).join('')||'<tr><td colspan=8 class="vazio">Item sem roteiro cadastrado.</td></tr>'}</table></div>
-    <h2>Blocos ${o.origem==='sensio'?'(OP veio do Sensio: blocos não baixados aqui)':'(baixados do Pátio na criação da OP)'}</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio agora</th></tr>
-      ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<0?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>
+    ${o.tipo==='RT'?'':`<h2>Blocos ${o.origem==='sensio'?'(OP veio do Sensio: blocos não baixados aqui)':'(baixados do Pátio na criação da OP)'}</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio agora</th></tr>
+      ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<0?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>`}
     <h2>Fotos</h2><div class="card" id="fts">Carregando…</div>
     <h2>Eventos</h2><div class="card">${o.eventos.map(e=>`<div><span class="mut">${brHora(e.data)}</span> · ${esc(e.texto)}</div>`).join('')}</div>
-    <br><div class="row"><button class="btn mid sm" id="def">Registrar defeito</button>${o.status==='aberta'?'<button class="btn bad sm" id="canc">Cancelar OP</button>':''}</div>`);
+    <br><div class="row"><button class="btn mid sm" id="def">Registrar defeito</button>${o.status==='aberta'?`<button class="btn bad sm" id="canc">Cancelar ${o.tipo==='RT'?'RT':'OP'}</button>`:''}</div>`);
   $('#def').onclick=()=>registrarDefeito({op_codigo:o.codigo,item_id:o.item_id,item_nome:o.item_nome,depois:()=>abrirOp(codigo)});
   galeria($('#fts'),{op_id:o.id});
   $('#mx').onclick=()=>{ modal(''); render(); };
@@ -288,7 +311,7 @@ const abrirOp = tenta(async codigo=>{
     if(id===null) return abrirOp(codigo); await api(`/api/ops/${codigo}/pedido`,{pedido_item_id:id>0?id:null}); toast(id>0?'OP vinculada ao pedido':'OP marcada como estoque'); re(); });
   document.querySelectorAll('#modal td[data-i]').forEach(td=>{ const x=o.operacoes[+td.dataset.i]; td.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>acao(x,b.dataset.a,re)); });
   if($('#est')) $('#est').onchange=tenta(async e=>{ await api(`/api/ops/${codigo}/estagio`,{estagio_id:+e.target.value}); toast('Estágio alterado'); re(); });
-  if($('#canc')) $('#canc').onclick=tenta(async()=>{ const m=prompt('Motivo do cancelamento da OP '+codigo+':'); if(m===null) return; await api(`/api/ops/${codigo}/cancelar`,{motivo:m}); toast('OP cancelada'); modal(''); render(); });
+  if($('#canc')) $('#canc').onclick=tenta(async()=>{ const m=prompt('Motivo do cancelamento d'+(o.tipo==='RT'?'o ':'a ')+nomeOp(codigo)+':'); if(m===null) return; await api(`/api/ops/${codigo}/cancelar`,{motivo:m}); toast(o.tipo==='RT'?'RT cancelado':'OP cancelada'); modal(''); render(); });
 });
 
 // ===== pedidos
@@ -321,7 +344,7 @@ const abrirPedido = tenta(async numero=>{
       <div class="row"><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select><button class="btn sec sm" id="mx">Fechar</button></div></div>
     <h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th></th></tr>
     ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return `<tr><td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td><td class="mut">${esc(x.etapa_v8||'')}</td>
-      <td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
+      <td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
       <td style="white-space:nowrap">${x.item_id&&falta>0?`<button class="btn sm" data-cria="${x.id}">+ OP (${fmt(falta)})</button>`:''}</td></tr>`}).join('')||'<tr><td colspan=5 class="vazio">Sem peças.</td></tr>'}</table></div>
     <br><button class="btn sec sm" id="addi">+ Adicionar peça ao pedido</button>`);
   $('#mx').onclick=()=>{ modal(''); render(); };
@@ -528,7 +551,7 @@ async function tPainel(tv){
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:10px">
       <div class="card"><b>Peças por estágio</b>${d.estagios.map(e=>`<div style="margin-top:6px"><div class="row" style="justify-content:space-between"><span style="font-size:13px">${esc(e.nome)}</span><b>${fmt(e.pecas)}</b></div><div class="bar"><i style="width:${e.pecas/maxE*100}%"></i></div></div>`).join('')}</div>
       <div class="card"><b>Pedidos vencendo em 7 dias</b>${d.pedidos.map(p=>{ const x=diasAte(p.prazo); return `<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span>${esc(p.numero)} · ${esc(p.cliente||'')}<br><span class="mut">${fmt(p.conferidas)}/${fmt(p.pecas)} conferidas</span></span><b class="${x<0?'bad':'midc'}">${x<0?Math.abs(x)+' d atrasado':x===0?'hoje':x+' d'}</b></div>`}).join('')||'<div class="mut" style="margin-top:6px">Nenhum.</div>'}</div>
-      <div class="card"><b>OPs atrasadas</b>${d.atrasadas.map(o=>`<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.nome)} · ${fmt(o.qtd)} un<br><span class="mut">${esc(o.estagio)} · previsto ${brData(o.previsao_fim)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nenhuma.</div>'}</div>
+      <div class="card"><b>OPs atrasadas</b>${d.atrasadas.map(o=>`<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.nome)} · ${fmt(o.qtd)} un<br><span class="mut">${esc(o.estagio)} · previsto ${brData(o.previsao_fim)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nenhuma.</div>'}</div>
       <div class="card"><b>Parado na estufa há mais de 10 dias</b>${d.parados.map(o=>`<div style="padding:4px 0"><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.nome)} <span class="mut">· ${esc(o.operacao)} desde ${brData(o.inicio)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nada parado.</div>'}
         <br><b>Faltas e atrasos hoje</b>${d.faltas.map(f=>`<div>${esc(f.nome)} <span class="mut">· ${ST[f.status]||f.status}${f.minutos?' '+f.minutos+' min':''}</span></div>`).join('')||'<div class="mut">Ninguém.</div>'}</div></div>`;
   app.querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
@@ -549,7 +572,7 @@ async function tSemana(){
   $('#sr').innerHTML=`<h2 style="font-size:18px;color:var(--txt);letter-spacing:0;text-transform:none">Relatório da semana · ${brData(de)} a ${brData(ate)}</h2>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${[[s.finalizadas.length,'OPs finalizadas'],[fmt(pecas),'peças finalizadas'],[s.criadas.n,'OPs criadas'],[fmt(env),'peças enviadas'],[fmt(df.porMotivo.reduce((a,x)=>a+x.qtd,0)),'peças com defeito'],[pr.filter(x=>x.status&&x.status.startsWith('falta')).length,'faltas']].map(([n,t])=>`<div class="card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--amb)">${n}</div><div class="mut">${t}</div></div>`).join('')}</div>
     <h2>Eficiência por pessoa</h2><div class="card"><table><tr><th>Pessoa</th><th>Setor</th><th class="n">Operações</th><th class="n">Tempo real</th><th class="n">Eficiência</th></tr>${r.porPessoa.map(p=>{ const e=p.minutos_medidos>0?p.padrao_medido/p.minutos_medidos*100:null; return `<tr><td>${esc(p.funcionario)}</td><td class="mut">${esc(p.setor||'')}</td><td class="n">${p.operacoes}</td><td class="n">${dur(p.minutos_reais)}</td><td class="n ${e===null?'':cor(e)}"><b>${e===null?'–':fmt(e,0)+'%'}</b></td></tr>`}).join('')||'<tr><td colspan=5 class="mut">Nenhuma operação finalizada.</td></tr>'}</table></div>
-    <h2>OPs finalizadas</h2><div class="card">${s.finalizadas.map(o=>`<div>OP ${o.codigo} · ${esc(o.nome)} · ${fmt(o.qtd)} un${o.numero?' · pedido '+esc(o.numero):''}</div>`).join('')||'<span class="mut">Nenhuma.</span>'}</div>
+    <h2>OPs finalizadas</h2><div class="card">${s.finalizadas.map(o=>`<div>${nomeOp(o.codigo)} · ${esc(o.nome)} · ${fmt(o.qtd)} un${o.numero?' · pedido '+esc(o.numero):''}</div>`).join('')||'<span class="mut">Nenhuma.</span>'}</div>
     <h2>Expedição</h2><div class="card">${s.envios.map(e=>`<div>${brData(e.data)} · pedido ${esc(e.numero)} · ${esc(e.cliente||'')} · ${fmt(e.pecas)} peça(s)${e.transportadora?' · '+esc(e.transportadora):''}</div>`).join('')||'<span class="mut">Nenhum envio.</span>'}</div>
     <h2>Defeitos</h2><div class="card">${df.porMotivo.map(x=>`<div>${esc(x.motivo)}: <b>${fmt(x.qtd)}</b></div>`).join('')||'<span class="mut">Nenhum defeito.</span>'}</div>
     <h2>Assiduidade</h2><div class="card">${pr.map(x=>`<div>${brData(x.data)} · ${esc(x.nome)} · ${ST[x.status]||x.status}${x.minutos?' ('+x.minutos+' min)':''}${x.obs?' · '+esc(x.obs):''}</div>`).join('')||'<span class="mut">Nenhuma falta ou atraso.</span>'}</div>
@@ -613,7 +636,7 @@ async function tRel(){
   $('#rl').className='';
   $('#rl').innerHTML=`<div class="card" style="overflow-x:auto"><table><tr><th>Pessoa</th><th>Setor</th><th class="n">Operações</th><th class="n">Peças</th><th class="n">Sem registro</th><th class="n">Tempo real</th><th class="n">Tempo padrão</th><th class="n">Eficiência</th></tr>
     ${r.porPessoa.map(p=>{ const e=p.minutos_medidos>0?p.padrao_medido/p.minutos_medidos*100:null; return `<tr><td>${esc(p.funcionario)}</td><td class="mut">${esc(p.setor||'')}</td><td class="n">${p.operacoes}</td><td class="n">${fmt(p.pecas)}</td><td class="n ${p.sem_registro?'bad':'mut'}">${p.sem_registro||'–'}</td><td class="n">${dur(p.minutos_reais)}</td><td class="n">${dur(p.minutos_padrao)}</td><td class="n ${e===null?'':cor(e)}"><b>${e===null?'–':fmt(e,0)+'%'}</b></td></tr>`}).join('')||'<tr><td colspan=8 class="vazio">Nenhuma operação finalizada no período.</td></tr>'}</table></div>
-    <h2>OPs finalizadas (${r.finalizadas.length})</h2><div class="card">${r.finalizadas.map(o=>`<div><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.item)} · ${fmt(o.qtd)} un <span class="mut">· ${brHora(o.finalizado_em)}</span></div>`).join('')||'<span class="mut">Nenhuma.</span>'}</div>
+    <h2>OPs finalizadas (${r.finalizadas.length})</h2><div class="card">${r.finalizadas.map(o=>`<div><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.item)} · ${fmt(o.qtd)} un <span class="mut">· ${brHora(o.finalizado_em)}</span></div>`).join('')||'<span class="mut">Nenhuma.</span>'}</div>
     <h2>Operações finalizadas</h2><div class="card" style="overflow-x:auto"><table><tr><th>Quando</th><th>Pessoa</th><th>Operação</th><th>OP</th><th class="n">Real</th><th class="n">Padrão</th></tr>
     ${r.detalhe.map(d=>`<tr><td class="mut">${brHora(d.fim)}</td><td>${esc(d.funcionario||(d.sem_registro===2?'Operador':''))}</td><td>${esc(d.operacao)}</td><td>${d.codigo} · ${esc(d.item)}</td><td class="n">${d.sem_registro===2?'<span class="mut">~'+dur(d.minutos)+' estimado</span>':d.sem_registro?'<span class="bad">sem registro</span>':d.minutos?dur(d.minutos):'–'}</td><td class="n">${dur(d.padrao)}</td></tr>`).join('')}</table></div>
 `;
@@ -711,7 +734,7 @@ const SIT={em_defeito:['Em defeito','t-pausado'],recuperado:['Recuperada → P.A
 async function tDefeitos(){
   const [de,ate]=periodo();
   app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Estoque de defeito</h2><button class="btn" id="nd">+ Registrar defeito</button></div>
-    <p class="mut">Peça com defeito entra no depósito Defeito. Daqui ela pode ir pro conserto (continua no Defeito), ser recuperada (volta pro P.A. Manaus) ou ser descartada (perda).</p><div id="dl" class="vazio">Carregando…</div>
+    <p class="mut">Peça com defeito entra no depósito Defeito. Daqui ela pode ir pro conserto com um RT (continua no Defeito até o RT finalizar e aí volta pro P.A. Manaus sozinha), ser recuperada (volta pro P.A. Manaus) ou ser descartada (perda).</p><div id="dl" class="vazio">Carregando…</div>
     <div class="row" style="justify-content:space-between;margin-top:18px"><h2 style="margin:0">Resumo · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2><div class="row">${['dia','semana','mes'].map(p=>`<button class="btn ${S.per===p?'':'sec'} sm" data-p="${p}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div><div id="dr" class="vazio">Carregando…</div>`;
   $('#nd').onclick=()=>registrarDefeito({});
   app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.per=b.dataset.p; tDefeitos();});
@@ -723,9 +746,11 @@ async function tDefeitos(){
     ${its.map(it=>it.regs.map((d,i)=>`<tr>${i===0?`<td rowspan="${it.regs.length}"><b>${esc(it.item)}</b><br><span class="mut">${it.codigo} · total ${fmt(it.qtd)} em defeito</span></td>`:''}
       <td class="n"><b>${fmt(d.qtd)}</b></td><td class="mut">${brHora(d.data)}</td><td>${esc(d.motivo)}${d.obs?`<br><span class="mut">${esc(d.obs)}</span>`:''}</td>
       <td class="mut">${[d.op_codigo?'OP '+d.op_codigo:'',d.origem==='pa'?'veio do P.A.':'',d.setor,d.funcionario].filter(Boolean).map(esc).join(' · ')}</td>
-      <td style="white-space:nowrap"><button class="btn ok sm" data-r="${d.id}" data-a="recuperar">Recuperar</button> ${d.situacao==='retrabalho'?'<span class="tag t-finalizado">Em conserto</span>':`<button class="btn mid sm" data-r="${d.id}" data-a="retrabalho">Conserto</button>`} <button class="btn bad sm" data-r="${d.id}" data-a="descartar">Descartar</button> <button class="btn sec sm" data-ft="${d.id}">Fotos</button></td></tr>`).join('')).join('')}</table></div>`
+      <td style="white-space:nowrap">${d.rt_codigo?`<span class="tag t-produzindo link" data-rt="${d.rt_codigo}">Em conserto · ${nomeOp(d.rt_codigo)}</span>`:`<button class="btn ok sm" data-r="${d.id}" data-a="recuperar">Recuperar</button> ${d.situacao==='retrabalho'?'<span class="tag t-finalizado">Em conserto</span>':`<button class="btn mid sm" data-rtn="${d.id}">Criar RT</button>`} <button class="btn bad sm" data-r="${d.id}" data-a="descartar">Descartar</button>`} <button class="btn sec sm" data-ft="${d.id}">Fotos</button></td></tr>`).join('')).join('')}</table></div>`
     :'<div class="card vazio">Nenhuma peça em defeito agora.</div>';
   $('#dl').querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>resolverDefeito(l.find(d=>d.id===+b.dataset.r),b.dataset.a));
+  $('#dl').querySelectorAll('[data-rtn]').forEach(b=>b.onclick=()=>novoRt({defeito:l.find(d=>d.id===+b.dataset.rtn),depois:tDefeitos}));
+  $('#dl').querySelectorAll('[data-rt]').forEach(b=>b.onclick=()=>abrirOp(+b.dataset.rt));
   $('#dl').querySelectorAll('[data-ft]').forEach(b=>b.onclick=()=>fotosDefeito(l.find(d=>d.id===+b.dataset.ft)));
   const tot=x=>x.reduce((s,y)=>s+y.qtd,0);
   const lista=(x,k)=>x.length?`<table>${x.map(y=>`<tr><td>${esc(y[k])}</td><td class="n"><b>${fmt(y.qtd)}</b></td></tr>`).join('')}</table>`:'<span class="mut">Nada no período.</span>';
