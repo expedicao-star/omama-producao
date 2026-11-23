@@ -32,6 +32,7 @@ body.logado #side{display:block}body.menu #side{transform:none}
 .gi b{display:inline-block;width:24px;color:var(--lil)}.gi:hover{background:var(--card2)}.gi.on{background:var(--amb);color:#fff}.gi.on b{color:#fff}
 @media(min-width:1000px){body.logado #side{transform:none;box-shadow:none}body.logado main{margin-left:240px}#sideBg{display:none!important}body.logado #hamb{display:none}}
 .t-blue{background:#e1eefb;color:#2d6aa3}
+input[type=checkbox]{accent-color:var(--amb)}
 @media(max-width:600px){header .sub{display:none}}
 @media print{#side,#sideBg,header,.noprint,.toast{display:none!important}body.logado main{margin:0;max-width:none}body{background:#fff}.card{box-shadow:none;break-inside:avoid}}
 body.tv #side,body.tv #sideBg{display:none!important}body.tv main{margin-left:0!important;max-width:none}body.tv{font-size:18px}
@@ -103,7 +104,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -147,25 +148,26 @@ async function telaLogin(msg){
 async function iniciar(){
   if(!ls.get('token')) return telaLogin();
   try{ [B,EU] = await Promise.all([api('/api/base'),api('/api/eu')]); }catch(e){ if(e.message!=='401') telaLogin('Não consegui falar com o servidor ('+e.message+')'); return; }
-  if(S.tab==='usu'&&!EU.admin) S.tab='painel';
+  if(!pode(S.tab)){ const t=MENU.flatMap(x=>x[1]).map(x=>x[0]).find(pode); S.tab=t||'nada'; }
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
 const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['sem','▤','Semana']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
+const pode=t=>!!EU&&(EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
-  $('#side').innerHTML=MENU.map(([g,its])=>`<button class="gh ${fechados.includes(g)?'fechado':''}" data-g="${g}">${g}<i>▾</i></button>
+  $('#side').innerHTML=MENU.map(([g,its])=>[g,its.filter(([t])=>pode(t))]).filter(([g,its])=>its.length).map(([g,its])=>`<button class="gh ${fechados.includes(g)?'fechado':''}" data-g="${g}">${g}<i>▾</i></button>
     <div ${fechados.includes(g)?'style="display:none"':''}>${its.map(([t,ic,n])=>`<button class="gi ${S.tab===t?'on':''}" data-t="${t}"><b>${ic}</b>${n}</button>`).join('')}</div>`).join('')
-    +`<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px"><div class="mut" style="padding:4px 18px">Entrou como <b>${esc(EU&&EU.nome||'')}</b>${EU&&EU.admin?' · admin':''}</div>${EU&&EU.admin?`<button class="gi ${S.tab==='usu'?'on':''}" data-t="usu"><b>⚿</b>Usuários</button>`:''}<button class="gi" id="senha" style="color:var(--mut)"><b>✱</b>Trocar minha senha</button><button class="gi" id="sair" style="color:var(--mut)"><b>⏻</b>Sair</button></div>`;
+    +`<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px"><div class="mut" style="padding:4px 18px">Entrou como <b>${esc(EU&&EU.nome||'')}</b>${EU&&EU.admin?' · admin':''}</div>${EU&&EU.admin?`<button class="gi ${S.tab==='usu'?'on':''}" data-t="usu"><b>⚿</b>Usuários</button><button class="gi ${S.tab==='perm'?'on':''}" data-t="perm"><b>☑</b>Permissões</button>`:''}<button class="gi" id="senha" style="color:var(--mut)"><b>✱</b>Trocar minha senha</button><button class="gi" id="sair" style="color:var(--mut)"><b>⏻</b>Sair</button></div>`;
   $('#side').querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{ const g=b.dataset.g; fechados=fechados.includes(g)?fechados.filter(x=>x!==g):[...fechados,g]; ls.set('menuFechado',JSON.stringify(fechados)); menu(); });
   $('#side').querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{ S.tab=b.dataset.t; ls.set('aba',S.tab); document.body.classList.remove('menu'); menu(); render(); });
   $('#senha').onclick=()=>{ document.body.classList.remove('menu'); trocarSenha(); };
   $('#sair').onclick=async()=>{ try{ await api('/api/auth/sair',{}); }catch(e){} ls.del('token'); telaLogin(); };
-  const at=MENU.flatMap(x=>x[1]).find(x=>x[0]===S.tab); $('#pg').textContent=at?at[2]:S.tab==='usu'?'Usuários':'';
+  const at=MENU.flatMap(x=>x[1]).find(x=>x[0]===S.tab); $('#pg').textContent=at?at[2]:S.tab==='usu'?'Usuários':S.tab==='perm'?'Permissões':'';
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); ({painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -550,7 +552,7 @@ async function tUsuarios(){
   const r=await api('/api/usuarios'), ativos=r.lista.filter(u=>!u.admin&&u.ativo).length;
   app.innerHTML=`<h2>Novo usuário <span class="mut" style="text-transform:none;letter-spacing:0">(${ativos} de ${r.max} em uso)</span></h2>
     <div class="card"><div class="row"><input id="un" placeholder="Nome (ex.: Raimundo)"><input id="ul" placeholder="Usuário (ex.: raimundo)" autocomplete="off" autocapitalize="none"><input id="us" type="password" placeholder="Senha (mín. 6)" autocomplete="new-password"><button class="btn" id="ug" ${ativos>=r.max?'disabled':''}>Criar</button></div>
-    <p class="mut">${ativos>=r.max?'Chegou no limite de '+r.max+' usuários. Desative um para criar outro.':'O usuário entra no site com esse usuário e senha. Depois ele pode trocar a senha no menu.'}</p></div>
+    <p class="mut">${ativos>=r.max?'Chegou no limite de '+r.max+' usuários. Desative um para criar outro.':'O usuário entra no site com esse usuário e senha (começa com acesso a todas as telas; ajuste em Permissões). Depois ele pode trocar a senha no menu.'}</p></div>
     <h2>Usuários</h2><div class="card"><table><tr><th>Nome</th><th>Usuário</th><th>Tipo</th><th>Situação</th><th>Último acesso</th><th></th></tr>
     ${r.lista.map(u=>`<tr style="${u.ativo?'':'opacity:.5'}"><td><b>${esc(u.nome||'')}</b></td><td>${esc(u.login)}</td><td>${u.admin?'<span class="tag t-finalizado">Administrador</span>':'Usuário'}</td><td>${u.ativo?'<span class="tag t-produzindo">Ativo</span>':'<span class="tag t-pendente">Desativado</span>'}</td><td class="mut">${u.ultimo_acesso?brHora(u.ultimo_acesso):'nunca'}</td><td class="n"><button class="btn sec sm" data-u="${u.id}">Editar</button></td></tr>`).join('')}</table></div>`;
   $('#ug').onclick=tenta(async()=>{ await api('/api/usuarios',{nome:$('#un').value,login:$('#ul').value,senha:$('#us').value}); toast('Usuário '+$('#ul').value.trim().toLowerCase()+' criado'); tUsuarios(); });
@@ -568,6 +570,20 @@ function trocarSenha(){
     <div class="row"><button class="btn" id="sg">Trocar</button><button class="btn sec" id="sx">Voltar</button></div>`);
   $('#sx').onclick=()=>modal('');
   $('#sg').onclick=tenta(async()=>{ if($('#sn').value!==$('#sr').value) throw new Error('As duas senhas novas não são iguais'); await api('/api/auth/senha',{atual:$('#sa').value,nova:$('#sn').value}); toast('Senha trocada'); modal(''); });
+}
+
+// ===== permissões (só o administrador): quais telas cada usuário vê
+async function tPerm(){
+  if(!EU||!EU.admin){ app.innerHTML='<div class="vazio">Só o administrador mexe em permissões.</div>'; return; }
+  const r=await api('/api/usuarios'), us=r.lista.filter(u=>!u.admin&&u.ativo);
+  if(!us.length){ app.innerHTML='<div class="card vazio">Nenhum usuário ainda. Crie em <span class="link" id="pu">Usuários</span>.</div>'; $('#pu').onclick=()=>{ S.tab='usu'; menu(); render(); }; return; }
+  app.innerHTML=`<h2>Permissões · o que cada pessoa pode acessar</h2><p class="mut">Marque as telas que cada usuário vê no menu e pode usar. Salva na hora. Você (administrador) vê tudo sempre.</p>
+    <div class="card" style="overflow-x:auto"><table><tr><th>Tela</th>${us.map(u=>`<th class="n" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--txt)">${esc(u.nome||u.login)}<br><span class="link" data-all="${u.id}" style="font-size:11px">tudo</span> · <span class="link" data-none="${u.id}" style="font-size:11px">nada</span></th>`).join('')}</tr>
+    ${MENU.map(([g,its])=>`<tr><td colspan="${us.length+1}" style="background:var(--card2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)">${g}</td></tr>`+its.map(([t,ic,n])=>`<tr><td>${ic} ${n}</td>${us.map(u=>`<td class="n"><input type="checkbox" data-u="${u.id}" data-t="${t}" ${u.permissoes.includes(t)?'checked':''} style="width:20px;height:20px"></td>`).join('')}</tr>`).join('')).join('')}</table></div>
+    <p class="mut">Quem não tem uma tela pode ver dados dela quando aparecem em outra tela, mas não consegue lançar nem alterar nada nela.</p>`;
+  const salva=tenta(async id=>{ const p=[...app.querySelectorAll(`[data-u="${id}"]:checked`)].map(c=>c.dataset.t); await api('/api/usuarios/'+id,{permissoes:p}); const u=us.find(x=>x.id===+id); toast('Permissões de '+(u.nome||u.login)+' salvas'); });
+  app.querySelectorAll('input[data-u]').forEach(c=>c.onchange=()=>salva(c.dataset.u));
+  app.querySelectorAll('[data-all],[data-none]').forEach(l=>l.onclick=()=>{ const id=l.dataset.all||l.dataset.none; app.querySelectorAll(`input[data-u="${id}"]`).forEach(c=>c.checked=!!l.dataset.all); salva(id); });
 }
 
 // ===== relatório de produção
