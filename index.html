@@ -669,31 +669,45 @@ function periodo(){ const d=new Date(hojeISO()+'T12:00'), iso=x=>x.toISOString()
   if(S.per==='dia') return [iso(d),iso(d)];
   if(S.per==='semana'){ const s=new Date(d); s.setDate(d.getDate()-((d.getDay()+6)%7)); return [iso(s),iso(d)]; }
   return [iso(new Date(d.getFullYear(),d.getMonth(),1,12)),iso(d)]; }
-// ===== eficiência por funcionário (ranking + defeitos/RT + evolução 8 semanas)
+// ===== eficiência por funcionário = peças feitas ÷ meta de peças por dia (por dia trabalhado)
 async function tEfic(){
   const [de,ate]=periodo(); S.esetor=S.esetor||0;
   app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Eficiência por funcionário · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2>
-    <div class="row">${['dia','semana','mes'].map(p=>`<button class="btn ${S.per===p?'':'sec'} sm" data-p="${p}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div>
+    <div class="row">${EU&&EU.admin?'<button class="btn sec sm" id="emet">Metas de peças/dia</button>':''}${['dia','semana','mes'].map(p=>`<button class="btn ${S.per===p?'':'sec'} sm" data-p="${p}">${p==='mes'?'Mês':p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div></div>
     <div class="grid" style="margin:10px 0">${[{id:0,nome:'Todos'},...B.setores.filter(x=>x.nome!=='Retrabalho')].map(x=>`<div class="chip ${S.esetor===x.id?'on':''}" data-s="${x.id}">${esc(x.nome)}</div>`).join('')}</div>
-    <p class="mut">Eficiência = tempo padrão ÷ tempo real, só com etapas de OP cronometradas (Iniciar → Finalizar, pelo menos 1 min). Verde ≥ 100% · amarelo 80–99% · vermelho &lt; 80%. Retrabalho (RT) e etapas sem registro ficam fora da conta e aparecem à parte. Defeitos = peças com defeito registradas no nome da pessoa.</p><div id="ef" class="vazio">Carregando…</div>`;
+    <p class="mut">Eficiência = peças feitas ÷ meta de peças por dia da pessoa naquela etapa, por dia trabalhado. Ex.: meta de Serenata no torno é 2,9/dia; fez 3 num dia = 103%. No torno, Fase A e Fase B dividem a peça (pelo tempo de cada fase); no acabamento, Acabamento e Finalização também. Verde ≥ 100% · amarelo 80–99% · vermelho &lt; 80%. Retrabalho (RT) fica fora e aparece à parte.</p><div id="ef" class="vazio">Carregando…</div>`;
   app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.per=b.dataset.p; tEfic();});
   app.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{S.esetor=+b.dataset.s; tEfic();});
+  if($('#emet')) $('#emet').onclick=editarMetas;
   const r=await api(`/api/eficiencia?de=${de}&ate=${ate}${S.esetor?'&setor_id='+S.esetor:''}`);
   const cor=p=>p===null?'mut':p>=100?'ok':p>=80?'midc':'bad', bg=p=>p===null?'var(--line)':p>=100?'#2e9e5b':p>=80?'#d89a1c':'#d14343';
   const segs=[]; { const d=new Date(ate+'T12:00'); d.setDate(d.getDate()-((d.getDay()+6)%7)); for(let k=7;k>=0;k--){ const x=new Date(d); x.setDate(d.getDate()-7*k); segs.push(x.toISOString().slice(0,10)); } }
   const l=r.lista, max=Math.max(130,...l.map(f=>f.eficiencia||0));
   $('#ef').className='';
-  $('#ef').innerHTML=`<div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Funcionário</th><th style="min-width:200px">Eficiência</th><th class="n">Etapas</th><th class="n">Peças</th><th class="n">Tempo real</th><th class="n">Sem registro</th><th class="n">Defeitos</th><th class="n">RT feitos</th></tr>
-    ${l.map((f,i)=>`<tr><td class="mut">${f.eficiencia===null?'':i+1}</td><td><b>${esc(f.nome)}</b><br><span class="mut">${esc(f.setor||'')}</span></td>
+  $('#ef').innerHTML=`<div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Funcionário</th><th style="min-width:200px">Eficiência (meta)</th><th class="n">Dias</th><th class="n">Peças</th><th class="n">Metas cumpridas</th><th class="n">Sem registro</th><th class="n">Defeitos</th><th class="n">RT feitos</th></tr>
+    ${l.map((f,i)=>`<tr><td class="mut">${f.eficiencia===null?'':i+1}</td><td><b>${esc(f.nome)}</b><br><span class="mut">${esc(f.setor||'')}</span>${f.porPeca.length?`<br><span class="mut" style="font-size:12px">${f.porPeca.map(x=>`${esc(x.peca[0].toUpperCase()+x.peca.slice(1))} ${fmt(x.pecas,1)} <span title="meta por dia">(meta ${fmt(x.meta,1)})</span>`).join(' · ')}</span>`:''}${f.sem_meta?`<br><span class="midc" style="font-size:12px">${f.sem_meta} etapa(s) de peça sem meta</span>`:''}</td>
       <td><div class="row" style="gap:8px;flex-wrap:nowrap"><div style="flex:1;height:12px;background:var(--line);border-radius:6px;overflow:hidden;min-width:100px"><i style="display:block;height:100%;width:${f.eficiencia===null?0:Math.min(100,f.eficiencia/max*100)}%;background:${bg(f.eficiencia)}"></i></div><b class="${cor(f.eficiencia)}" style="min-width:46px;text-align:right">${f.eficiencia===null?'–':f.eficiencia+'%'}</b></div></td>
-      <td class="n">${f.operacoes||0}</td><td class="n">${fmt(f.pecas||0)}</td><td class="n">${f.minutos?dur(f.minutos):'–'}</td>
+      <td class="n">${f.dias||'–'}</td><td class="n">${f.pecas?fmt(f.pecas,1):'–'}</td><td class="n">${f.metas_cumpridas?fmt(f.metas_cumpridas,2)+' <span class="mut">de '+f.dias+'</span>':'–'}</td>
       <td class="n ${f.sem_registro?'bad':'mut'}">${f.sem_registro||'–'}</td>
       <td class="n ${f.pecas_defeito?'bad':'mut'}">${f.pecas_defeito?fmt(f.pecas_defeito)+' pç'+(f.rts_gerados?` <span class="mut">(${f.rts_gerados} RT)</span>`:''):'–'}</td>
-      <td class="n">${f.rt_feitos?f.rt_feitos+' <span class="mut">· '+dur(f.rt_minutos)+'</span>':'<span class="mut">–</span>'}</td></tr>`).join('')||'<tr><td colspan=9 class="vazio">Nenhum funcionário.</td></tr>'}</table></div>
+      <td class="n">${f.rt_feitos?f.rt_feitos+' <span class="mut">· '+dur(f.rt_minutos)+'</span>':'<span class="mut">–</span>'}</td></tr>`).join('')||'<tr><td colspan=9 class="vazio">Nenhum funcionário.</td></tr>'}</table>
+    <p class="mut" style="padding:0 12px">Peças = peças equivalentes (uma fase do torno conta como parte da peça). Metas cumpridas = quantos "dias de meta" a pessoa fez nos dias em que trabalhou.</p></div>
     <h2>Evolução semana a semana (últimas 8 semanas)</h2><div class="card" style="overflow-x:auto"><table><tr><th>Funcionário</th>${segs.map(s=>`<th class="n">${brData(s).slice(0,5)}</th>`).join('')}</tr>
-    ${l.filter(f=>Object.keys(f.semanas||{}).length).map(f=>`<tr><td><b>${esc(f.nome)}</b></td>${segs.map(s=>{ const v=(f.semanas||{})[s]; return `<td class="n"><span style="display:inline-block;min-width:44px;padding:3px 6px;border-radius:6px;font-weight:700;${v==null?'color:var(--mut)':`background:${bg(v)}22;color:${bg(v)}`}">${v==null?'–':v+'%'}</span></td>`; }).join('')}</tr>`).join('')||`<tr><td colspan="${segs.length+1}" class="vazio">Ainda não tem etapa cronometrada nessas semanas.</td></tr>`}</table>
+    ${l.filter(f=>Object.keys(f.semanas||{}).length).map(f=>`<tr><td><b>${esc(f.nome)}</b></td>${segs.map(s=>{ const v=(f.semanas||{})[s]; return `<td class="n"><span style="display:inline-block;min-width:44px;padding:3px 6px;border-radius:6px;font-weight:700;${v==null?'color:var(--mut)':`background:${bg(v)}22;color:${bg(v)}`}">${v==null?'–':v+'%'}</span></td>`; }).join('')}</tr>`).join('')||`<tr><td colspan="${segs.length+1}" class="vazio">Ainda não tem etapa finalizada nessas semanas.</td></tr>`}</table>
     <p class="mut">Cada coluna é a semana que começa na segunda indicada.</p></div>`;
 }
+const editarMetas=tenta(async()=>{
+  const l=await api('/api/metas'), set=B.setores.filter(x=>x.nome!=='Retrabalho'), P={}; l.forEach(m=>{ (P[m.chave]=P[m.chave]||{nome:m.nome,v:{}}).v[m.setor_id]=m.pecas_dia; });
+  const ch=Object.keys(P).sort((a,b)=>P[a].nome.localeCompare(P[b].nome));
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Metas de peças por dia (por pessoa)</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+    <p class="mut">Quantas peças uma pessoa faz por dia em cada etapa. Vazio = sem meta naquela etapa. A peça é reconhecida pelo nome (ex.: "Serenata" vale pra todas as Bandejas Serenata).</p>
+    <div class="card" style="overflow-x:auto;max-height:60vh"><table><tr><th>Peça</th>${set.map(x=>`<th class="n">${esc(x.nome)}</th>`).join('')}</tr>
+    ${ch.map(k=>`<tr><td><b>${esc(P[k].nome)}</b></td>${set.map(x=>`<td class="n"><input data-k="${k}" data-s="${x.id}" type="number" step="0.1" min="0" value="${P[k].v[x.id]??''}" style="width:70px;text-align:right"></td>`).join('')}</tr>`).join('')}</table></div><br>
+    <div class="row"><button class="btn" id="mg">Salvar metas</button></div>`);
+  $('#mx').onclick=()=>modal('');
+  $('#mg').onclick=tenta(async()=>{ const metas=[...document.querySelectorAll('#modal [data-k]')].map(i=>({chave:i.dataset.k,nome:P[i.dataset.k].nome,setor_id:+i.dataset.s,pecas_dia:parseFloat((i.value||'').replace(',','.'))||0}));
+    await api('/api/metas',{metas}); toast('Metas salvas'); modal(''); tEfic(); });
+});
 async function tRel(){
   const [de,ate]=periodo();
   app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Produção · ${brData(de)}${de!==ate?' a '+brData(ate):''}</h2>
