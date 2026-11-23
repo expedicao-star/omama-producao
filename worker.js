@@ -140,13 +140,13 @@ async function hashSenha(senha, salt) {
 }
 const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
-const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'sem'];
+const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem'];
 const PERM = [
   [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
-  [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos']],
+  [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped']],
   [/^\/api\/sync\//, 'POST', ['admin']],
 ];
 const lePerm = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a.filter(t => TELAS.includes(t)) : []; } catch (e) { return []; } };
@@ -641,8 +641,16 @@ const app = {
 
       // ---------- estoque
       if (p === '/api/estoque' && req.method === 'GET') {
-        return json(req, await all(DB, `select i.id, i.codigo, i.nome, i.tipo, sum(m.qtd) saldo from estoque_mov m join item i on i.id=m.item_id
-          where m.deposito_id=? group by i.id having abs(saldo)>0.0001 order by i.codigo`, Number(q('deposito_id') || DEP_PATIO)));
+        const dep = Number(q('deposito_id') || DEP_PATIO);
+        const l = await all(DB, `select i.id, i.codigo, i.nome, i.tipo, sum(m.qtd) saldo from estoque_mov m join item i on i.id=m.item_id
+          where m.deposito_id=? group by i.id having abs(saldo)>0.0001 order by i.codigo`, dep);
+        if (dep === DEP_PA) {
+          // classe por item: considera que as peças no P.A. são as classificadas mais recentes (as mais antigas já saíram)
+          const cl = await all(DB, `select o.item_id, q.classe from peca_qualidade q join op o on o.id=q.op_id order by o.finalizado_em desc, q.numero`);
+          const por = {}; cl.forEach(c => (por[c.item_id] = por[c.item_id] || []).push(c.classe));
+          l.forEach(i => { const n = Math.max(0, Math.floor(i.saldo + 1e-9)), k = (por[i.id] || []).slice(0, n); if (k.length) { i.classes = { A: 0, B: 0, C: 0, D: 0 }; k.forEach(c => i.classes[c]++); i.sem_classe = n - k.length; } });
+        }
+        return json(req, l);
       }
       if (p === '/api/estoque/mov' && req.method === 'POST') {
         if (!body.item_id || !body.deposito_id || !Number(body.qtd)) return json(req, { erro: 'Item, depósito e quantidade' }, 400);
@@ -810,7 +818,7 @@ const app = {
 
       // ---------- fotos (guardadas no banco já reduzidas pelo navegador)
       if (p === '/api/fotos' && req.method === 'GET') {
-        const campo = q('op_id') ? 'op_id' : q('defeito_id') ? 'defeito_id' : q('pedido_item_id') ? 'pedido_item_id' : null;
+        const campo = q('op_id') ? 'op_id' : q('defeito_id') ? 'defeito_id' : q('pedido_item_id') ? 'pedido_item_id' : q('qualidade_id') ? 'qualidade_id' : null;
         if (q('pedido')) return json(req, await all(DB, `select * from (
             select f.id, f.nome, f.criado_em, i.codigo, i.nome item, o.codigo op_codigo from foto f join op o on o.id=f.op_id join item i on i.id=o.item_id
               join pedido_item pi on pi.id=o.pedido_item_id join pedido pd on pd.id=pi.pedido_id where pd.numero=?
@@ -828,13 +836,49 @@ const app = {
       }
       if (p === '/api/fotos' && req.method === 'POST') {
         if (!String(body.dados || '').startsWith('data:image/jpeg;base64,') || body.dados.length > 1500000) return json(req, { erro: 'Foto inválida ou grande demais' }, 400);
-        if (!body.op_id && !body.defeito_id && !body.pedido_item_id) return json(req, { erro: 'Foto sem OP/defeito/pedido' }, 400);
-        const r = await DB.prepare('insert into foto(op_id, defeito_id, pedido_item_id, nome, dados) values(?,?,?,?,?)').bind(body.op_id || null, body.defeito_id || null, body.pedido_item_id || null, body.nome || null, body.dados).run();
+        if (!body.op_id && !body.defeito_id && !body.pedido_item_id && !body.qualidade_id) return json(req, { erro: 'Foto sem OP/defeito/pedido' }, 400);
+        const r = await DB.prepare('insert into foto(op_id, defeito_id, pedido_item_id, qualidade_id, nome, dados) values(?,?,?,?,?,?)').bind(body.op_id || null, body.defeito_id || null, body.pedido_item_id || null, body.qualidade_id || null, body.nome || null, body.dados).run();
         return json(req, { ok: true, id: r.meta.last_row_id });
       }
       if ((m = p.match(/^\/api\/fotos\/(\d+)\/apagar$/)) && req.method === 'POST') {
         await DB.prepare('delete from foto where id=?').bind(Number(m[1])).run();
         return json(req, { ok: true });
+      }
+
+      // ---------- controle de qualidade: classificação A/B/C/D de cada peça das OPs finalizadas (só registro, não mexe no estoque)
+      if (p === '/api/qualidade' && req.method === 'GET') {
+        const dias = Math.min(365, Number(q('dias')) || 60);
+        const l = await all(DB, `select o.codigo, o.qtd, o.finalizado_em, i.codigo item_codigo, i.nome item, pd.numero pedido_numero, pd.cliente pedido_cliente,
+            (select count(*) from peca_qualidade q where q.op_id=o.id) feitas,
+            (select group_concat(classe, '') from (select classe from peca_qualidade q where q.op_id=o.id order by numero)) classes
+          from op o join item i on i.id=o.item_id left join pedido_item pi on pi.id=o.pedido_item_id left join pedido pd on pd.id=pi.pedido_id
+          where o.status='finalizada' and o.tipo='OP' and o.finalizado_em >= datetime('now', ?) order by o.finalizado_em desc`, `-${dias} days`);
+        return json(req, l.map(o => ({ ...o, pecas: Math.max(1, Math.ceil(o.qtd - 1e-9)) })));
+      }
+      if (p === '/api/qualidade/resumo') {
+        const de = q('de') + ' 00:00:00', ate = q('ate') + ' 23:59:59';
+        const [porClasse, porItem] = await Promise.all([
+          all(DB, 'select classe, count(*) n from peca_qualidade where criado_em between ? and ? group by classe', de, ate),
+          all(DB, `select i.nome item, sum(q.classe='A') A, sum(q.classe='B') B, sum(q.classe='C') C, sum(q.classe='D') D, count(*) n
+            from peca_qualidade q join op o on o.id=q.op_id join item i on i.id=o.item_id where q.criado_em between ? and ? group by i.id order by n desc limit 30`, de, ate)]);
+        return json(req, { porClasse, porItem });
+      }
+      if ((m = p.match(/^\/api\/qualidade\/op\/(\d+)$/)) && req.method === 'GET') {
+        const o = await one(DB, `select o.id, o.codigo, o.qtd, o.status, o.finalizado_em, i.codigo item_codigo, i.nome item from op o join item i on i.id=o.item_id where o.codigo=?`, Number(m[1]));
+        if (!o) return json(req, { erro: 'OP não encontrada' }, 404);
+        const pecas = await all(DB, `select q.*, (select count(*) from foto f where f.qualidade_id=q.id) fotos from peca_qualidade q where q.op_id=? order by numero`, o.id);
+        return json(req, { ...o, total: Math.max(1, Math.ceil(o.qtd - 1e-9)), pecas });
+      }
+      if ((m = p.match(/^\/api\/qualidade\/op\/(\d+)\/(\d+)$/)) && req.method === 'POST') {
+        const o = await one(DB, "select id, qtd, status, tipo from op where codigo=?", Number(m[1])), n = Number(m[2]);
+        if (!o || o.status !== 'finalizada' || o.tipo !== 'OP') return json(req, { erro: 'Só classifica peça de OP finalizada' }, 400);
+        if (n < 1 || n > Math.max(1, Math.ceil(o.qtd - 1e-9))) return json(req, { erro: 'Número da peça fora da OP' }, 400);
+        if (!['A', 'B', 'C', 'D'].includes(body.classe)) return json(req, { erro: 'Classe tem que ser A, B, C ou D' }, 400);
+        await DB.prepare(`insert into peca_qualidade(op_id, numero, classe, obs) values(?,?,?,?)
+          on conflict(op_id, numero) do update set classe=excluded.classe, obs=excluded.obs, atualizado_em=datetime('now')`).bind(o.id, n, body.classe, body.obs || null).run();
+        const r = await one(DB, 'select id from peca_qualidade where op_id=? and numero=?', o.id, n);
+        await evento(DB, o.id, `Qualidade: peça ${n} classificada ${body.classe}` + (body.obs ? ` (${body.obs})` : '')).run();
+        return json(req, { ok: true, id: r.id });
       }
 
       // ---------- eficiência por funcionário: ranking do período + defeitos/RT + evolução semanal (8 semanas)
