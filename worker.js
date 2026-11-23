@@ -125,12 +125,23 @@ async function hashSenha(senha, salt) {
   return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: new TextEncoder().encode(salt), iterations: 100000 }, k, 256));
 }
 const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
+// permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
+const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'sem'];
+const PERM = [
+  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
+  [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
+  [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']],
+  [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
+  [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos']],
+  [/^\/api\/sync\//, 'POST', ['admin']],
+];
+const lePerm = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a.filter(t => TELAS.includes(t)) : []; } catch (e) { return []; } };
 async function novaSessao(DB, u) {
   const tok = crypto.randomUUID() + crypto.randomUUID();
   await DB.prepare("insert into sessao(token_hash, usuario_id, expira_em) values(?,?,datetime('now','+30 days'))").bind(await sha256(tok), u.id).run();
   return { token: tok, usuario: { id: u.id, login: u.login, nome: u.nome, admin: u.admin } };
 }
-const usuarioDoToken = async (DB, tok) => one(DB, `select u.id, u.login, u.nome, u.admin from sessao s join usuario u on u.id=s.usuario_id
+const usuarioDoToken = async (DB, tok) => one(DB, `select u.id, u.login, u.nome, u.admin, u.permissoes from sessao s join usuario u on u.id=s.usuario_id
   where s.token_hash=? and s.expira_em > datetime('now') and u.ativo=1`, await sha256(tok));
 async function rotasAbertas(req, env, p) {
   const DB = env.DB;
@@ -198,6 +209,9 @@ const app = {
     const cod = req.headers.get('X-Codigo') || q('c') || '', tok = req.headers.get('X-Token') || q('t') || '';
     const usuario = cod && cod === env.CODIGO ? { id: 0, login: null, nome: 'Sistema', admin: 1 } : tok ? await usuarioDoToken(env.DB, tok) : null;
     if (!usuario) return json(req, { erro: 'Faça login' }, 401);
+    usuario.permissoes = usuario.admin ? TELAS : lePerm(usuario.permissoes);
+    if (!usuario.admin) { const r = PERM.find(([re, met]) => re.test(p) && (!met || met === req.method));
+      if (r && !r[2].some(t => usuario.permissoes.includes(t))) return json(req, { erro: 'Você não tem permissão para isso. Fale com o administrador.' }, 403); }
     const DB = env.DB;
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     let m;
@@ -219,8 +233,8 @@ const app = {
       }
       if (p.startsWith('/api/usuarios') && !usuario.admin) return json(req, { erro: 'Só o administrador mexe em usuários' }, 403);
       if (p === '/api/usuarios' && req.method === 'GET') {
-        return json(req, { max: MAX_USUARIOS, lista: await all(DB, `select id, login, nome, admin, ativo, criado_em,
-          (select max(criado_em) from sessao where usuario_id=usuario.id) ultimo_acesso from usuario order by admin desc, ativo desc, nome`) });
+        return json(req, { max: MAX_USUARIOS, telas: TELAS, lista: (await all(DB, `select id, login, nome, admin, ativo, criado_em, permissoes,
+          (select max(criado_em) from sessao where usuario_id=usuario.id) ultimo_acesso from usuario order by admin desc, ativo desc, nome`)).map(u => ({ ...u, permissoes: u.admin ? TELAS : lePerm(u.permissoes) })) });
       }
       if (p === '/api/usuarios' && req.method === 'POST') {
         const login = String(body.login || '').trim().toLowerCase();
@@ -229,7 +243,7 @@ const app = {
         if ((await one(DB, 'select count(*) n from usuario where admin=0 and ativo=1')).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo). Desative um antes.` }, 400);
         if (await one(DB, 'select id from usuario where login=?', login)) return json(req, { erro: 'Esse usuário já existe' }, 400);
         const salt = crypto.randomUUID();
-        await DB.prepare('insert into usuario(login, nome, senha_hash, salt, admin) values(?,?,?,?,0)').bind(login, String(body.nome || '').trim() || login, await hashSenha(String(body.senha), salt), salt).run();
+        await DB.prepare('insert into usuario(login, nome, senha_hash, salt, admin, permissoes) values(?,?,?,?,0,?)').bind(login, String(body.nome || '').trim() || login, await hashSenha(String(body.senha), salt), salt, JSON.stringify(Array.isArray(body.permissoes) ? lePerm(JSON.stringify(body.permissoes)) : TELAS)).run();
         return json(req, { ok: true });
       }
       if ((m = p.match(/^\/api\/usuarios\/(\d+)$/)) && req.method === 'POST') {
@@ -238,7 +252,7 @@ const app = {
         const ativo = body.ativo === undefined ? u.ativo : (body.ativo ? 1 : 0);
         if (u.admin && !ativo) return json(req, { erro: 'Não dá para desativar o administrador' }, 400);
         if (ativo && !u.ativo && (await one(DB, 'select count(*) n from usuario where admin=0 and ativo=1')).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo)` }, 400);
-        const st = [DB.prepare('update usuario set nome=?, ativo=? where id=?').bind(String(body.nome || '').trim() || u.nome, ativo, u.id)];
+        const st = [DB.prepare('update usuario set nome=?, ativo=?, permissoes=? where id=?').bind(body.nome === undefined ? u.nome : (String(body.nome).trim() || u.nome), ativo, Array.isArray(body.permissoes) ? JSON.stringify(lePerm(JSON.stringify(body.permissoes))) : u.permissoes, u.id)];
         if (body.senha) {
           if (String(body.senha).length < 6) return json(req, { erro: 'A senha precisa de pelo menos 6 caracteres' }, 400);
           const salt = crypto.randomUUID();
