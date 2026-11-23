@@ -140,9 +140,9 @@ async function hashSenha(senha, salt) {
 }
 const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
-const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'sem'];
+const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'sem'];
 const PERM = [
-  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
+  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
@@ -835,6 +835,37 @@ const app = {
       if ((m = p.match(/^\/api\/fotos\/(\d+)\/apagar$/)) && req.method === 'POST') {
         await DB.prepare('delete from foto where id=?').bind(Number(m[1])).run();
         return json(req, { ok: true });
+      }
+
+      // ---------- eficiência por funcionário: ranking do período + defeitos/RT + evolução semanal (8 semanas)
+      if (p === '/api/eficiencia') {
+        const de = q('de') + ' 00:00:00', ate = q('ate') + ' 23:59:59', setor = Number(q('setor_id')) || 0;
+        const fs = setor ? 'and f.setor_id=' + setor : '';
+        // eficiência só com operação cronometrada (>= 1 min, sem "sem registro"/estimado) e fora de RT
+        const base = `from op_operacao oo join op on op.id=oo.op_id join operacao_tipo t on t.id=oo.operacao_tipo_id join funcionario f on f.id=oo.funcionario_id
+          where oo.status='finalizado' and t.espera=0 ${fs}`;
+        const [lista, defs, sem] = await Promise.all([
+          all(DB, `select f.id, f.nome, f.setor_id, (select nome from setor where id=f.setor_id) setor,
+              sum(op.tipo='OP') operacoes, sum(case when op.tipo='OP' then op.qtd else 0 end) pecas,
+              sum(case when op.tipo='OP' and oo.sem_registro=0 and oo.minutos>=1 then oo.minutos else 0 end) minutos,
+              sum(case when op.tipo='OP' and oo.sem_registro=0 and oo.minutos>=1 then oo.tempo_unit_min*op.qtd else 0 end) padrao,
+              sum(op.tipo='OP' and oo.sem_registro=1) sem_registro,
+              sum(op.tipo='RT') rt_feitos, sum(case when op.tipo='RT' then oo.minutos else 0 end) rt_minutos
+            ${base} and oo.fim between ? and ? group by f.id`, de, ate),
+          all(DB, `select d.funcionario_id id, count(*) regs, sum(d.qtd) pecas, (select count(*) from op x where x.defeito_id in (select id from defeito d2 where d2.funcionario_id=d.funcionario_id and d2.data between ? and ?)) rts
+            from defeito d where d.funcionario_id is not null and d.data between ? and ? group by d.funcionario_id`, de, ate, de, ate),
+          all(DB, `select f.id, strftime('%Y-%m-%d', date(oo.fim, '-' || ((cast(strftime('%w', oo.fim) as int) + 6) % 7) || ' days')) semana,
+              sum(oo.minutos) minutos, sum(oo.tempo_unit_min*op.qtd) padrao
+            ${base} and op.tipo='OP' and oo.sem_registro=0 and oo.minutos>=1 and oo.fim >= date(?, '-56 days') group by f.id, semana`, q('ate')),
+        ]);
+        const funcs = await all(DB, `select f.id, f.nome, f.setor_id, s.nome setor from funcionario f left join setor s on s.id=f.setor_id where f.ativo=1 ${fs.replace('f.', 'f.')} order by f.nome`);
+        const porId = {}; funcs.forEach(f => porId[f.id] = { ...f, operacoes: 0, pecas: 0, minutos: 0, padrao: 0, sem_registro: 0, rt_feitos: 0, rt_minutos: 0, defeitos: 0, pecas_defeito: 0, rts_gerados: 0, semanas: {} });
+        lista.forEach(l => porId[l.id] = { ...(porId[l.id] || { semanas: {}, defeitos: 0, pecas_defeito: 0, rts_gerados: 0 }), ...l });
+        defs.forEach(d => { if (porId[d.id]) Object.assign(porId[d.id], { defeitos: d.regs, pecas_defeito: d.pecas, rts_gerados: d.rts }); });
+        sem.forEach(x => { if (porId[x.id]) porId[x.id].semanas[x.semana] = x.minutos > 0 ? Math.round(x.padrao / x.minutos * 100) : null; });
+        const r = Object.values(porId).map(f => ({ ...f, eficiencia: f.minutos > 0 ? Math.round(f.padrao / f.minutos * 100) : null }))
+          .sort((a, b) => (b.eficiencia ?? -1) - (a.eficiencia ?? -1) || b.operacoes - a.operacoes || a.nome.localeCompare(b.nome));
+        return json(req, { lista: r });
       }
 
       // ---------- relatório de produção (operações finalizadas no período)
