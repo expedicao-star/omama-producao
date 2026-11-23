@@ -82,6 +82,9 @@ async function syncV8(DB, body) {
 }
 
 const RT_BASE = 100000, ESTAGIO_RT = 13;
+// financeiro: tabelas criadas sozinhas na primeira chamada (schema_v18.sql)
+let finPronto = false;
+const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)"];
 // metas por funcionário: grupo da etapa e chave da peça (família + tamanho)
 const GRUPOS_META = [['TA', 'Torno Fase A'], ['TB', 'Torno Fase B'], ['AC', 'Acabamento'], ['MA', 'Marcenaria A'], ['MB', 'Marcenaria B']];
 const NOME_GRUPO = Object.fromEntries(GRUPOS_META);
@@ -154,14 +157,14 @@ async function hashSenha(senha, salt) {
 }
 const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
-const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem'];
+const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem', 'fin'];
 const PERM = [
   [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
   [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped']],
-  [/^\/api\/sync\//, 'POST', ['admin']],
+  [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/fin\//, null, ['fin']],
 ];
 const lePerm = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a.filter(t => TELAS.includes(t)) : []; } catch (e) { return []; } };
 async function novaSessao(DB, u) {
@@ -272,7 +275,7 @@ const app = {
         if ((await one(DB, 'select count(*) n from usuario where admin=0 and ativo=1')).n >= MAX_USUARIOS) return json(req, { erro: `Já tem ${MAX_USUARIOS} usuários ativos (o máximo). Desative um antes.` }, 400);
         if (await one(DB, 'select id from usuario where login=?', login)) return json(req, { erro: 'Esse usuário já existe' }, 400);
         const salt = crypto.randomUUID();
-        await DB.prepare('insert into usuario(login, nome, senha_hash, salt, admin, permissoes) values(?,?,?,?,0,?)').bind(login, String(body.nome || '').trim() || login, await hashSenha(String(body.senha), salt), salt, JSON.stringify(Array.isArray(body.permissoes) ? lePerm(JSON.stringify(body.permissoes)) : TELAS)).run();
+        await DB.prepare('insert into usuario(login, nome, senha_hash, salt, admin, permissoes) values(?,?,?,?,0,?)').bind(login, String(body.nome || '').trim() || login, await hashSenha(String(body.senha), salt), salt, JSON.stringify(Array.isArray(body.permissoes) ? lePerm(JSON.stringify(body.permissoes)) : TELAS.filter(t => t !== 'fin'))).run();
         return json(req, { ok: true });
       }
       if ((m = p.match(/^\/api\/usuarios\/(\d+)$/)) && req.method === 'POST') {
@@ -983,6 +986,185 @@ const app = {
             defeitos: d.regs || 0, pecas_defeito: d.pecas || 0, rts_gerados: d.rts || 0, semanas };
         }).sort((a, b) => (b.eficiencia ?? -1) - (a.eficiencia ?? -1) || b.pecas - a.pecas || a.nome.localeCompare(b.nome));
         return json(req, { lista });
+      }
+
+      // ---------- FINANCEIRO (contas, categorias, centros de custo, lançamentos, fluxo de caixa, DRE). Tela 'fin'.
+      if (p.startsWith('/api/fin/')) {
+        if (!finPronto) { await DB.batch(FIN_DDL.map(s => DB.prepare(s))); finPronto = true; }
+        const HOJE = "date('now','-4 hours')";
+        const num = v => Math.round((Number(v) || 0) * 100) / 100;
+        const dataOk = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+        const SALDO = `c.saldo_inicial + coalesce((select sum(case when l.tipo='R' then l.pago when l.tipo='P' then -l.pago when l.tipo='T' and l.conta_destino_id is not null then -l.pago else 0 end)
+            from fin_lancamento l where l.conta_id=c.id and l.status!='cancelado'), 0) + coalesce((select sum(l.pago) from fin_lancamento l where l.tipo='T' and l.conta_destino_id=c.id and l.status!='cancelado'), 0)`;
+        const contas = () => all(DB, `select c.*, round(${SALDO}, 2) saldo from fin_conta c order by c.ativo desc, c.nome`);
+        if (p === '/api/fin/base') {
+          const [cs, cats, cens] = await Promise.all([contas(), all(DB, 'select * from fin_categoria order by tipo desc, nome'), all(DB, 'select * from fin_centro order by nome')]);
+          return json(req, { contas: cs, categorias: cats, centros: cens, hoje: (await one(DB, `select ${HOJE} d`)).d });
+        }
+        if (p === '/api/fin/resumo') {
+          const [cs, r] = await Promise.all([contas(), one(DB, `select
+              sum(case when tipo='R' and status='aberto' and vencimento < ${HOJE} then valor-pago end) receber_vencido,
+              sum(case when tipo='P' and status='aberto' and vencimento < ${HOJE} then valor-pago end) pagar_vencido,
+              sum(case when tipo='R' and status='aberto' and vencimento = ${HOJE} then valor-pago end) receber_hoje,
+              sum(case when tipo='P' and status='aberto' and vencimento = ${HOJE} then valor-pago end) pagar_hoje,
+              sum(case when tipo='R' and status='aberto' and vencimento between ${HOJE} and date(${HOJE},'+7 days') then valor-pago end) receber_7,
+              sum(case when tipo='P' and status='aberto' and vencimento between ${HOJE} and date(${HOJE},'+7 days') then valor-pago end) pagar_7,
+              sum(case when tipo='R' and status='aberto' and substr(vencimento,1,7) = substr(${HOJE},1,7) then valor-pago end) receber_mes,
+              sum(case when tipo='P' and status='aberto' and substr(vencimento,1,7) = substr(${HOJE},1,7) then valor-pago end) pagar_mes,
+              sum(case when tipo='R' and status!='cancelado' and substr(quitacao,1,7) = substr(${HOJE},1,7) then pago end) recebido_mes,
+              sum(case when tipo='P' and status!='cancelado' and substr(quitacao,1,7) = substr(${HOJE},1,7) then pago end) pago_mes
+            from fin_lancamento`)]);
+          const [vencidosR, proximos] = await Promise.all([
+            all(DB, `select id, tipo, descricao, pessoa, vencimento, round(valor-pago,2) aberto, cast(julianday(${HOJE})-julianday(vencimento) as int) dias from fin_lancamento where tipo='R' and status='aberto' and vencimento < ${HOJE} order by vencimento`),
+            all(DB, `select id, tipo, descricao, pessoa, vencimento, round(valor-pago,2) aberto from fin_lancamento where tipo in ('P','R') and status='aberto' and vencimento between ${HOJE} and date(${HOJE},'+7 days') order by vencimento, tipo`)]);
+          return json(req, { contas: cs, saldo: num(cs.filter(c => c.ativo).reduce((a, c) => a + c.saldo, 0)), ...Object.fromEntries(Object.entries(r).map(([k, v]) => [k, num(v)])), vencidosR, proximos });
+        }
+        if ((m = p.match(/^\/api\/fin\/lancamentos\/(\d+)$/)) && req.method === 'GET') {
+          const l = await one(DB, `select l.*, round(l.valor-l.pago,2) aberto, (l.status='aberto' and l.vencimento < ${HOJE}) vencido from fin_lancamento l where l.id=?`, Number(m[1]));
+          return l ? json(req, l) : json(req, { erro: 'Lançamento não encontrado' }, 404);
+        }
+        if (p === '/api/fin/lancamentos' && req.method === 'GET') {
+          const campo = ['vencimento', 'quitacao', 'competencia'].includes(q('campo')) ? q('campo') : 'vencimento';
+          const w = ['1=1'], b = [];
+          if (dataOk(q('de'))) { w.push(`l.${campo} >= ?`); b.push(q('de')); }
+          if (dataOk(q('ate'))) { w.push(`l.${campo} <= ?`); b.push(q('ate')); }
+          if (['P', 'R', 'T'].includes(q('tipo'))) { w.push('l.tipo=?'); b.push(q('tipo')); }
+          const st = q('status') || 'todos';
+          if (st === 'aberto') w.push("l.status='aberto'"); else if (st === 'quitado') w.push("l.status='quitado'");
+          else if (st === 'vencido') w.push(`l.status='aberto' and l.vencimento < ${HOJE}`); else if (st === 'cancelado') w.push("l.status='cancelado'"); else w.push("l.status!='cancelado'");
+          for (const [k, col] of [['conta_id', 'l.conta_id'], ['categoria_id', 'l.categoria_id'], ['centro_id', 'l.centro_id']]) if (Number(q(k))) { w.push(col + '=?'); b.push(Number(q(k))); }
+          if (q('q')) { w.push('(l.descricao like ? or l.pessoa like ? or l.nf like ? or l.obs like ?)'); const s = '%' + q('q') + '%'; b.push(s, s, s, s); }
+          const where = w.join(' and ');
+          const [lista, tot] = await Promise.all([
+            all(DB, `select l.*, round(l.valor-l.pago,2) aberto, c.nome conta, cd.nome conta_destino, ca.nome categoria, ce.nome centro, (l.status='aberto' and l.vencimento < ${HOJE}) vencido
+              from fin_lancamento l left join fin_conta c on c.id=l.conta_id left join fin_conta cd on cd.id=l.conta_destino_id left join fin_categoria ca on ca.id=l.categoria_id left join fin_centro ce on ce.id=l.centro_id
+              where ${where} order by l.${campo} ${q('ordem') === 'desc' ? 'desc' : 'asc'}, l.id limit 1500`, ...b),
+            all(DB, `select l.tipo, count(*) n, round(sum(l.valor),2) valor, round(sum(l.pago),2) pago, round(sum(case when l.status='aberto' then l.valor-l.pago else 0 end),2) aberto from fin_lancamento l where ${where} group by l.tipo`, ...b)]);
+          return json(req, { lista, totais: tot, limite: lista.length >= 1500 });
+        }
+        const ids = async () => ({ conta: Number(body.conta_id) || null, destino: Number(body.conta_destino_id) || null, cat: Number(body.categoria_id) || null, centro: Number(body.centro_id) || null });
+        if (p === '/api/fin/lancamentos' && req.method === 'POST') {
+          const tipo = body.tipo, valor = num(body.valor), n = Math.min(120, Math.max(1, Math.floor(Number(body.parcelas) || 1)));
+          if (!['P', 'R', 'T'].includes(tipo)) return json(req, { erro: 'Escolha: a pagar, a receber ou transferência' }, 400);
+          if (!(valor > 0)) return json(req, { erro: 'Coloque o valor' }, 400);
+          if (!dataOk(body.vencimento)) return json(req, { erro: 'Coloque a data de vencimento' }, 400);
+          const descricao = String(body.descricao || '').trim() || (tipo === 'T' ? 'Transferência entre contas' : '');
+          if (!descricao) return json(req, { erro: 'Coloque a descrição' }, 400);
+          const x = await ids();
+          if (tipo === 'T' && (!x.conta || !x.destino || x.conta === x.destino)) return json(req, { erro: 'Na transferência escolha a conta de saída e a de entrada (diferentes)' }, 400);
+          const quitado = tipo === 'T' || !!body.quitado, dq = dataOk(body.quitacao) ? body.quitacao : body.vencimento;
+          if (quitado && !x.conta) return json(req, { erro: 'Pra marcar como pago/recebido, escolha a conta' }, 400);
+          const base = Math.floor(valor / n * 100) / 100, st = [];
+          for (let i = 0; i < n; i++) {
+            const v = i === n - 1 ? num(valor - base * (n - 1)) : base;
+            const d = new Date(body.vencimento + 'T12:00:00Z'); const dia = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + i);
+            const fim = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(); d.setUTCDate(Math.min(dia, fim));
+            const venc = d.toISOString().slice(0, 10), q1 = quitado && i === 0;
+            st.push(DB.prepare(`insert into fin_lancamento(tipo, descricao, obs, pessoa, conta_id, conta_destino_id, categoria_id, centro_id, metodo, valor, pago, vencimento, competencia, quitacao, parcela, nf, pedido_id, status, criado_por)
+              values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(tipo, descricao, String(body.obs || '').trim() || null, String(body.pessoa || '').trim() || null, x.conta, tipo === 'T' ? x.destino : null, tipo === 'T' ? null : x.cat, x.centro,
+              String(body.metodo || '').trim() || null, v, q1 ? v : 0, venc, dataOk(body.competencia) ? body.competencia : venc, q1 ? dq : null, n > 1 ? `${i + 1}/${n}` : null, String(body.nf || '').trim() || null, Number(body.pedido_id) || null, q1 ? 'quitado' : 'aberto', usuario.id || null));
+          }
+          await DB.batch(st);
+          return json(req, { ok: true, criados: n });
+        }
+        if ((m = p.match(/^\/api\/fin\/lancamentos\/(\d+)(?:\/(quitar|estornar|cancelar|reativar))?$/)) && req.method === 'POST') {
+          const l = await one(DB, 'select * from fin_lancamento where id=?', Number(m[1]));
+          if (!l) return json(req, { erro: 'Lançamento não encontrado' }, 404);
+          if (m[2] === 'quitar') {
+            if (l.status !== 'aberto') return json(req, { erro: 'Esse lançamento não está em aberto' }, 400);
+            const v = body.valor === undefined || body.valor === '' ? num(l.valor - l.pago) : num(body.valor), d = dataOk(body.data) ? body.data : (await one(DB, `select ${HOJE} d`)).d;
+            if (!(v > 0) || v > num(l.valor - l.pago) + 0.005) return json(req, { erro: `Valor tem que ser entre 0 e ${num(l.valor - l.pago)}` }, 400);
+            const conta = Number(body.conta_id) || l.conta_id; if (!conta) return json(req, { erro: 'Escolha a conta' }, 400);
+            const pago = num(l.pago + v);
+            await DB.prepare('update fin_lancamento set pago=?, quitacao=?, conta_id=?, status=? where id=?').bind(pago, d, conta, pago >= l.valor - 0.005 ? 'quitado' : 'aberto', l.id).run();
+            return json(req, { ok: true });
+          }
+          if (m[2] === 'estornar') { await DB.prepare("update fin_lancamento set pago=0, quitacao=null, status='aberto' where id=?").bind(l.id).run(); return json(req, { ok: true }); }
+          if (m[2] === 'cancelar') { await DB.prepare("update fin_lancamento set status='cancelado' where id=?").bind(l.id).run(); return json(req, { ok: true }); }
+          if (m[2] === 'reativar') { await DB.prepare('update fin_lancamento set status=? where id=?').bind(l.pago >= l.valor - 0.005 ? 'quitado' : 'aberto', l.id).run(); return json(req, { ok: true }); }
+          // editar
+          const x = await ids(), valor = body.valor === undefined ? l.valor : num(body.valor);
+          if (!(valor > 0)) return json(req, { erro: 'Coloque o valor' }, 400);
+          if (valor < l.pago - 0.005) return json(req, { erro: 'O valor não pode ser menor que o que já foi pago' }, 400);
+          const venc = dataOk(body.vencimento) ? body.vencimento : l.vencimento;
+          await DB.prepare(`update fin_lancamento set descricao=?, obs=?, pessoa=?, conta_id=?, conta_destino_id=?, categoria_id=?, centro_id=?, metodo=?, valor=?, vencimento=?, competencia=?, nf=?, status=? where id=?`)
+            .bind(String(body.descricao ?? l.descricao).trim() || l.descricao, String(body.obs ?? l.obs ?? '').trim() || null, String(body.pessoa ?? l.pessoa ?? '').trim() || null,
+              body.conta_id === undefined ? l.conta_id : x.conta, l.tipo === 'T' ? (body.conta_destino_id === undefined ? l.conta_destino_id : x.destino) : null,
+              body.categoria_id === undefined ? l.categoria_id : x.cat, body.centro_id === undefined ? l.centro_id : x.centro, String(body.metodo ?? l.metodo ?? '').trim() || null,
+              valor, venc, dataOk(body.competencia) ? body.competencia : l.competencia, String(body.nf ?? l.nf ?? '').trim() || null,
+              l.status === 'cancelado' ? 'cancelado' : (l.pago >= valor - 0.005 ? 'quitado' : 'aberto'), l.id).run();
+          return json(req, { ok: true });
+        }
+        if (p === '/api/fin/fluxo') {
+          const hoje = (await one(DB, `select ${HOJE} d`)).d;
+          const de = dataOk(q('de')) ? q('de') : hoje.slice(0, 8) + '01', ate = dataOk(q('ate')) ? q('ate') : new Date(Date.parse(hoje + 'T12:00:00Z') + 90 * 864e5).toISOString().slice(0, 10);
+          const g = q('agrupar') === 'mes' ? 'substr(%s,1,7)' : q('agrupar') === 'semana' ? "date(%s, '-'||((cast(strftime('%w',%s) as int)+6)%7)||' days')" : '%s';
+          const G = c => g.replaceAll('%s', c);
+          const [real, prev, venc, cs] = await Promise.all([
+            all(DB, `select ${G('quitacao')} per, round(sum(case when tipo='R' then pago end),2) entrou, round(sum(case when tipo='P' then pago end),2) saiu from fin_lancamento
+              where tipo in ('P','R') and status!='cancelado' and pago>0 and quitacao between ? and ? group by per`, de, ate),
+            all(DB, `select ${G('vencimento')} per, round(sum(case when tipo='R' then valor-pago end),2) a_receber, round(sum(case when tipo='P' then valor-pago end),2) a_pagar from fin_lancamento
+              where tipo in ('P','R') and status='aberto' and vencimento >= ? and vencimento between ? and ? group by per`, hoje, de, ate),
+            one(DB, `select round(sum(case when tipo='R' then valor-pago end),2) receber, round(sum(case when tipo='P' then valor-pago end),2) pagar from fin_lancamento where tipo in ('P','R') and status='aberto' and vencimento < ?`, hoje),
+            contas()]);
+          const M = {}; real.forEach(r => M[r.per] = { per: r.per, entrou: r.entrou || 0, saiu: r.saiu || 0, a_receber: 0, a_pagar: 0 });
+          prev.forEach(r => { const o = M[r.per] = M[r.per] || { per: r.per, entrou: 0, saiu: 0 }; o.a_receber = r.a_receber || 0; o.a_pagar = r.a_pagar || 0; });
+          const saldo = num(cs.filter(c => c.ativo).reduce((a, c) => a + c.saldo, 0));
+          let proj = saldo; const linhas = Object.values(M).sort((a, b) => a.per < b.per ? -1 : 1).map(r => { proj = num(proj + r.a_receber - r.a_pagar); return { ...r, saldo_previsto: proj }; });
+          return json(req, { de, ate, hoje, saldo, vencidos: { receber: num(venc.receber), pagar: num(venc.pagar) }, linhas });
+        }
+        if (p === '/api/fin/dre') {
+          const ano = /^\d{4}$/.test(q('ano')) ? q('ano') : (await one(DB, `select substr(${HOJE},1,4) a`)).a;
+          const rows = await all(DB, `select coalesce(ca.grupo_dre, case when l.tipo='R' then 'Receita (sem grupo)' else 'Despesa (sem grupo)' end) grupo, coalesce(ca.nome,'(sem categoria)') categoria, l.tipo,
+              cast(substr(coalesce(l.competencia,l.vencimento),6,2) as int) mes, round(sum(l.valor),2) total
+            from fin_lancamento l left join fin_categoria ca on ca.id=l.categoria_id
+            where l.tipo in ('P','R') and l.status!='cancelado' and substr(coalesce(l.competencia,l.vencimento),1,4)=? group by 1,2,3,4`, ano);
+          return json(req, { ano, linhas: rows });
+        }
+        if ((m = p.match(/^\/api\/fin\/(contas|categorias|centros)$/)) && req.method === 'POST') {
+          const t = { contas: 'fin_conta', categorias: 'fin_categoria', centros: 'fin_centro' }[m[1]], nome = String(body.nome || '').trim(), id = Number(body.id) || null;
+          if (!nome) return json(req, { erro: 'Coloque o nome' }, 400);
+          const ativo = body.ativo === undefined ? 1 : (body.ativo ? 1 : 0);
+          try {
+            if (t === 'fin_conta') await (id ? DB.prepare('update fin_conta set nome=?, tipo=?, saldo_inicial=?, ativo=? where id=?').bind(nome, body.tipo || null, num(body.saldo_inicial), ativo, id)
+              : DB.prepare('insert into fin_conta(nome, tipo, saldo_inicial, ativo) values(?,?,?,?)').bind(nome, body.tipo || null, num(body.saldo_inicial), ativo)).run();
+            else if (t === 'fin_categoria') { if (!['D', 'R'].includes(body.tipo)) return json(req, { erro: 'Despesa ou receita?' }, 400);
+              await (id ? DB.prepare('update fin_categoria set nome=?, tipo=?, grupo_dre=?, ativo=? where id=?').bind(nome, body.tipo, body.grupo_dre || null, ativo, id)
+                : DB.prepare('insert into fin_categoria(nome, tipo, grupo_dre, ativo) values(?,?,?,?)').bind(nome, body.tipo, body.grupo_dre || null, ativo)).run(); }
+            else await (id ? DB.prepare('update fin_centro set nome=?, ativo=? where id=?').bind(nome, ativo, id) : DB.prepare('insert into fin_centro(nome, ativo) values(?,?)').bind(nome, ativo)).run();
+          } catch (e) { return json(req, { erro: String(e.message).includes('UNIQUE') ? 'Já existe um com esse nome' : e.message }, 400); }
+          return json(req, { ok: true });
+        }
+        // importação do Sensio (só admin): cadastros, lançamentos (pelo id do Sensio) e acerto do saldo das contas
+        if (p === '/api/fin/importar' && req.method === 'POST') {
+          if (!usuario.admin) return json(req, { erro: 'Só o administrador' }, 403);
+          const st = [];
+          for (const c of body.categorias || []) st.push(DB.prepare('insert into fin_categoria(nome, tipo, grupo_dre, plano) values(?,?,?,?) on conflict(nome, tipo) do update set grupo_dre=excluded.grupo_dre, plano=excluded.plano').bind(c.nome, c.tipo, c.grupo_dre || null, c.plano || null));
+          for (const n of body.centros || []) st.push(DB.prepare('insert or ignore into fin_centro(nome) values(?)').bind(n));
+          for (const c of body.contas || []) st.push(DB.prepare('insert or ignore into fin_conta(nome, tipo) values(?,?)').bind(c.nome, c.tipo || null));
+          if (st.length) await DB.batch(st);
+          const L = body.lancamentos || [];
+          if (L.length) {
+            const [cs, cats, cens] = await Promise.all([all(DB, 'select id, nome from fin_conta'), all(DB, 'select id, nome, tipo from fin_categoria'), all(DB, 'select id, nome from fin_centro')]);
+            const C = Object.fromEntries(cs.map(x => [x.nome, x.id])), CE = Object.fromEntries(cens.map(x => [x.nome, x.id])), CA = {}; cats.forEach(x => CA[x.tipo + '|' + x.nome] = x.id);
+            const novasCat = [...new Set(L.filter(l => l.categoria && !CA[(l.tipo === 'R' ? 'R' : 'D') + '|' + l.categoria] && !(l.tipo === 'T' && (CA['R|' + l.categoria] || CA['D|' + l.categoria]))).map(l => (l.tipo === 'R' ? 'R' : 'D') + '|' + l.categoria))];
+            if (novasCat.length) { await DB.batch(novasCat.map(k => DB.prepare('insert or ignore into fin_categoria(nome, tipo) values(?,?)').bind(k.slice(2), k[0])));
+              (await all(DB, 'select id, nome, tipo from fin_categoria')).forEach(x => CA[x.tipo + '|' + x.nome] = x.id); }
+            const cat = l => !l.categoria ? null : CA[(l.tipo === 'R' ? 'R' : 'D') + '|' + l.categoria] || CA['R|' + l.categoria] || CA['D|' + l.categoria] || null;
+            await DB.batch(L.map(l => DB.prepare(`insert into fin_lancamento(tipo, descricao, obs, pessoa, conta_id, categoria_id, centro_id, metodo, valor, pago, vencimento, competencia, quitacao, parcela, nf, status, origem, sensio_id)
+              values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'sensio',?) on conflict(sensio_id) do update set tipo=excluded.tipo, descricao=excluded.descricao, obs=excluded.obs, pessoa=excluded.pessoa, conta_id=excluded.conta_id,
+              categoria_id=excluded.categoria_id, centro_id=excluded.centro_id, metodo=excluded.metodo, valor=excluded.valor, pago=excluded.pago, vencimento=excluded.vencimento, competencia=excluded.competencia,
+              quitacao=excluded.quitacao, parcela=excluded.parcela, nf=excluded.nf, status=excluded.status`)
+              .bind(l.tipo, l.descricao || '(sem descrição)', l.obs || null, l.pessoa || null, C[l.conta] || null, cat(l), CE[l.centro] || null, l.metodo || null, num(l.valor), num(l.pago), l.vencimento, l.competencia || null, l.quitacao || null, l.parcela || null, l.nf || null, l.status, l.sid)));
+          }
+          for (const c of body.calibrar || []) {
+            const r = await one(DB, `select c.id, ${SALDO} - c.saldo_inicial mov from fin_conta c where c.nome=?`, c.nome);
+            if (r) await DB.prepare('update fin_conta set saldo_inicial=? where id=?').bind(num(num(c.saldo) - r.mov), r.id).run();
+          }
+          await DB.prepare('insert into sync_log(origem, resumo) values(?,?)').bind('sensio-fin', JSON.stringify({ lancamentos: L.length, calibrar: (body.calibrar || []).length })).run().catch(() => {});
+          return json(req, { ok: true, lancamentos: L.length });
+        }
+        return json(req, { erro: 'Rota do financeiro não encontrada' }, 404);
       }
 
       // ---------- relatório de produção (operações finalizadas no período)
