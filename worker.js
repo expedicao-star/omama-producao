@@ -82,9 +82,19 @@ async function syncV8(DB, body) {
 }
 
 const RT_BASE = 100000, ESTAGIO_RT = 13;
-// financeiro: tabelas criadas sozinhas na primeira chamada (schema_v18.sql)
+// lançamentos a receber de um pedido (ligados pelo pedido_id, pela descrição "Pedido N…" ou pela NF de um envio do pedido)
+async function finDoPedido(DB, ped) {
+  const n = String(ped.numero);
+  const lancs = await all(DB, `select l.id, l.descricao, l.pessoa, l.vencimento, l.quitacao, l.parcela, l.nf, l.valor, l.pago, l.status, round(l.valor-l.pago,2) aberto,
+      (l.status='aberto' and l.vencimento < date('now','-4 hours')) vencido from fin_lancamento l
+    where l.tipo='R' and l.status!='cancelado' and (l.pedido_id=? or l.descricao like 'Pedido ' || ? || ' %' or l.descricao = 'Pedido ' || ? or l.descricao like 'Pedido ' || ? || '-%'
+      or (l.nf is not null and l.nf in (select e.nf from envio e where e.pedido_id=? and e.nf is not null))) order by l.vencimento`, ped.id, n, n, n, ped.id);
+  const s = k => Math.round(lancs.reduce((a, l) => a + (k(l) || 0), 0) * 100) / 100;
+  return { lancs, total: s(l => l.valor), pago: s(l => l.pago), aberto: s(l => l.status === 'aberto' ? l.aberto : 0), vencido: s(l => l.vencido ? l.aberto : 0) };
+}
+// financeiro: tabelas criadas sozinhas na primeira chamada (schema_v18.sql + v19)
 let finPronto = false;
-const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)"];
+const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)", "create table if not exists fin_cobranca (id integer primary key, pessoa text not null, lancamento_id int, tipo text not null, texto text, promessa_data text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_cob_pessoa on fin_cobranca(pessoa)"];
 // metas por funcionário: grupo da etapa e chave da peça (família + tamanho)
 const GRUPOS_META = [['TA', 'Torno Fase A'], ['TB', 'Torno Fase B'], ['AC', 'Acabamento'], ['MA', 'Marcenaria A'], ['MB', 'Marcenaria B']];
 const NOME_GRUPO = Object.fromEntries(GRUPOS_META);
@@ -988,6 +998,14 @@ const app = {
         return json(req, { lista });
       }
 
+      // aviso de cobrança pra expedição (qualquer usuário logado; só totais, sem detalhes)
+      if ((m = p.match(/^\/api\/alerta-financeiro\/([^/]+)$/))) {
+        if (!finPronto) { await DB.batch(FIN_DDL.map(s => DB.prepare(s))); finPronto = true; }
+        const ped = await one(DB, 'select id, numero from pedido where numero=?', decodeURIComponent(m[1]));
+        if (!ped) return json(req, { vencido: 0, aberto: 0 });
+        const f = await finDoPedido(DB, ped);
+        return json(req, { vencido: f.vencido, aberto: f.aberto });
+      }
       // ---------- FINANCEIRO (contas, categorias, centros de custo, lançamentos, fluxo de caixa, DRE). Tela 'fin'.
       if (p.startsWith('/api/fin/')) {
         if (!finPronto) { await DB.batch(FIN_DDL.map(s => DB.prepare(s))); finPronto = true; }
@@ -1020,7 +1038,7 @@ const app = {
           return json(req, { contas: cs, saldo: num(cs.filter(c => c.ativo).reduce((a, c) => a + c.saldo, 0)), ...Object.fromEntries(Object.entries(r).map(([k, v]) => [k, num(v)])), vencidosR, proximos });
         }
         if ((m = p.match(/^\/api\/fin\/lancamentos\/(\d+)$/)) && req.method === 'GET') {
-          const l = await one(DB, `select l.*, round(l.valor-l.pago,2) aberto, (l.status='aberto' and l.vencimento < ${HOJE}) vencido from fin_lancamento l where l.id=?`, Number(m[1]));
+          const l = await one(DB, `select l.*, round(l.valor-l.pago,2) aberto, (l.status='aberto' and l.vencimento < ${HOJE}) vencido, (select numero from pedido where id=l.pedido_id) pedido_numero from fin_lancamento l where l.id=?`, Number(m[1]));
           return l ? json(req, l) : json(req, { erro: 'Lançamento não encontrado' }, 404);
         }
         if (p === '/api/fin/lancamentos' && req.method === 'GET') {
@@ -1051,6 +1069,7 @@ const app = {
           const descricao = String(body.descricao || '').trim() || (tipo === 'T' ? 'Transferência entre contas' : '');
           if (!descricao) return json(req, { erro: 'Coloque a descrição' }, 400);
           const x = await ids();
+          if (body.pedido_numero) { const pd = await one(DB, 'select id from pedido where numero=?', String(body.pedido_numero).trim()); if (!pd) return json(req, { erro: 'Pedido ' + body.pedido_numero + ' não encontrado' }, 400); body.pedido_id = pd.id; }
           if (tipo === 'T' && (!x.conta || !x.destino || x.conta === x.destino)) return json(req, { erro: 'Na transferência escolha a conta de saída e a de entrada (diferentes)' }, 400);
           const quitado = tipo === 'T' || !!body.quitado, dq = dataOk(body.quitacao) ? body.quitacao : body.vencimento;
           if (quitado && !x.conta) return json(req, { erro: 'Pra marcar como pago/recebido, escolha a conta' }, 400);
@@ -1083,15 +1102,16 @@ const app = {
           if (m[2] === 'cancelar') { await DB.prepare("update fin_lancamento set status='cancelado' where id=?").bind(l.id).run(); return json(req, { ok: true }); }
           if (m[2] === 'reativar') { await DB.prepare('update fin_lancamento set status=? where id=?').bind(l.pago >= l.valor - 0.005 ? 'quitado' : 'aberto', l.id).run(); return json(req, { ok: true }); }
           // editar
+          if (body.pedido_numero !== undefined) { const pn = String(body.pedido_numero || '').trim(); if (pn) { const pd = await one(DB, 'select id from pedido where numero=?', pn); if (!pd) return json(req, { erro: 'Pedido ' + pn + ' não encontrado' }, 400); l.pedido_id = pd.id; } else l.pedido_id = null; }
           const x = await ids(), valor = body.valor === undefined ? l.valor : num(body.valor);
           if (!(valor > 0)) return json(req, { erro: 'Coloque o valor' }, 400);
           if (valor < l.pago - 0.005) return json(req, { erro: 'O valor não pode ser menor que o que já foi pago' }, 400);
           const venc = dataOk(body.vencimento) ? body.vencimento : l.vencimento;
-          await DB.prepare(`update fin_lancamento set descricao=?, obs=?, pessoa=?, conta_id=?, conta_destino_id=?, categoria_id=?, centro_id=?, metodo=?, valor=?, vencimento=?, competencia=?, nf=?, status=? where id=?`)
+          await DB.prepare(`update fin_lancamento set descricao=?, obs=?, pessoa=?, conta_id=?, conta_destino_id=?, categoria_id=?, centro_id=?, metodo=?, valor=?, vencimento=?, competencia=?, nf=?, pedido_id=?, status=? where id=?`)
             .bind(String(body.descricao ?? l.descricao).trim() || l.descricao, String(body.obs ?? l.obs ?? '').trim() || null, String(body.pessoa ?? l.pessoa ?? '').trim() || null,
               body.conta_id === undefined ? l.conta_id : x.conta, l.tipo === 'T' ? (body.conta_destino_id === undefined ? l.conta_destino_id : x.destino) : null,
               body.categoria_id === undefined ? l.categoria_id : x.cat, body.centro_id === undefined ? l.centro_id : x.centro, String(body.metodo ?? l.metodo ?? '').trim() || null,
-              valor, venc, dataOk(body.competencia) ? body.competencia : l.competencia, String(body.nf ?? l.nf ?? '').trim() || null,
+              valor, venc, dataOk(body.competencia) ? body.competencia : l.competencia, String(body.nf ?? l.nf ?? '').trim() || null, l.pedido_id || null,
               l.status === 'cancelado' ? 'cancelado' : (l.pago >= valor - 0.005 ? 'quitado' : 'aberto'), l.id).run();
           return json(req, { ok: true });
         }
@@ -1163,6 +1183,46 @@ const app = {
           }
           await DB.prepare('insert into sync_log(origem, resumo) values(?,?)').bind('sensio-fin', JSON.stringify({ lancamentos: L.length, calibrar: (body.calibrar || []).length })).run().catch(() => {});
           return json(req, { ok: true, lancamentos: L.length });
+        }
+        // ---------- cobrança: vencidos a receber por cliente, faixas de atraso, contatos e promessas
+        if (p === '/api/fin/cobranca' && req.method === 'GET') {
+          const [ls, cont] = await Promise.all([
+            all(DB, `select l.id, l.descricao, l.pessoa, l.vencimento, l.nf, l.parcela, l.pedido_id, round(l.valor-l.pago,2) aberto, cast(julianday(${HOJE})-julianday(l.vencimento) as int) dias,
+                (select numero from pedido where id=l.pedido_id) pedido from fin_lancamento l where l.tipo='R' and l.status='aberto' and l.vencimento < ${HOJE} order by l.vencimento`),
+            all(DB, `select * from fin_cobranca order by criado_em desc, id desc`)]);
+          const fx = d => d <= 30 ? 'a30' : d <= 60 ? 'a60' : d <= 90 ? 'a90' : 'mais', F = { a30: 0, a60: 0, a90: 0, mais: 0 }, C = {};
+          for (const l of ls) {
+            if (!l.pedido) { const mm = String(l.descricao || '').match(/pedido\s*(\d+)/i); if (mm) l.pedido = mm[1]; }
+            const k = l.pessoa || '(sem cliente)', c = C[k] = C[k] || { pessoa: k, total: 0, n: 0, maior_atraso: 0, faixas: { a30: 0, a60: 0, a90: 0, mais: 0 }, lancs: [] };
+            c.total = num(c.total + l.aberto); c.n++; c.maior_atraso = Math.max(c.maior_atraso, l.dias); c.faixas[fx(l.dias)] = num(c.faixas[fx(l.dias)] + l.aberto); c.lancs.push(l);
+            F[fx(l.dias)] = num(F[fx(l.dias)] + l.aberto);
+          }
+          const hoje = (await one(DB, `select ${HOJE} d`)).d;
+          for (const c of Object.values(C)) {
+            const h = cont.filter(x => x.pessoa === c.pessoa);
+            c.ultimo = h[0] || null; c.contatos = h.length;
+            const pr = h.find(x => x.promessa_data); c.promessa = pr ? { data: pr.promessa_data, texto: pr.texto, vencida: pr.promessa_data < hoje, hoje: pr.promessa_data === hoje } : null;
+          }
+          const clientes = Object.values(C).sort((a, b) => b.total - a.total);
+          return json(req, { hoje, faixas: F, total: num(Object.values(F).reduce((a, b) => a + b, 0)), clientes, promessas: clientes.filter(c => c.promessa && c.promessa.data <= hoje).map(c => ({ pessoa: c.pessoa, total: c.total, ...c.promessa })) });
+        }
+        if (p === '/api/fin/cobranca/historico') {
+          return json(req, await all(DB, 'select * from fin_cobranca where pessoa=? order by criado_em desc, id desc', q('pessoa')));
+        }
+        if (p === '/api/fin/cobranca' && req.method === 'POST') {
+          const pessoa = String(body.pessoa || '').trim(), tipo = String(body.tipo || '').trim();
+          if (!pessoa) return json(req, { erro: 'Falta o cliente' }, 400);
+          if (!['ligacao', 'whatsapp', 'email', 'mensagem', 'visita', 'outro'].includes(tipo)) return json(req, { erro: 'Escolha como foi o contato' }, 400);
+          if (body.promessa_data && !dataOk(body.promessa_data)) return json(req, { erro: 'Data da promessa inválida' }, 400);
+          await DB.prepare('insert into fin_cobranca(pessoa, lancamento_id, tipo, texto, promessa_data, criado_por, criado_nome) values(?,?,?,?,?,?,?)')
+            .bind(pessoa, Number(body.lancamento_id) || null, tipo, String(body.texto || '').trim() || null, body.promessa_data || null, usuario.id || null, usuario.nome || null).run();
+          return json(req, { ok: true });
+        }
+        // financeiro de um pedido: lançamentos a receber ligados (pelo pedido, pela descrição "Pedido N" ou pela NF de um envio do pedido)
+        if ((m = p.match(/^\/api\/fin\/pedido\/([^/]+)$/))) {
+          const ped = await one(DB, 'select id, numero, cliente from pedido where numero=?', decodeURIComponent(m[1]));
+          if (!ped) return json(req, { erro: 'Pedido não encontrado' }, 404);
+          return json(req, { pedido: ped, ...(await finDoPedido(DB, ped)) });
         }
         return json(req, { erro: 'Rota do financeiro não encontrada' }, 404);
       }
