@@ -106,7 +106,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -155,11 +155,11 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
 const MENU_PERM=[...MENU,['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
-const pode=t=>!!EU&&(EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
+const pode=t=>!!EU&&(t==='cli'&&(t='ped'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
   const fin=S.tab==='fin'; document.body.classList.toggle('fin',fin); if(fin&&!S.fsub) S.fsub=ls.get('fsub')||'resumo';
   const mb=$('#modo'); mb.textContent=fin?'FINANCEIRO':'PRODUÇÃO'; mb.classList.toggle('troca',pode('fin'));
@@ -176,7 +176,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -368,7 +368,7 @@ const abrirPedido = tenta(async numero=>{
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
       <div class="mut">${p.prazo?'prazo '+brData(p.prazo)+' · <b class="'+(d<0?'bad':'')+'">'+(d<0?Math.abs(d)+' dias atrasado':d+' dias')+'</b>':'sem prazo'}${p.data_pagamento?' · pago em '+brData(p.data_pagamento):''}</div></div>
       <div class="row"><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select><button class="btn sec sm" id="mx">Fechar</button></div></div>
-    <div id="pfin"></div><h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th>Fotos</th><th></th></tr>
+    <div id="pcli"></div><div id="pfin"></div><h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th>Fotos</th><th></th></tr>
     ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return `<tr><td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td><td class="mut">${esc(x.etapa_v8||'')}</td>
       <td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
       <td><button class="btn sec sm" data-fp="${x.id}">📷 ${x.fotos||0}</button></td>
@@ -378,6 +378,7 @@ const abrirPedido = tenta(async numero=>{
     modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Fotos · Pedido ${esc(p.numero)}</h2><div style="font-weight:800">${esc(x.descricao)}</div><div class="mut">Fotos da peça no pedido. As fotos tiradas nas OPs dessa peça também entram no zip do pedido.</div></div><button class="btn sec sm" id="fv">Voltar</button></div><br><div class="card" id="fts">Carregando…</div>`);
     $('#fv').onclick=()=>abrirPedido(numero); galeria($('#fts'),{pedido_item_id:x.id}); });
   if($('#pzip')) $('#pzip').onclick=()=>zipPedido(p);
+  blocoClientePedido(p);
   if(pode('fin')) api('/api/fin/pedido/'+encodeURIComponent(numero)).then(f=>{ const el=$('#pfin'); if(!el) return;
     el.innerHTML=`<h2>Financeiro do pedido</h2><div class="card">${f.lancs.length?`<div class="row" style="gap:18px;margin-bottom:6px"><span>Total <b>${brl(f.total)}</b></span><span class="ok">Recebido <b>${brl(f.pago)}</b></span><span>Em aberto <b>${brl(f.aberto)}</b></span>${f.vencido?`<span class="bad">Vencido <b>${brl(f.vencido)}</b></span>`:''}</div>
       <table>${f.lancs.map(l=>`<tr><td>${brData(l.vencimento)}</td><td>${esc(l.descricao)}${l.nf?' · NF '+esc(l.nf):''}</td><td class="n">${brl(l.valor)}</td><td>${l.status==='quitado'?'<span class="tag t-produzindo">Recebido</span>':l.vencido?'<span class="tag" style="background:var(--bad);color:#fff">Vencido</span>':'<span class="tag t-pausado">Em aberto</span>'}</td></tr>`).join('')}</table>`:'<span class="mut">Nenhum lançamento ligado a este pedido. No lançamento a receber, preencha "Pedido (nº)" pra ligar (os do Sensio com "Pedido N" na descrição já ligam sozinhos).</span>'}</div>`; }).catch(()=>{});
@@ -407,11 +408,13 @@ async function tItens(){
 const abrirItem = tenta(async id=>{
   const i = await api('/api/itens/'+id); const tot=i.roteiro.filter(r=>!r.espera).reduce((a,r)=>a+r.tempo_min,0);
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">${i.codigo} · ${i.tipo}</h2><div style="font-size:20px;font-weight:800">${esc(i.nome)}</div>${i.preco?`<div class="mut">Preço R$ ${fmt(i.preco,2)}</div>`:''}</div><button class="btn sec sm" id="mx">Fechar</button></div>
+    <h2>Dados fiscais</h2><div class="card row" style="justify-content:space-between"><span>NCM <b>${esc(i.ncm||'—')}</b> · Origem <b>${i.origem??'—'}</b>${i.unidade?' · Unidade '+esc(i.unidade):''}</span><button class="btn sec sm" id="incm">Mudar NCM</button></div>
     <h2>Composição</h2><div class="card">${i.composicao.map(c=>`<div>${c.codigo} · ${esc(c.nome)} — <b>${fmt(c.qtd,3)}</b></div>`).join('')||'<span class="mut">Sem composição.</span>'}</div>
     <h2>Roteiro de produção <span class="mut">(toque no tempo para mudar · ${dur(tot)} de mão de obra por peça)</span></h2><div class="card"><table><tr><th>#</th><th>Operação</th><th class="n">Tempo por peça</th></tr>
       ${i.roteiro.map(r=>`<tr><td>${r.ordem}</td><td>${esc(r.nome)}${r.espera?' <span class="mut">(espera)</span>':''}</td><td class="n"><span class="link" data-o="${r.ordem}" data-t="${r.tempo_min}">${fmt(r.tempo_min,0)} min</span></td></tr>`).join('')||'<tr><td colspan=3 class="mut">Sem roteiro.</td></tr>'}</table></div>
     <h2>Estoque</h2><div class="card">${i.estoque.map(e=>`<div>${esc(e.nome)}: <b>${fmt(e.saldo,3)}</b></div>`).join('')||'<span class="mut">Sem saldo.</span>'}</div>`);
   $('#mx').onclick=()=>modal('');
+  if($('#incm')) $('#incm').onclick=tenta(async()=>{ const n=prompt('NCM da peça (8 números). A maioria das peças OMAMA é 44192000.', i.ncm||''); if(n===null) return; await api('/api/itens/'+i.id+'/fiscal',{ncm:n,origem:i.origem??0}); toast('✓ NCM salvo'); abrirItem(i.id); });
   document.querySelectorAll('#modal [data-o]').forEach(s=>s.onclick=tenta(async()=>{ const v=prompt('Tempo por peça em minutos:',s.dataset.t); if(v===null) return; const n=parseFloat(v.replace(',','.')); if(!(n>=0)) return toast('Número inválido',1);
     await api(`/api/itens/${id}/roteiro`,{ordem:+s.dataset.o,tempo_min:n}); toast('Tempo atualizado (vale para OPs novas)'); abrirItem(id); }));
 });
@@ -943,6 +946,48 @@ function finCad(){
   };
   $('#fc').querySelectorAll('[data-nv]').forEach(b=>b.onclick=()=>ed(b.dataset.nv));
   $('#fc').querySelectorAll('[data-e]').forEach(t=>t.onclick=()=>ed(t.dataset.e,FB[t.dataset.e].find(x=>x.id===+t.dataset.id)));
+}
+// ===== CLIENTES (cadastro pra nota fiscal)
+const docFmt = d => { const x=String(d||'').replace(/\D/g,''); return x.length===11?x.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4'):x.length===14?x.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):(d||''); };
+const docOk = d => { const x=String(d||'').replace(/\D/g,''); if(x.length===11){ if(/^(\d)\1+$/.test(x)) return false; let s=0; for(let i=0;i<9;i++) s+=+x[i]*(10-i); let r=(s*10)%11%10; if(r!==+x[9]) return false; s=0; for(let i=0;i<10;i++) s+=+x[i]*(11-i); return (s*10)%11%10===+x[10]; }
+  if(x.length===14){ if(/^(\d)\1+$/.test(x)) return false; const c=(n)=>{ let s=0,p=n-7; for(let i=0;i<n;i++){ s+=+x[i]*p--; if(p<2) p=9; } const r=s%11; return r<2?0:11-r; }; return c(12)===+x[12]&&c(13)===+x[13]; } return false; };
+const cliFalta = c => { const f=[]; if(!docOk(c.doc)) f.push('CPF/CNPJ'); if(!c.endereco) f.push('endereço'); if(!c.cep) f.push('CEP'); if(!c.cidade||!c.uf) f.push('cidade/UF'); if(String(c.doc||'').replace(/\D/g,'').length===14&&!c.ie) f.push('inscrição estadual (ou "Não contribuinte")'); return f; };
+const cliResumo = c => `<b>${esc(c.nome)}</b>${c.razao&&c.razao!==c.nome?`<br><span class="mut">${esc(c.razao)}</span>`:''}<br><span class="mut">${esc(docFmt(c.doc))}${c.ie?' · IE '+esc(c.ie):''} · ${esc([c.endereco,c.numero,c.bairro].filter(Boolean).join(', '))} · ${esc([c.cidade,c.uf].filter(Boolean).join('/'))}${c.cep?' · CEP '+esc(c.cep):''}</span>`;
+async function tClientes(){
+  app.innerHTML=`<div class="row"><input id="cb" placeholder="Buscar cliente (nome, razão social ou CPF/CNPJ)" value="${esc(S.cb||'')}" style="flex:1"><button class="btn" id="cn">+ Novo cliente</button></div>
+    <p class="mut">Cadastro usado na nota fiscal. Os clientes vieram do Sensio; dá pra corrigir aqui. Em vermelho o que falta pra emitir nota.</p><div class="card" id="cl">Carregando…</div>`;
+  let t; const busca=async()=>{ S.cb=$('#cb').value; const l=await api('/api/clientes?q='+encodeURIComponent(S.cb));
+    $('#cl').innerHTML=l.length?`<table>${l.map(c=>{ const f=cliFalta(c); return `<tr data-c="${c.id}" style="cursor:pointer"><td>${cliResumo(c)}${f.length?`<br><span class="bad" style="font-size:12px">Falta: ${f.join(', ')}</span>`:''}</td></tr>`; }).join('')}</table>`:'<div class="vazio">Nenhum cliente encontrado.</div>';
+    $('#cl').querySelectorAll('[data-c]').forEach(r=>r.onclick=()=>editarCliente(l.find(c=>c.id===+r.dataset.c),()=>tClientes())); };
+  $('#cb').oninput=()=>{clearTimeout(t);t=setTimeout(busca,300)}; $('#cn').onclick=()=>editarCliente(null,()=>tClientes()); busca();
+}
+function editarCliente(c, depois){
+  c=c||{}; const C=[['nome','Nome (como aparece pra vocês)'],['razao','Razão social / nome completo'],['doc','CPF ou CNPJ'],['ie','Inscrição estadual (ou "Não contribuinte")'],['email','E-mail'],['telefone','Telefone'],['endereco','Endereço (rua)'],['numero','Número'],['complemento','Complemento'],['bairro','Bairro'],['cep','CEP'],['cidade','Cidade'],['uf','UF']];
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${c.id?'Editar cliente':'Novo cliente'}</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:8px">${C.map(([k,n])=>`<label>${n}<input id="cc_${k}" value="${esc(c[k]||'')}" style="width:100%"></label>`).join('')}</div>
+    <p class="mut" id="ccv"></p><button class="btn" id="cok">Salvar</button>`);
+  const val=()=>{ const d=$('#cc_doc').value; $('#ccv').innerHTML=d&&!docOk(d)?'<span class="bad">CPF/CNPJ inválido</span>':''; }; $('#cc_doc').oninput=val; val();
+  $('#mx').onclick=()=>modal('');
+  $('#cok').onclick=tenta(async()=>{ const b={id:c.id}; C.forEach(([k])=>b[k]=$('#cc_'+k).value); const r=await api('/api/clientes',b); toast('✓ Cliente salvo'); modal(''); depois&&depois(r.id); });
+}
+function escolherCliente(sugestao){
+  return new Promise(res=>{
+    modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Cliente da nota fiscal</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+      <div class="row" style="margin-top:8px"><input id="ecb" value="${esc(sugestao||'')}" placeholder="Nome, razão social ou CPF/CNPJ" style="flex:1"><button class="btn sec" id="ecn">+ Novo</button></div><div id="ecl" class="card" style="max-height:55vh;overflow:auto;margin-top:8px">Carregando…</div>`);
+    $('#mx').onclick=()=>{ modal(''); res(null); };
+    $('#ecn').onclick=()=>editarCliente({nome:$('#ecb').value},id=>res(id));
+    let t; const busca=async()=>{ const l=await api('/api/clientes?q='+encodeURIComponent($('#ecb').value)); $('#ecl').innerHTML=l.length?`<table>${l.map(c=>`<tr><td>${cliResumo(c)}</td><td><button class="btn sm" data-e="${c.id}">É este</button></td></tr>`).join('')}</table>`:'<div class="vazio">Nada. Tente outro pedaço do nome ou o CPF/CNPJ.</div>';
+      $('#ecl').querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{ modal(''); res(+b.dataset.e); }); };
+    $('#ecb').oninput=()=>{clearTimeout(t);t=setTimeout(busca,300)}; busca();
+  });
+}
+async function blocoClientePedido(p){
+  const el=$('#pcli'); if(!el) return;
+  const c=p.cliente_id?await api('/api/clientes/'+p.cliente_id).catch(()=>null):null, f=c?cliFalta(c):[];
+  el.innerHTML=`<h2>Cliente da nota fiscal</h2><div class="card"><div class="row" style="justify-content:space-between"><div>${c?cliResumo(c)+(f.length?`<br><span class="bad" style="font-size:12px">Falta: ${f.join(', ')}</span>`:''):'<span class="mut">Nenhum cliente ligado a este pedido ainda.</span>'}</div>
+    <div class="row">${c?'<button class="btn sec sm" id="pced">Editar</button>':''}<button class="btn sec sm" id="pcesc">${c?'Trocar':'Escolher cliente'}</button></div></div></div>`;
+  $('#pcesc').onclick=tenta(async()=>{ const id=await escolherCliente((p.cliente||'').split(/\s+/)[0]); if(!id) return abrirPedido(p.numero); await api(`/api/pedidos/${encodeURIComponent(p.numero)}/cliente`,{cliente_id:id}); toast('✓ Cliente ligado ao pedido'); abrirPedido(p.numero); });
+  if($('#pced')) $('#pced').onclick=()=>editarCliente(c,()=>abrirPedido(p.numero));
 }
 // ===== CONCILIAÇÃO: extrato do banco (arquivo OFX) × lançamentos
 function lerOFX(txt){
