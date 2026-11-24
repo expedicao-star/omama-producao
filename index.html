@@ -458,13 +458,50 @@ const abrirQual=tenta(async(codigo,depois)=>{
     $('#fv').onclick=()=>abrirQual(codigo,depois); galeria($('#fts'),{qualidade_id:+b.dataset.f}); });
 });
 async function tEstoque(){
-  app.innerHTML = `<div class="row"><select id="dep">${B.depositos.map(d=>`<option value="${d.id}" ${d.id===S.dep?'selected':''}>${esc(d.nome)}</option>`).join('')}</select><button class="btn sec" id="mov">Movimentar</button><button class="btn sec" id="hist">Últimas movimentações</button></div><br><div class="card" id="el">Carregando…</div>`;
+  app.innerHTML = `<div class="row"><select id="dep"><option value="0" ${S.dep===0?'selected':''}>P.A. Manaus + São Paulo</option>${B.depositos.map(d=>`<option value="${d.id}" ${d.id===S.dep?'selected':''}>${esc(d.nome)}</option>`).join('')}</select><button class="btn" id="tenv">Enviar pro showroom (SP)</button><button class="btn sec" id="thist">Envios entre depósitos</button><button class="btn sec" id="mov">Movimentar</button><button class="btn sec" id="hist">Últimas movimentações</button></div><br><div class="card" id="el">Carregando…</div>`;
   $('#dep').onchange=e=>{S.dep=+e.target.value; tEstoque();};
-  $('#mov').onclick=movimentar; $('#hist').onclick=historico;
+  $('#mov').onclick=movimentar; $('#hist').onclick=historico; $('#tenv').onclick=()=>enviarDeposito(1,3); $('#thist').onclick=historicoEnvios;
+  if(S.dep===0) return estoquePA();
   const l = await api('/api/estoque?deposito_id='+S.dep);
   const temCl=l.some(i=>i.classes);
   $('#el').innerHTML = l.length?`<table><tr><th>Código</th><th>Item</th><th class="n">Saldo</th>${temCl?'<th>Qualidade</th>':''}</tr>${l.map(i=>`<tr><td>${i.codigo}</td><td>${esc(i.nome)}</td><td class="n ${i.saldo<0?'bad':''}">${fmt(i.saldo,3)}</td>${temCl?`<td>${i.classes?['A','B','C','D'].filter(c=>i.classes[c]).map(c=>clTag(c,i.classes[c])).join(' ')+(i.sem_classe?` <span class="mut">${i.sem_classe} sem classe</span>`:''):'<span class="mut">sem classe</span>'}</td>`:''}</tr>`).join('')}</table>${temCl?'<p class="mut" style="padding:0 12px">Qualidade: conta as peças classificadas mais recentes desse item (as mais antigas já saíram do P.A.). Peças que vieram do Sensio ficam "sem classe".</p>':''}`:'<div class="vazio">Nenhum saldo nesse depósito.</div>';
 }
+// ===== estoque P.A. Manaus × São Paulo e envios entre depósitos
+async function estoquePA(){
+  const l=await api('/api/estoque?visao=pa'), tm=l.reduce((a,i)=>a+i.manaus,0), ts=l.reduce((a,i)=>a+i.sp,0);
+  $('#el').innerHTML=`<p class="mut" style="margin-top:0">A peça é uma só; a coluna diz onde ela está. Total: <b>${fmt(tm,0)}</b> em Manaus · <b>${fmt(ts,0)}</b> em São Paulo.</p>
+    <table><tr><th>Código</th><th>Peça</th><th class="n">P.A. Manaus</th><th class="n">P.A. São Paulo</th><th class="n">Total</th></tr>
+    ${l.map(i=>`<tr><td>${esc(i.codigo)}</td><td>${esc(i.nome)}</td><td class="n ${i.manaus<0?'bad':''}">${i.manaus?fmt(i.manaus,0):'–'}</td><td class="n ${i.sp<0?'bad':''}">${i.sp?fmt(i.sp,0):'–'}</td><td class="n"><b>${fmt(i.manaus+i.sp,0)}</b></td></tr>`).join('')}</table>`;
+}
+const enviarDeposito = tenta(async(de0,para0)=>{
+  const deps=B.depositos; let de=de0||1, para=para0||3; const sel={};
+  const tela=async()=>{
+    const l=(await api('/api/estoque?deposito_id='+de)).filter(i=>i.saldo>0&&i.tipo==='Produto');
+    modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Enviar peças entre depósitos</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+      <div class="row" style="margin:8px 0">Sai de <select id="tde">${deps.map(d=>`<option value="${d.id}" ${d.id===de?'selected':''}>${esc(d.nome)}</option>`).join('')}</select> → vai pra <select id="tpara">${deps.map(d=>`<option value="${d.id}" ${d.id===para?'selected':''}>${esc(d.nome)}</option>`).join('')}</select></div>
+      <input id="tb" placeholder="Filtrar peça" style="width:100%"><div class="card" style="max-height:38vh;overflow:auto;margin-top:6px"><table id="tl">${l.map(i=>`<tr data-n="${esc((i.codigo+' '+i.nome).toLowerCase())}"><td>${esc(i.nome)}<br><span class="mut">${esc(i.codigo)} · tem ${fmt(i.saldo,0)}</span></td><td class="n"><input type="number" min="0" max="${i.saldo}" step="1" data-i="${i.id}" value="${sel[i.id]||''}" placeholder="0" style="width:70px"></td></tr>`).join('')||'<tr><td class="vazio">Nada nesse depósito.</td></tr>'}</table></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:8px"><label>Data<input type="date" id="td" value="${hojeISO()}" style="width:100%"></label>
+      <label>Documento que foi junto<input id="tdoc" list="tdocs" placeholder="Ex.: NF remessa 253" style="width:100%"><datalist id="tdocs"><option value="NF de remessa nº "><option value="NF de transferência nº "><option value="Declaração de conteúdo"></datalist></label>
+      <label>Transportadora<input id="ttr" style="width:100%"></label></div><label>Observação<input id="tobs" style="width:100%"></label>
+      <p class="mut" id="tres"></p><button class="btn" id="tok">Confirmar envio</button>`);
+    const conta=()=>{ document.querySelectorAll('#tl [data-i]').forEach(x=>{ const v=+x.value; if(v>0) sel[x.dataset.i]=v; else delete sel[x.dataset.i]; }); const n=Object.values(sel).reduce((a,b)=>a+b,0); $('#tres').textContent=n?`${n} peça(s) de ${Object.keys(sel).length} item(ns)`:''; };
+    $('#mx').onclick=()=>modal('');
+    document.querySelectorAll('#tl [data-i]').forEach(x=>x.oninput=conta); conta();
+    $('#tb').oninput=()=>{ const s=$('#tb').value.toLowerCase(); document.querySelectorAll('#tl tr[data-n]').forEach(r=>r.style.display=r.dataset.n.includes(s)?'':'none'); };
+    $('#tde').onchange=()=>{ de=+$('#tde').value; for(const k in sel) delete sel[k]; tela(); }; $('#tpara').onchange=()=>{ para=+$('#tpara').value; };
+    $('#tok').onclick=tenta(async()=>{ conta(); const itens=Object.entries(sel).map(([item_id,qtd])=>({item_id:+item_id,qtd})); if(!itens.length) return toast('Coloque a quantidade de pelo menos uma peça',1);
+      if(para===de) return toast('Escolha depósitos diferentes',1);
+      const r=await api('/api/estoque/transferir',{de_id:de,para_id:para,itens,data:$('#td').value,documento:$('#tdoc').value,transportadora:$('#ttr').value,obs:$('#tobs').value});
+      toast(`✓ Envio #${r.id} registrado`); modal(''); tEstoque(); });
+  };
+  await tela();
+});
+const historicoEnvios = tenta(async()=>{
+  const l=await api('/api/estoque/transferencias');
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Envios entre depósitos</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+    <div class="card" style="max-height:65vh;overflow:auto;margin-top:8px">${l.length?`<table><tr><th>#</th><th>Data</th><th>De → Para</th><th>Peças</th><th>Documento</th></tr>${l.map(t=>`<tr><td>${t.id}</td><td>${brData(t.data)}</td><td>${esc(t.de)} → <b>${esc(t.para)}</b></td><td><b>${fmt(t.pecas,0)}</b><br><span class="mut" style="font-size:12px">${esc(t.itens||'')}</span></td><td>${esc(t.documento||'—')}${t.transportadora?'<br><span class="mut">'+esc(t.transportadora)+'</span>':''}${t.obs?'<br><span class="mut">'+esc(t.obs)+'</span>':''}<br><span class="mut" style="font-size:11px">${esc(t.criado_nome||'')}</span></td></tr>`).join('')}</table>`:'<div class="vazio">Nenhum envio ainda.</div>'}</div>`);
+  $('#mx').onclick=()=>modal('');
+});
 const movimentar = tenta(async()=>{
   modal(`<h2 style="margin-top:0">Movimentar estoque</h2><input id="ib" placeholder="Buscar item" style="width:100%"><div id="il" class="grid" style="margin-top:8px;max-height:35vh;overflow:auto"></div><div id="sel" class="mut" style="margin:10px 0">Nenhum item escolhido</div>
     <div class="row"><select id="md">${B.depositos.map(d=>`<option value="${d.id}" ${d.id===S.dep?'selected':''}>${esc(d.nome)}</option>`).join('')}</select>
