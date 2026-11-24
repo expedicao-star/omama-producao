@@ -94,7 +94,9 @@ async function finDoPedido(DB, ped) {
 }
 // financeiro: tabelas criadas sozinhas na primeira chamada (schema_v18.sql + v19)
 let finPronto = false;
-const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)", "create table if not exists fin_cobranca (id integer primary key, pessoa text not null, lancamento_id int, tipo text not null, texto text, promessa_data text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_cob_pessoa on fin_cobranca(pessoa)"];
+const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)", "create table if not exists fin_cobranca (id integer primary key, pessoa text not null, lancamento_id int, tipo text not null, texto text, promessa_data text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_cob_pessoa on fin_cobranca(pessoa)", "create table if not exists fin_anexo (id integer primary key, lancamento_id int not null, nome text, tipo text not null, dados text not null, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_anexo_l on fin_anexo(lancamento_id)", "create table if not exists fin_extrato (id integer primary key, conta_id int not null, fitid text not null, data text not null, valor real not null, descricao text, lancamento_id int, status text not null default 'pendente', criado_em text default (datetime('now')), unique(conta_id, fitid))"];
+// colunas novas (v20): roda uma por uma e ignora se já existe
+const FIN_ALTER = ["alter table fin_lancamento add column aprovado int not null default 1", "alter table fin_conta add column extrato_saldo real", "alter table fin_conta add column extrato_data text"];
 // metas por funcionário: grupo da etapa e chave da peça (família + tamanho)
 const GRUPOS_META = [['TA', 'Torno Fase A'], ['TB', 'Torno Fase B'], ['AC', 'Acabamento'], ['MA', 'Marcenaria A'], ['MB', 'Marcenaria B']];
 const NOME_GRUPO = Object.fromEntries(GRUPOS_META);
@@ -1013,7 +1015,7 @@ const app = {
       }
       // ---------- FINANCEIRO (contas, categorias, centros de custo, lançamentos, fluxo de caixa, DRE). Tela 'fin'.
       if (p.startsWith('/api/fin/')) {
-        if (!finPronto) { await DB.batch(FIN_DDL.map(s => DB.prepare(s))); finPronto = true; }
+        if (!finPronto) { await DB.batch(FIN_DDL.map(s => DB.prepare(s))); for (const s of FIN_ALTER) await DB.prepare(s).run().catch(() => {}); finPronto = true; }
         const HOJE = "date('now','-4 hours')";
         const num = v => Math.round((Number(v) || 0) * 100) / 100;
         const dataOk = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
@@ -1035,7 +1037,8 @@ const app = {
               sum(case when tipo='R' and status='aberto' and substr(vencimento,1,7) = substr(${HOJE},1,7) then valor-pago end) receber_mes,
               sum(case when tipo='P' and status='aberto' and substr(vencimento,1,7) = substr(${HOJE},1,7) then valor-pago end) pagar_mes,
               sum(case when tipo='R' and status!='cancelado' and substr(quitacao,1,7) = substr(${HOJE},1,7) then pago end) recebido_mes,
-              sum(case when tipo='P' and status!='cancelado' and substr(quitacao,1,7) = substr(${HOJE},1,7) then pago end) pago_mes
+              sum(case when tipo='P' and status!='cancelado' and substr(quitacao,1,7) = substr(${HOJE},1,7) then pago end) pago_mes,
+              sum(case when tipo='P' and status='aberto' and aprovado=0 then 1 else 0 end) a_aprovar
             from fin_lancamento`)]);
           const [vencidosR, proximos] = await Promise.all([
             all(DB, `select id, tipo, descricao, pessoa, vencimento, round(valor-pago,2) aberto, cast(julianday(${HOJE})-julianday(vencimento) as int) dias from fin_lancamento where tipo='R' and status='aberto' and vencimento < ${HOJE} order by vencimento`),
@@ -1054,12 +1057,12 @@ const app = {
           if (['P', 'R', 'T'].includes(q('tipo'))) { w.push('l.tipo=?'); b.push(q('tipo')); }
           const st = q('status') || 'todos';
           if (st === 'aberto') w.push("l.status='aberto'"); else if (st === 'quitado') w.push("l.status='quitado'");
-          else if (st === 'vencido') w.push(`l.status='aberto' and l.vencimento < ${HOJE}`); else if (st === 'cancelado') w.push("l.status='cancelado'"); else w.push("l.status!='cancelado'");
+          else if (st === 'vencido') w.push(`l.status='aberto' and l.vencimento < ${HOJE}`); else if (st === 'cancelado') w.push("l.status='cancelado'"); else if (st === 'aprovar') w.push("l.status='aberto' and l.aprovado=0"); else w.push("l.status!='cancelado'");
           for (const [k, col] of [['conta_id', 'l.conta_id'], ['categoria_id', 'l.categoria_id'], ['centro_id', 'l.centro_id']]) if (Number(q(k))) { w.push(col + '=?'); b.push(Number(q(k))); }
           if (q('q')) { w.push('(l.descricao like ? or l.pessoa like ? or l.nf like ? or l.obs like ?)'); const s = '%' + q('q') + '%'; b.push(s, s, s, s); }
           const where = w.join(' and ');
           const [lista, tot] = await Promise.all([
-            all(DB, `select l.*, round(l.valor-l.pago,2) aberto, c.nome conta, cd.nome conta_destino, ca.nome categoria, ce.nome centro, (l.status='aberto' and l.vencimento < ${HOJE}) vencido
+            all(DB, `select l.*, round(l.valor-l.pago,2) aberto, c.nome conta, cd.nome conta_destino, ca.nome categoria, ce.nome centro, (l.status='aberto' and l.vencimento < ${HOJE}) vencido, (select count(*) from fin_anexo a where a.lancamento_id=l.id) anexos
               from fin_lancamento l left join fin_conta c on c.id=l.conta_id left join fin_conta cd on cd.id=l.conta_destino_id left join fin_categoria ca on ca.id=l.categoria_id left join fin_centro ce on ce.id=l.centro_id
               where ${where} order by l.${campo} ${q('ordem') === 'desc' ? 'desc' : 'asc'}, l.id limit 1500`, ...b),
             all(DB, `select l.tipo, count(*) n, round(sum(l.valor),2) valor, round(sum(l.pago),2) pago, round(sum(case when l.status='aberto' then l.valor-l.pago else 0 end),2) aberto from fin_lancamento l where ${where} group by l.tipo`, ...b)]);
@@ -1084,18 +1087,20 @@ const app = {
             const d = new Date(body.vencimento + 'T12:00:00Z'); const dia = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + i);
             const fim = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(); d.setUTCDate(Math.min(dia, fim));
             const venc = d.toISOString().slice(0, 10), q1 = quitado && i === 0;
-            st.push(DB.prepare(`insert into fin_lancamento(tipo, descricao, obs, pessoa, conta_id, conta_destino_id, categoria_id, centro_id, metodo, valor, pago, vencimento, competencia, quitacao, parcela, nf, pedido_id, status, criado_por)
-              values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(tipo, descricao, String(body.obs || '').trim() || null, String(body.pessoa || '').trim() || null, x.conta, tipo === 'T' ? x.destino : null, tipo === 'T' ? null : x.cat, x.centro,
-              String(body.metodo || '').trim() || null, v, q1 ? v : 0, venc, dataOk(body.competencia) ? body.competencia : venc, q1 ? dq : null, n > 1 ? `${i + 1}/${n}` : null, String(body.nf || '').trim() || null, Number(body.pedido_id) || null, q1 ? 'quitado' : 'aberto', usuario.id || null));
+            st.push(DB.prepare(`insert into fin_lancamento(tipo, descricao, obs, pessoa, conta_id, conta_destino_id, categoria_id, centro_id, metodo, valor, pago, vencimento, competencia, quitacao, parcela, nf, pedido_id, status, criado_por, aprovado)
+              values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(tipo, descricao, String(body.obs || '').trim() || null, String(body.pessoa || '').trim() || null, x.conta, tipo === 'T' ? x.destino : null, tipo === 'T' ? null : x.cat, x.centro,
+              String(body.metodo || '').trim() || null, v, q1 ? v : 0, venc, dataOk(body.competencia) ? body.competencia : venc, q1 ? dq : null, n > 1 ? `${i + 1}/${n}` : null, String(body.nf || '').trim() || null, Number(body.pedido_id) || null, q1 ? 'quitado' : 'aberto', usuario.id || null, tipo === 'P' && !usuario.admin && !q1 ? 0 : 1));
           }
           await DB.batch(st);
           return json(req, { ok: true, criados: n });
         }
-        if ((m = p.match(/^\/api\/fin\/lancamentos\/(\d+)(?:\/(quitar|estornar|cancelar|reativar))?$/)) && req.method === 'POST') {
+        if ((m = p.match(/^\/api\/fin\/lancamentos\/(\d+)(?:\/(quitar|estornar|cancelar|reativar|aprovar))?$/)) && req.method === 'POST') {
           const l = await one(DB, 'select * from fin_lancamento where id=?', Number(m[1]));
           if (!l) return json(req, { erro: 'Lançamento não encontrado' }, 404);
+          if (m[2] === 'aprovar') { if (!usuario.admin) return json(req, { erro: 'Só administrador aprova pagamento' }, 403); await DB.prepare('update fin_lancamento set aprovado=1 where id=?').bind(l.id).run(); return json(req, { ok: true }); }
           if (m[2] === 'quitar') {
             if (l.status !== 'aberto') return json(req, { erro: 'Esse lançamento não está em aberto' }, 400);
+            if (l.tipo === 'P' && !l.aprovado) return json(req, { erro: 'Esse pagamento ainda não foi aprovado por um administrador' }, 400);
             const v = body.valor === undefined || body.valor === '' ? num(l.valor - l.pago) : num(body.valor), d = dataOk(body.data) ? body.data : (await one(DB, `select ${HOJE} d`)).d;
             if (!(v > 0) || v > num(l.valor - l.pago) + 0.005) return json(req, { erro: `Valor tem que ser entre 0 e ${num(l.valor - l.pago)}` }, 400);
             const conta = Number(body.conta_id) || l.conta_id; if (!conta) return json(req, { erro: 'Escolha a conta' }, 400);
@@ -1188,6 +1193,82 @@ const app = {
           }
           await DB.prepare('insert into sync_log(origem, resumo) values(?,?)').bind('sensio-fin', JSON.stringify({ lancamentos: L.length, calibrar: (body.calibrar || []).length })).run().catch(() => {});
           return json(req, { ok: true, lancamentos: L.length });
+        }
+        // ---------- comprovantes (foto ou PDF) do lançamento
+        if ((m = p.match(/^\/api\/fin\/lancamentos\/(\d+)\/anexos$/))) {
+          const lid = Number(m[1]);
+          if (req.method === 'GET') return json(req, await all(DB, 'select id, nome, tipo, length(dados) tam, criado_em, criado_nome from fin_anexo where lancamento_id=? order by id', lid));
+          const d = String(body.dados || ''), tipo = d.startsWith('data:application/pdf;base64,') ? 'application/pdf' : d.startsWith('data:image/jpeg;base64,') ? 'image/jpeg' : null;
+          if (!tipo) return json(req, { erro: 'Mande uma foto ou um PDF' }, 400);
+          if (d.length > 1900000) return json(req, { erro: 'Arquivo grande demais (máx. ~1,3 MB). Tire uma foto ou reduza o PDF.' }, 400);
+          if (!await one(DB, 'select id from fin_lancamento where id=?', lid)) return json(req, { erro: 'Lançamento não encontrado' }, 404);
+          await DB.prepare('insert into fin_anexo(lancamento_id, nome, tipo, dados, criado_por, criado_nome) values(?,?,?,?,?,?)').bind(lid, String(body.nome || 'comprovante').slice(0, 120), tipo, d, usuario.id || null, usuario.nome || null).run();
+          return json(req, { ok: true });
+        }
+        if ((m = p.match(/^\/api\/fin\/anexos\/(\d+)$/)) && req.method === 'GET') {
+          const f = await one(DB, 'select nome, tipo, dados from fin_anexo where id=?', Number(m[1]));
+          if (!f) return new Response('não achei', { status: 404, headers: cors(req) });
+          const bin = Uint8Array.from(atob(f.dados.split(',')[1]), c => c.charCodeAt(0));
+          return new Response(bin, { headers: { ...cors(req), 'Content-Type': f.tipo, 'Content-Disposition': `inline; filename="${encodeURIComponent(f.nome)}"`, 'Cache-Control': 'private, max-age=3600' } });
+        }
+        if ((m = p.match(/^\/api\/fin\/anexos\/(\d+)\/apagar$/)) && req.method === 'POST') {
+          await DB.prepare('delete from fin_anexo where id=?').bind(Number(m[1])).run();
+          return json(req, { ok: true });
+        }
+        // ---------- conciliação bancária: extrato OFX importado × lançamentos
+        if (p === '/api/fin/extrato/importar' && req.method === 'POST') {
+          const conta = Number(body.conta_id), T = Array.isArray(body.transacoes) ? body.transacoes : [];
+          if (!await one(DB, 'select id from fin_conta where id=?', conta)) return json(req, { erro: 'Escolha a conta do extrato' }, 400);
+          if (!T.length) return json(req, { erro: 'Não achei movimentos no arquivo' }, 400);
+          const antes = (await one(DB, 'select count(*) n from fin_extrato where conta_id=?', conta)).n;
+          await DB.batch(T.filter(t => dataOk(t.data) && Number(t.valor)).map(t => DB.prepare('insert or ignore into fin_extrato(conta_id, fitid, data, valor, descricao) values(?,?,?,?,?)')
+            .bind(conta, String(t.fitid || (t.data + '|' + t.valor + '|' + (t.descricao || ''))), t.data, num(t.valor), String(t.descricao || '').slice(0, 200))));
+          if (body.saldo !== undefined && body.saldo !== null && dataOk(body.saldo_data)) await DB.prepare('update fin_conta set extrato_saldo=?, extrato_data=? where id=?').bind(num(body.saldo), body.saldo_data, conta).run();
+          // automático: movimento do extrato que bate com um lançamento já pago/recebido nessa conta (mesmo valor, até 3 dias de diferença)
+          const pend = await all(DB, "select * from fin_extrato where conta_id=? and status='pendente'", conta);
+          let auto = 0;
+          for (const e of pend) {
+            const l = await one(DB, `select id from fin_lancamento where conta_id=? and status='quitado' and tipo=? and abs(pago-?)<0.01 and abs(julianday(quitacao)-julianday(?))<=3
+              and id not in (select lancamento_id from fin_extrato where lancamento_id is not null) order by abs(julianday(quitacao)-julianday(?)) limit 1`, conta, e.valor > 0 ? 'R' : 'P', Math.abs(e.valor), e.data, e.data);
+            if (l) { await DB.prepare("update fin_extrato set lancamento_id=?, status='conciliado' where id=?").bind(l.id, e.id).run(); auto++; }
+          }
+          return json(req, { ok: true, novos: (await one(DB, 'select count(*) n from fin_extrato where conta_id=?', conta)).n - antes, auto });
+        }
+        if (p === '/api/fin/extrato' && req.method === 'GET') {
+          const conta = Number(q('conta_id')), st = ['pendente', 'conciliado', 'ignorado'].includes(q('status')) ? q('status') : 'pendente';
+          const [rows, c, cnt] = await Promise.all([
+            all(DB, `select e.*, l.descricao l_descricao, l.pessoa l_pessoa from fin_extrato e left join fin_lancamento l on l.id=e.lancamento_id where e.conta_id=? and e.status=? order by e.data desc, e.id desc limit 500`, conta, st),
+            one(DB, `select c.*, round(${SALDO}, 2) saldo from fin_conta c where c.id=?`, conta),
+            all(DB, 'select status, count(*) n from fin_extrato where conta_id=? group by status', conta)]);
+          if (st === 'pendente') for (const e of rows)
+            e.sugestoes = await all(DB, `select id, descricao, pessoa, vencimento, status, round(valor-pago,2) aberto, conta_id from fin_lancamento
+              where tipo=? and status='aberto' and abs((valor-pago)-?)<0.01 and abs(julianday(vencimento)-julianday(?))<=20
+              and id not in (select lancamento_id from fin_extrato where lancamento_id is not null) order by (conta_id=?) desc, abs(julianday(vencimento)-julianday(?)) limit 3`,
+              e.valor > 0 ? 'R' : 'P', Math.abs(e.valor), e.data, conta, e.data);
+          return json(req, { conta: c, contagem: Object.fromEntries(cnt.map(x => [x.status, x.n])), lista: rows });
+        }
+        if ((m = p.match(/^\/api\/fin\/extrato\/(\d+)$/)) && req.method === 'POST') {
+          const e = await one(DB, 'select * from fin_extrato where id=?', Number(m[1]));
+          if (!e) return json(req, { erro: 'Movimento não encontrado' }, 404);
+          if (body.acao === 'ignorar') { await DB.prepare("update fin_extrato set status='ignorado', lancamento_id=null where id=?").bind(e.id).run(); return json(req, { ok: true }); }
+          if (body.acao === 'desfazer') { await DB.prepare("update fin_extrato set status='pendente', lancamento_id=null where id=?").bind(e.id).run(); return json(req, { ok: true }); }
+          const tipo = e.valor > 0 ? 'R' : 'P', v = Math.abs(e.valor);
+          if (body.acao === 'conciliar') {
+            const l = await one(DB, 'select * from fin_lancamento where id=?', Number(body.lancamento_id));
+            if (!l || l.tipo !== tipo) return json(req, { erro: 'Lançamento não serve pra esse movimento' }, 400);
+            if (l.status === 'aberto') { const pago = num(l.pago + Math.min(v, l.valor - l.pago));
+              await DB.prepare('update fin_lancamento set pago=?, quitacao=?, conta_id=?, aprovado=1, status=? where id=?').bind(pago, e.data, e.conta_id, pago >= l.valor - 0.005 ? 'quitado' : 'aberto', l.id).run(); }
+            await DB.prepare("update fin_extrato set lancamento_id=?, status='conciliado' where id=?").bind(l.id, e.id).run();
+            return json(req, { ok: true });
+          }
+          if (body.acao === 'criar') {
+            const r = await DB.prepare(`insert into fin_lancamento(tipo, descricao, pessoa, conta_id, categoria_id, centro_id, valor, pago, vencimento, competencia, quitacao, status, aprovado, criado_por, obs)
+              values(?,?,?,?,?,?,?,?,?,?,?,'quitado',1,?,?)`).bind(tipo, String(body.descricao || e.descricao || 'Movimento do extrato').trim(), String(body.pessoa || '').trim() || null, e.conta_id,
+              Number(body.categoria_id) || null, Number(body.centro_id) || null, v, v, e.data, e.data, e.data, usuario.id || null, 'Criado pela conciliação do extrato').run();
+            await DB.prepare("update fin_extrato set lancamento_id=?, status='conciliado' where id=?").bind(r.meta.last_row_id, e.id).run();
+            return json(req, { ok: true });
+          }
+          return json(req, { erro: 'Ação inválida' }, 400);
         }
         // ---------- cobrança: vencidos a receber por cliente, faixas de atraso, contatos e promessas
         if (p === '/api/fin/cobranca' && req.method === 'GET') {
