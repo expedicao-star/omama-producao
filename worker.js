@@ -708,9 +708,10 @@ const app = {
         const busca = '%' + (q('q') || '') + '%';
         return json(req, await all(DB, `select i.*, (select count(*) from roteiro r where r.item_id=i.id) n_rot,
             coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) saldo_pa,
+            coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) saldo_sp,
             coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) saldo_patio
           from item i where (i.nome like ? or i.codigo like ?) ${q('tipo') ? 'and i.tipo=?' : ''} order by i.tipo desc, i.codigo limit 400`,
-          DEP_PA, DEP_PATIO, busca, busca, ...(q('tipo') ? [q('tipo')] : [])));
+          DEP_PA, DEP_PA_SP, DEP_PATIO, busca, busca, ...(q('tipo') ? [q('tipo')] : [])));
       }
       if ((m = p.match(/^\/api\/itens\/(\d+)$/)) && req.method === 'GET') {
         const item = await one(DB, 'select * from item where id=?', Number(m[1]));
