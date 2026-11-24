@@ -92,6 +92,9 @@ async function finDoPedido(DB, ped) {
   const s = k => Math.round(lancs.reduce((a, l) => a + (k(l) || 0), 0) * 100) / 100;
   return { lancs, total: s(l => l.valor), pago: s(l => l.pago), aberto: s(l => l.status === 'aberto' ? l.aberto : 0), vencido: s(l => l.vencido ? l.aberto : 0) };
 }
+// clientes e dados fiscais (v21): criados sozinhos na primeira chamada; alter ignora se já existe
+let basePronta = false;
+const BASE_DDL = ["create table if not exists cliente (id integer primary key, sensio_id text unique, nome text not null, razao text, doc text, natureza text, ie text, email text, telefone text, endereco text, numero text, complemento text, bairro text, cep text, cidade text, uf text, vendedor text, ativo int not null default 1, criado_em text default (datetime('now')))", "create index if not exists cliente_nome on cliente(nome)", "alter table pedido add column cliente_id int", "alter table item add column ncm text", "alter table item add column origem int", "alter table item add column unidade text", "alter table item add column peso_liquido real", "alter table item add column peso_bruto real"];
 // financeiro: tabelas criadas sozinhas na primeira chamada (schema_v18.sql + v19)
 let finPronto = false;
 const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)", "create table if not exists fin_cobranca (id integer primary key, pessoa text not null, lancamento_id int, tipo text not null, texto text, promessa_data text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_cob_pessoa on fin_cobranca(pessoa)", "create table if not exists fin_anexo (id integer primary key, lancamento_id int not null, nome text, tipo text not null, dados text not null, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_anexo_l on fin_anexo(lancamento_id)", "create table if not exists fin_extrato (id integer primary key, conta_id int not null, fitid text not null, data text not null, valor real not null, descricao text, lancamento_id int, status text not null default 'pendente', criado_em text default (datetime('now')), unique(conta_id, fitid))"];
@@ -175,7 +178,7 @@ const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', '
 const PERM = [
   [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
-  [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']],
+  [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
   [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped']],
   [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/fin\//, null, ['fin']],
@@ -261,6 +264,7 @@ const app = {
     const DB = env.DB;
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     let m;
+    if (!basePronta) { for (const s of BASE_DDL) await DB.prepare(s).run().catch(() => {}); basePronta = true; }
     try {
       // ---------- usuários
       if (p === '/api/eu') return json(req, usuario);
@@ -309,6 +313,51 @@ const app = {
         }
         if (body.senha || !ativo) st.push(DB.prepare('delete from sessao where usuario_id=?').bind(u.id));
         await DB.batch(st);
+        return json(req, { ok: true });
+      }
+
+      // ---------- clientes (cadastro pra nota fiscal; trazidos do Sensio) e dados fiscais dos itens
+      if (p === '/api/clientes' && req.method === 'GET') {
+        const s = '%' + (q('q') || '').trim() + '%', d = (q('q') || '').replace(/\D/g, '');
+        return json(req, await all(DB, `select * from cliente where ativo=1 and (nome like ? or razao like ? ${d.length >= 3 ? "or replace(replace(replace(doc,'.',''),'-',''),'/','') like ?" : ''}) order by nome limit 60`, s, s, ...(d.length >= 3 ? ['%' + d + '%'] : [])));
+      }
+      if ((m = p.match(/^\/api\/clientes\/(\d+)$/)) && req.method === 'GET') {
+        const c = await one(DB, 'select * from cliente where id=?', Number(m[1]));
+        return c ? json(req, c) : json(req, { erro: 'Cliente não encontrado' }, 404);
+      }
+      if (p === '/api/clientes' && req.method === 'POST') {
+        const f = ['nome', 'razao', 'doc', 'natureza', 'ie', 'email', 'telefone', 'endereco', 'numero', 'complemento', 'bairro', 'cep', 'cidade', 'uf'];
+        const v = Object.fromEntries(f.map(k => [k, String(body[k] ?? '').trim() || null]));
+        if (!v.nome) return json(req, { erro: 'Coloque o nome do cliente' }, 400);
+        if (v.uf) v.uf = v.uf.toUpperCase().slice(0, 2);
+        if (Number(body.id)) { await DB.prepare(`update cliente set ${f.map(k => k + '=?').join(', ')} where id=?`).bind(...f.map(k => v[k]), Number(body.id)).run(); return json(req, { ok: true, id: Number(body.id) }); }
+        const r = await DB.prepare(`insert into cliente(${f.join(', ')}) values(${f.map(() => '?').join(',')})`).bind(...f.map(k => v[k])).run();
+        return json(req, { ok: true, id: r.meta.last_row_id });
+      }
+      if (p === '/api/clientes/importar' && req.method === 'POST') {
+        if (!usuario.admin) return json(req, { erro: 'Só o administrador' }, 403);
+        const L = Array.isArray(body.clientes) ? body.clientes : [];
+        await DB.batch(L.map(c => DB.prepare(`insert into cliente(sensio_id, nome, razao, doc, natureza, ie, email, telefone, endereco, numero, complemento, bairro, cep, cidade, uf, vendedor)
+          values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(sensio_id) do update set nome=excluded.nome, razao=excluded.razao, doc=excluded.doc, natureza=excluded.natureza, ie=excluded.ie, email=excluded.email,
+          telefone=excluded.telefone, endereco=excluded.endereco, numero=excluded.numero, complemento=excluded.complemento, bairro=excluded.bairro, cep=excluded.cep, cidade=excluded.cidade, uf=excluded.uf, vendedor=excluded.vendedor`)
+          .bind(String(c.sensio_id), c.nome || '(sem nome)', c.razao || null, c.doc || null, c.natureza || null, c.ie || null, c.email || null, c.telefone || null, c.endereco || null, c.numero || null, c.complemento || null, c.bairro || null, c.cep || null, c.cidade || null, c.uf || null, c.vendedor || null)));
+        return json(req, { ok: true, n: L.length });
+      }
+      if ((m = p.match(/^\/api\/pedidos\/([^/]+)\/cliente$/)) && req.method === 'POST') {
+        const r = await DB.prepare('update pedido set cliente_id=? where numero=?').bind(Number(body.cliente_id) || null, decodeURIComponent(m[1])).run();
+        return json(req, { ok: true });
+      }
+      if (p === '/api/itens/fiscal/importar' && req.method === 'POST') {
+        if (!usuario.admin) return json(req, { erro: 'Só o administrador' }, 403);
+        const L = Array.isArray(body.itens) ? body.itens : [];
+        await DB.batch(L.map(x => DB.prepare('update item set ncm=coalesce(?, ncm), origem=coalesce(?, origem), unidade=coalesce(?, unidade), peso_liquido=coalesce(?, peso_liquido), peso_bruto=coalesce(?, peso_bruto) where codigo=?')
+          .bind(x.ncm || null, x.origem ?? null, x.unidade || null, Number(x.peso_liquido) || null, Number(x.peso_bruto) || null, x.codigo)));
+        return json(req, { ok: true, n: L.length });
+      }
+      if ((m = p.match(/^\/api\/itens\/(\d+)\/fiscal$/)) && req.method === 'POST') {
+        const ncm = String(body.ncm || '').replace(/\D/g, '');
+        if (ncm && ncm.length !== 8) return json(req, { erro: 'NCM tem 8 números (ex.: 44192000)' }, 400);
+        await DB.prepare('update item set ncm=?, origem=? where id=?').bind(ncm || null, body.origem === '' || body.origem === undefined ? null : Number(body.origem), Number(m[1])).run();
         return json(req, { ok: true });
       }
 
