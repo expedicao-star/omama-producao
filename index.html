@@ -156,7 +156,7 @@ async function iniciar(){
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
 const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
-const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['cad','◫','Contas e categorias']]]];
+const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
 const MENU_PERM=[...MENU,['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 const pode=t=>!!EU&&(EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
@@ -771,7 +771,7 @@ async function tFin(){
     <button class="btn sm" id="fnovo">+ Novo lançamento</button></div><div id="fc" class="vazio" style="margin-top:12px">Carregando…</div>`;
   $('#fnovo').onclick = () => finForm(null);
   await finBase(true);
-  ({resumo:finResumo, cob:finCob, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
+  ({resumo:finResumo, cob:finCob, conc:finConc, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
 }
 const finK = (v,t,c,sub) => `<div class="card" style="text-align:center"><div style="font-size:24px;font-weight:800;color:${c||'var(--amb)'}">${v}</div><div class="mut">${t}</div>${sub?`<div class="mut" style="font-size:12px">${sub}</div>`:''}</div>`;
 async function finResumo(){
@@ -783,13 +783,14 @@ async function finResumo(){
       ${finK(brl(r.receber_7),'A receber · 7 dias','var(--ok)','hoje: '+brl(r.receber_hoje))}
       ${finK(brl(r.pagar_7),'A pagar · 7 dias','var(--bad)','hoje: '+brl(r.pagar_hoje))}
       ${finK(brl(r.recebido_mes),'Recebido no mês','var(--ok)','falta receber: '+brl(r.receber_mes))}
-      ${finK(brl(r.pago_mes),'Pago no mês','var(--bad)','falta pagar: '+brl(r.pagar_mes))}</div>
+      ${finK(brl(r.pago_mes),'Pago no mês','var(--bad)','falta pagar: '+brl(r.pagar_mes))}${r.a_aprovar?`<div class="card" style="text-align:center;cursor:pointer;border-color:#e07b2a" id="iraprov"><div style="font-size:24px;font-weight:800;color:#e07b2a">${r.a_aprovar}</div><div class="mut">pagamento(s) aguardando aprovação</div></div>`:''}</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr));margin-top:10px">
       <div class="card"><h3 style="margin-top:0">Contas</h3><table>${r.contas.filter(c=>c.ativo).map(c=>`<tr><td>${esc(c.nome)}</td><td class="n ${c.saldo<0?'bad':''}"><b>${brl(c.saldo)}</b></td></tr>`).join('')}</table></div>
       <div class="card"><h3 style="margin-top:0">Próximos 7 dias</h3>${r.proximos.length?`<table>${r.proximos.map(x=>`<tr data-l="${x.id}" style="cursor:pointer"><td>${brData(x.vencimento)}</td><td><span class="${FIN_TIPO[x.tipo][1]}">${FIN_TIPO[x.tipo][0]}</span></td><td>${esc(x.descricao)}<br><span class="mut">${esc(x.pessoa||'')}</span></td><td class="n">${brl(x.aberto)}</td></tr>`).join('')}</table>`:'<div class="mut">Nada vencendo.</div>'}</div></div>
     <div class="card" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">A receber vencido · pra cobrar (${r.vencidosR.length})</h3><button class="btn sec sm" id="ircob">Abrir cobrança</button></div>${r.vencidosR.length?`<table><tr><th>Venceu</th><th class="n">Dias</th><th>Cliente</th><th>Descrição</th><th class="n">Em aberto</th><th></th></tr>${r.vencidosR.map(x=>`<tr><td>${brData(x.vencimento)}</td><td class="n ${x.dias>60?'bad':x.dias>30?'midc':''}"><b>${x.dias}</b></td><td>${esc(x.pessoa||'')}</td><td>${esc(x.descricao)}</td><td class="n"><b>${brl(x.aberto)}</b></td><td><button class="btn sec sm" data-q="${x.id}">Recebeu</button></td></tr>`).join('')}</table>`:'<div class="mut">Nenhum cliente atrasado.</div>'}</div>`;
   $('#fc').querySelectorAll('[data-l]').forEach(t=>t.onclick=()=>finAbrir(+t.dataset.l));
   $('#fc').querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>finAbrir(+b.dataset.q,true));
+  if($('#iraprov')) $('#iraprov').onclick=()=>{ S.fsub='lanc'; ls.set('fsub','lanc'); S.ff=Object.assign(S.ff||{campo:'vencimento',de:'',ate:'',q:'',conta_id:'',categoria_id:'',centro_id:''},{tipo:'P',status:'aprovar'}); menu(); render(); };
   if($('#ircob')) $('#ircob').onclick=()=>{ S.fsub='cob'; ls.set('fsub','cob'); menu(); render(); };
 }
 async function finLanc(){
@@ -797,7 +798,7 @@ async function finLanc(){
   const opt = (l,v,vazio) => `<option value="">${vazio}</option>`+l.map(x=>`<option value="${x.id}" ${String(v)===String(x.id)?'selected':''}>${esc(x.nome)}${x.tipo&&x.tipo.length===1?' ('+(x.tipo==='R'?'receita':'despesa')+')':''}</option>`).join('');
   $('#fc').className='';
   $('#fc').innerHTML = `<div class="card"><div class="row">${[['','Todos'],['P','A pagar'],['R','A receber'],['T','Transferências']].map(([k,n])=>`<button class="btn ${F.tipo===k?'':'sec'} sm" data-ft="${k}">${n}</button>`).join('')}
-      <span style="width:12px"></span>${[['aberto','Em aberto'],['vencido','Vencidos'],['quitado','Quitados'],['todos','Todos'],['cancelado','Cancelados']].map(([k,n])=>`<button class="btn ${F.status===k?'':'sec'} sm" data-fst="${k}">${n}</button>`).join('')}</div>
+      <span style="width:12px"></span>${[['aberto','Em aberto'],['vencido','Vencidos'],['aprovar','A aprovar'],['quitado','Quitados'],['todos','Todos'],['cancelado','Cancelados']].map(([k,n])=>`<button class="btn ${F.status===k?'':'sec'} sm" data-fst="${k}">${n}</button>`).join('')}</div>
     <div class="row" style="margin-top:8px"><select id="fcampo"><option value="vencimento">Vencimento</option><option value="quitacao">Quitação</option><option value="competencia">Competência</option></select>
       de <input type="date" id="fde" value="${F.de}"> até <input type="date" id="fate" value="${F.ate}">
       <select id="fconta">${opt(FB.contas,F.conta_id,'Todas as contas')}</select><select id="fcat">${opt(FB.categorias,F.categoria_id,'Todas as categorias')}</select><select id="fcen">${opt(FB.centros,F.centro_id,'Todos os centros')}</select>
@@ -821,12 +822,12 @@ async function finLanc(){
     ${r.lista.map(x=>`<tr data-l="${x.id}" style="cursor:pointer"><td>${brData(x.vencimento)}${x.parcela?`<br><span class="mut">${esc(x.parcela)}</span>`:''}</td><td><span class="${FIN_TIPO[x.tipo][1]}">${FIN_TIPO[x.tipo][0]}</span></td>
       <td><b>${esc(x.descricao)}</b>${x.pessoa?`<br><span class="mut">${esc(x.pessoa)}</span>`:''}${x.nf?` <span class="mut">· NF ${esc(x.nf)}</span>`:''}</td><td>${esc(x.categoria||'')}${x.centro?`<br><span class="mut">${esc(x.centro)}</span>`:''}</td>
       <td>${esc(x.conta||'')}${x.conta_destino?' → '+esc(x.conta_destino):''}</td><td class="n">${brl(x.valor)}</td><td class="n">${x.status==='aberto'?'<b>'+brl(x.aberto)+'</b>':'–'}</td>
-      <td>${x.status==='cancelado'?'<span class="tag t-pendente">Cancelado</span>':x.status==='quitado'?`<span class="tag t-produzindo">Quitado</span><br><span class="mut">${brData(x.quitacao)}</span>`:x.vencido?'<span class="tag" style="background:var(--bad);color:#fff">Vencido</span>':x.pago>0?'<span class="tag t-pausado">Parcial</span>':'<span class="tag t-pausado">Em aberto</span>'}</td>
-      <td>${x.status==='aberto'&&x.tipo!=='T'?`<button class="btn sec sm" data-q="${x.id}">${x.tipo==='R'?'Recebeu':'Pagou'}</button>`:''}</td></tr>`).join('')}</table>`:'<div class="vazio">Nenhum lançamento com esse filtro.</div>'}</div>`;
+      <td>${x.status==='cancelado'?'<span class="tag t-pendente">Cancelado</span>':x.status==='quitado'?`<span class="tag t-produzindo">Quitado</span><br><span class="mut">${brData(x.quitacao)}</span>`:x.tipo==='P'&&!x.aprovado?'<span class="tag" style="background:#e07b2a;color:#fff">A aprovar</span>':x.vencido?'<span class="tag" style="background:var(--bad);color:#fff">Vencido</span>':x.pago>0?'<span class="tag t-pausado">Parcial</span>':'<span class="tag t-pausado">Em aberto</span>'}</td>
+      <td>${x.status==='aberto'&&x.tipo!=='T'&&!(x.tipo==='P'&&!x.aprovado)?`<button class="btn sec sm" data-q="${x.id}">${x.tipo==='R'?'Recebeu':'Pagou'}</button>`:''}${x.anexos?` <span title="comprovante">📎${x.anexos>1?x.anexos:''}</span>`:''}</td></tr>`).join('')}</table>`:'<div class="vazio">Nenhum lançamento com esse filtro.</div>'}</div>`;
   $('#flist').querySelectorAll('[data-q]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); finAbrir(+b.dataset.q,true); });
   $('#flist').querySelectorAll('[data-l]').forEach(t=>t.onclick=()=>finAbrir(+t.dataset.l));
 }
-const finRecarrega = () => ({resumo:finResumo, cob:finCob, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
+const finRecarrega = () => ({resumo:finResumo, cob:finCob, conc:finConc, lanc:finLanc, fluxo:finFluxo, dre:finDre, cad:finCad})[S.fsub]();
 const finAbrir = tenta(async (id, quitar) => { const l = await api('/api/fin/lancamentos/'+id); if (quitar) return finQuitar(l); finForm(l); });
 function finQuitar(l){
   modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${l.tipo==='R'?'Recebimento':'Pagamento'}</h2><button class="btn sec sm" id="mx">Fechar</button></div>
@@ -834,15 +835,16 @@ function finQuitar(l){
     <div class="grid" style="grid-template-columns:1fr 1fr 1fr"><label>Valor<input id="qv" type="number" step="0.01" value="${(l.valor-l.pago).toFixed(2)}" style="width:100%"></label>
     <label>Data<input id="qd" type="date" value="${FB.hoje}" style="width:100%"></label>
     <label>Conta<select id="qc" style="width:100%">${FB.contas.filter(c=>c.ativo||c.id===l.conta_id).map(c=>`<option value="${c.id}" ${c.id===l.conta_id?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></label></div>
+    <label style="display:block;margin-top:6px">Comprovante (opcional) <input type="file" id="qf" accept="image/*,application/pdf"></label>
     <p class="mut">Pra pagamento parcial, diminua o valor: o resto continua em aberto.</p><button class="btn ok" id="qok">Confirmar</button>`);
   $('#mx').onclick=()=>modal('');
-  $('#qok').onclick=tenta(async()=>{ await api(`/api/fin/lancamentos/${l.id}/quitar`,{valor:$('#qv').value,data:$('#qd').value,conta_id:$('#qc').value}); toast('✓ Baixa feita'); modal(''); FB=null; await finBase(true); finRecarrega(); });
+  $('#qok').onclick=tenta(async()=>{ await api(`/api/fin/lancamentos/${l.id}/quitar`,{valor:$('#qv').value,data:$('#qd').value,conta_id:$('#qc').value}); const qf=$('#qf').files[0]; let av='✓ Baixa feita', er=0; if(qf){ try{ await anexarArquivo(l.id,qf); av='✓ Baixa feita com comprovante'; }catch(e){ av='Baixa feita, mas o comprovante não foi: '+e.message; er=1; } } toast(av,er); modal(''); FB=null; await finBase(true); finRecarrega(); });
 }
 function finForm(l){
   const novo=!l, t0=l?l.tipo:(S.ff&&S.ff.tipo)||'P';
   const sel=(id,lista,v,vazio)=>`<select id="${id}" style="width:100%"><option value="">${vazio}</option>${lista.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.nome)}</option>`).join('')}</select>`;
   modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${novo?'Novo lançamento':'Lançamento'}${l&&l.origem==='sensio'?' <span class="mut" style="font-size:13px">(veio do Sensio)</span>':''}</h2><button class="btn sec sm" id="mx">Fechar</button></div>
-    ${l?`<p class="mut">${l.status==='cancelado'?'CANCELADO':l.status==='quitado'?'Quitado em '+brData(l.quitacao):l.pago>0?'Parcial: pago '+brl(l.pago)+' de '+brl(l.valor):'Em aberto'}</p>`:''}
+    ${l?`<p class="mut">${l.status==='cancelado'?'CANCELADO':l.status==='quitado'?'Quitado em '+brData(l.quitacao):l.pago>0?'Parcial: pago '+brl(l.pago)+' de '+brl(l.valor):'Em aberto'}${l.tipo==='P'&&l.status==='aberto'&&!l.aprovado?' · <b style="color:#e07b2a">aguardando aprovação de um administrador</b>':''}</p>`:''}
     <div class="row" style="margin:8px 0">${novo?[['P','A pagar'],['R','A receber'],['T','Transferência']].map(([k,n])=>`<button class="btn ${t0===k?'':'sec'} sm" data-tp="${k}">${n}</button>`).join(''):`<b class="${FIN_TIPO[t0][1]}">${FIN_TIPO[t0][0]}</b>`}</div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <label>Descrição<input id="ld" value="${esc(l?l.descricao:'')}" style="width:100%"></label>
@@ -860,9 +862,11 @@ function finForm(l){
       ${novo?`<label class="nT">Parcelas<input id="lpar" type="number" min="1" max="120" value="1" style="width:100%"></label>`:''}
     </div>
     <label>Observação<input id="lobs" value="${esc(l?l.obs||'':'')}" style="width:100%"></label>
+    ${l?'<div style="margin-top:10px"><div class="mut">Comprovantes</div><div id="lanx" class="mut">Carregando…</div></div>':''}
     ${novo?`<div class="nT" style="margin-top:8px"><label><input type="checkbox" id="lpg"> Já foi ${t0==='R'?'recebido':'pago'} (1ª parcela)</label> <input type="date" id="lpgd" value="${FB.hoje}"></div>`:''}
     <br><div class="row"><button class="btn" id="lok">${novo?'Salvar':'Salvar alterações'}</button>
-      ${l&&l.status==='aberto'&&l.tipo!=='T'?`<button class="btn ok" id="lq">${l.tipo==='R'?'Recebeu':'Pagou'}</button>`:''}
+      ${l&&l.tipo==='P'&&l.status==='aberto'&&!l.aprovado&&EU&&EU.admin?'<button class="btn ok" id="lapr">Aprovar pagamento</button>':''}
+      ${l&&l.status==='aberto'&&l.tipo!=='T'&&!(l.tipo==='P'&&!l.aprovado)?`<button class="btn ok" id="lq">${l.tipo==='R'?'Recebeu':'Pagou'}</button>`:''}
       ${l&&l.pago>0&&l.tipo!=='T'&&l.status!=='cancelado'?'<button class="btn sec" id="les">Estornar baixa</button>':''}
       ${l&&l.status!=='cancelado'?'<button class="btn bad" id="lcan">Cancelar lançamento</button>':''}${l&&l.status==='cancelado'?'<button class="btn sec" id="lre">Reativar</button>':''}</div>`);
   let tipo=t0;
@@ -878,6 +882,8 @@ function finForm(l){
     await api('/api/fin/lancamentos/'+l.id,b); depois('✓ Salvo');
   });
   if($('#lq')) $('#lq').onclick=()=>finQuitar(l);
+  if($('#lanx')) finAnexos($('#lanx'),l.id);
+  if($('#lapr')) $('#lapr').onclick=tenta(async()=>{ await api(`/api/fin/lancamentos/${l.id}/aprovar`,{}); depois('✓ Pagamento aprovado'); });
   if($('#les')) $('#les').onclick=tenta(async()=>{ if(!confirm('Desfazer a baixa? O lançamento volta pra em aberto.')) return; await api(`/api/fin/lancamentos/${l.id}/estornar`,{}); depois('Baixa desfeita'); });
   if($('#lcan')) $('#lcan').onclick=tenta(async()=>{ if(!confirm('Cancelar esse lançamento? Ele sai das contas e dos relatórios (dá pra reativar depois).')) return; await api(`/api/fin/lancamentos/${l.id}/cancelar`,{}); depois('Lançamento cancelado'); });
   if($('#lre')) $('#lre').onclick=tenta(async()=>{ await api(`/api/fin/lancamentos/${l.id}/reativar`,{}); depois('Reativado'); });
@@ -937,6 +943,73 @@ function finCad(){
   };
   $('#fc').querySelectorAll('[data-nv]').forEach(b=>b.onclick=()=>ed(b.dataset.nv));
   $('#fc').querySelectorAll('[data-e]').forEach(t=>t.onclick=()=>ed(t.dataset.e,FB[t.dataset.e].find(x=>x.id===+t.dataset.id)));
+}
+// ===== CONCILIAÇÃO: extrato do banco (arquivo OFX) × lançamentos
+function lerOFX(txt){
+  const g=(b,t)=>((b.match(new RegExp('<'+t+'>([^<\\r\\n]*)','i'))||[])[1]||'').trim(), dt=s=>s?s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8):null;
+  const T=[...txt.matchAll(/<STMTTRN>([\s\S]*?)(?=<\/STMTTRN>|<STMTTRN>|<\/BANKTRANLIST>)/gi)].map(m=>{ const b=m[1]; return {fitid:g(b,'FITID'),data:dt(g(b,'DTPOSTED')),valor:parseFloat(g(b,'TRNAMT').replace(',','.')),descricao:[g(b,'NAME'),g(b,'MEMO')].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(' · ')}; }).filter(t=>t.data&&t.valor);
+  const lb=(txt.match(/<LEDGERBAL>([\s\S]*?)(<\/LEDGERBAL>|<AVAILBAL>|<\/STMTRS>)/i)||[])[1]||'';
+  return {transacoes:T, saldo:lb?parseFloat(g(lb,'BALAMT').replace(',','.')):null, saldo_data:lb?dt(g(lb,'DTASOF')):null};
+}
+async function finConc(){
+  S.cconta = S.cconta || (FB.contas.find(c=>c.ativo)||{}).id; S.cst = S.cst || 'pendente';
+  const r = await api(`/api/fin/extrato?conta_id=${S.cconta}&status=${S.cst}`), c=r.conta||{}, n=r.contagem||{};
+  $('#fc').className='';
+  $('#fc').innerHTML=`<div class="card"><div class="row"><b>Conta</b><select id="cco">${FB.contas.filter(x=>x.ativo).map(x=>`<option value="${x.id}" ${x.id===S.cconta?'selected':''}>${esc(x.nome)}</option>`).join('')}</select>
+      <label class="btn sm" style="cursor:pointer">Importar extrato (OFX)<input type="file" id="cofx" accept=".ofx,.OFX" style="display:none"></label>
+      <span class="mut">No site/app do banco: Extrato → exportar/salvar como <b>OFX</b> (Money). Pode importar o mesmo período de novo: não duplica.</span></div></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(210px,1fr));margin:10px 0">
+      ${finK(brl(c.saldo),'Saldo no sistema',c.saldo<0?'var(--bad)':'var(--ok)')}
+      ${c.extrato_data?finK(brl(c.extrato_saldo),'Saldo no extrato em '+brData(c.extrato_data),'var(--amb)'):''}
+      ${c.extrato_data?finK(brl((c.saldo||0)-(c.extrato_saldo||0)),'Diferença',Math.abs((c.saldo||0)-(c.extrato_saldo||0))<0.01?'var(--ok)':'var(--bad)','sistema − extrato (se o extrato for de hoje)'):''}</div>
+    <div class="row">${[['pendente','A conciliar'],['conciliado','Conciliados'],['ignorado','Ignorados']].map(([k,t])=>`<button class="btn ${S.cst===k?'':'sec'} sm" data-cs="${k}">${t} (${n[k]||0})</button>`).join('')}</div>
+    <div class="card" style="margin-top:10px;overflow-x:auto">${r.lista.length?`<table><tr><th>Data</th><th>No extrato</th><th class="n">Valor</th><th>${S.cst==='pendente'?'O que é?':'Lançamento'}</th></tr>
+    ${r.lista.map(e=>`<tr><td>${brData(e.data)}</td><td>${esc(e.descricao||'')}</td><td class="n ${e.valor<0?'bad':'ok'}"><b>${brl(e.valor)}</b></td><td>
+      ${S.cst==='pendente'?`${(e.sugestoes||[]).map(s=>`<button class="btn ok sm" style="margin:2px" data-con="${e.id}" data-l="${s.id}">É este: ${esc(s.descricao)}${s.pessoa?' · '+esc(s.pessoa):''} (venc. ${brData(s.vencimento)})</button>`).join('')}
+        <button class="btn sec sm" style="margin:2px" data-cr="${e.id}">Criar lançamento</button><button class="btn sec sm" style="margin:2px" data-bl="${e.id}">Buscar outro</button><button class="btn sec sm" style="margin:2px" data-ig="${e.id}">Ignorar</button>`
+        :`${e.lancamento_id?`<span class="link" data-ab="${e.lancamento_id}">${esc(e.l_descricao||'')}${e.l_pessoa?' · '+esc(e.l_pessoa):''}</span> `:''}<button class="btn sec sm" data-df="${e.id}">Desfazer</button>`}</td></tr>`).join('')}</table>`
+      :`<div class="vazio">${S.cst==='pendente'?(n.conciliado||n.ignorado?'Tudo conciliado nessa conta. 🎉':'Importe o extrato OFX dessa conta pra começar.'):'Nada aqui.'}</div>`}</div>
+    <p class="mut">"É este" dá baixa no lançamento em aberto com a data do extrato. Movimentos que já estavam pagos/recebidos aqui com o mesmo valor (até 3 dias de diferença) são conciliados sozinhos na importação.</p>`;
+  $('#cco').onchange=()=>{ S.cconta=+$('#cco').value; finConc(); };
+  $('#fc').querySelectorAll('[data-cs]').forEach(b=>b.onclick=()=>{ S.cst=b.dataset.cs; finConc(); });
+  $('#cofx').onchange=tenta(async ev=>{ const f=ev.target.files[0]; if(!f) return; const buf=await f.arrayBuffer(); let txt=new TextDecoder('utf-8').decode(buf); if(/CHARSET:\s*1252|ENCODING:\s*USASCII/i.test(txt.slice(0,400))||txt.includes('�')) txt=new TextDecoder('windows-1252').decode(buf);
+    const o=lerOFX(txt); if(!o.transacoes.length) throw new Error('Não achei movimentos nesse arquivo. Confira se é OFX.');
+    const res=await api('/api/fin/extrato/importar',{conta_id:S.cconta,...o}); toast(`✓ ${res.novos} movimento(s) novo(s)${res.auto?' · '+res.auto+' conciliado(s) sozinho(s)':''}`); await finBase(true); finConc(); });
+  const ex = id => r.lista.find(e=>e.id===+id);
+  $('#fc').querySelectorAll('[data-con]').forEach(b=>b.onclick=tenta(async()=>{ await api('/api/fin/extrato/'+b.dataset.con,{acao:'conciliar',lancamento_id:+b.dataset.l}); toast('✓ Conciliado e baixado'); await finBase(true); finConc(); }));
+  $('#fc').querySelectorAll('[data-ig]').forEach(b=>b.onclick=tenta(async()=>{ await api('/api/fin/extrato/'+b.dataset.ig,{acao:'ignorar'}); finConc(); }));
+  $('#fc').querySelectorAll('[data-df]').forEach(b=>b.onclick=tenta(async()=>{ if(!confirm('Desfazer a conciliação? (a baixa do lançamento continua; se precisar, estorne no lançamento)')) return; await api('/api/fin/extrato/'+b.dataset.df,{acao:'desfazer'}); finConc(); }));
+  $('#fc').querySelectorAll('[data-ab]').forEach(b=>b.onclick=()=>finAbrir(+b.dataset.ab));
+  $('#fc').querySelectorAll('[data-cr]').forEach(b=>b.onclick=()=>{ const e=ex(b.dataset.cr), tp=e.valor>0?'R':'D';
+    modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Criar lançamento do extrato</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+      <p>${brData(e.data)} · <b class="${e.valor<0?'bad':'ok'}">${brl(e.valor)}</b> · ${esc(e.descricao||'')}</p>
+      <label>Descrição<input id="xd" value="${esc(e.descricao||'')}" style="width:100%"></label><label>${tp==='R'?'Cliente':'Fornecedor / pessoa'}<input id="xp" style="width:100%"></label>
+      <div class="grid" style="grid-template-columns:1fr 1fr"><label>Categoria<select id="xc" style="width:100%"><option value="">—</option>${FB.categorias.filter(c=>c.ativo&&c.tipo===tp).map(c=>`<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></label>
+      <label>Centro de custo<select id="xce" style="width:100%"><option value="">—</option>${FB.centros.filter(c=>c.ativo).map(c=>`<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></label></div>
+      <p class="mut">Vai entrar como ${tp==='R'?'recebido':'pago'} nessa conta, na data do extrato.</p><button class="btn" id="xok">Criar e conciliar</button>`);
+    $('#mx').onclick=()=>modal('');
+    $('#xok').onclick=tenta(async()=>{ await api('/api/fin/extrato/'+e.id,{acao:'criar',descricao:$('#xd').value,pessoa:$('#xp').value,categoria_id:$('#xc').value,centro_id:$('#xce').value}); toast('✓ Criado e conciliado'); modal(''); await finBase(true); finConc(); }); });
+  $('#fc').querySelectorAll('[data-bl]').forEach(b=>b.onclick=tenta(async()=>{ const e=ex(b.dataset.bl), tipo=e.valor>0?'R':'P';
+    const L=(await api(`/api/fin/lancamentos?status=aberto&tipo=${tipo}`)).lista;
+    modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Qual lançamento é?</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+      <p>${brData(e.data)} · <b>${brl(e.valor)}</b> · ${esc(e.descricao||'')}</p><input id="bq" placeholder="Filtrar por descrição, pessoa ou valor" style="width:100%"><div class="card" style="max-height:50vh;overflow:auto;margin-top:8px" id="bl"></div>`);
+    const desenha=()=>{ const s=$('#bq').value.toLowerCase(); $('#bl').innerHTML=`<table>${L.filter(l=>!s||(l.descricao+' '+(l.pessoa||'')+' '+l.aberto).toLowerCase().includes(s)).slice(0,200).map(l=>`<tr><td>${brData(l.vencimento)}</td><td>${esc(l.descricao)}<br><span class="mut">${esc(l.pessoa||'')}</span></td><td class="n">${brl(l.aberto)}</td><td><button class="btn sm" data-pk="${l.id}">É este</button></td></tr>`).join('')}</table>`;
+      $('#bl').querySelectorAll('[data-pk]').forEach(x=>x.onclick=tenta(async()=>{ await api('/api/fin/extrato/'+e.id,{acao:'conciliar',lancamento_id:+x.dataset.pk}); toast('✓ Conciliado'); modal(''); await finBase(true); finConc(); })); };
+    $('#mx').onclick=()=>modal(''); $('#bq').oninput=desenha; desenha(); }));
+}
+// comprovantes de um lançamento (foto ou PDF)
+async function finAnexos(el, lid){
+  const l=await api(`/api/fin/lancamentos/${lid}/anexos`);
+  el.innerHTML=`<div class="row">${l.map(a=>`<span class="chip" style="padding:6px 10px;font-size:13px"><a href="${API()}/api/fin/anexos/${a.id}?t=${encodeURIComponent(ls.get('token')||'')}" target="_blank" rel="noopener">${a.tipo==='application/pdf'?'📄':'🖼'} ${esc(a.nome||'comprovante')}</a> <span class="link bad" data-ax="${a.id}" title="Apagar">✕</span></span>`).join('')||'<span class="mut">Nenhum comprovante.</span>'}
+    <label class="btn sec sm" style="cursor:pointer">+ Anexar (foto ou PDF)<input type="file" accept="image/*,application/pdf" style="display:none"></label></div>`;
+  el.querySelector('input[type=file]').onchange=tenta(async ev=>{ const f=ev.target.files[0]; if(!f) return; await anexarArquivo(lid,f); toast('✓ Comprovante anexado'); finAnexos(el,lid); });
+  el.querySelectorAll('[data-ax]').forEach(x=>x.onclick=tenta(async()=>{ if(!confirm('Apagar esse comprovante?')) return; await api(`/api/fin/anexos/${x.dataset.ax}/apagar`,{}); finAnexos(el,lid); }));
+}
+async function anexarArquivo(lid,f){
+  let dados;
+  if(f.type==='application/pdf'){ if(f.size>1350000) throw new Error('PDF grande demais (máx. ~1,3 MB)'); dados=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(new Error('Não consegui ler o arquivo')); r.readAsDataURL(f); }); }
+  else dados=await reduzFoto(f);
+  await api(`/api/fin/lancamentos/${lid}/anexos`,{nome:f.name,dados});
 }
 // ===== COBRANÇA: vencidos a receber por cliente, faixas de atraso, contatos, promessas e mensagem pronta
 const TIPO_COB = {ligacao:'Ligação',whatsapp:'WhatsApp',email:'E-mail',mensagem:'Mensagem',visita:'Visita',outro:'Outro'};
