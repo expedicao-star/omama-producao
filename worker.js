@@ -94,7 +94,7 @@ async function finDoPedido(DB, ped) {
 }
 // clientes e dados fiscais (v21): criados sozinhos na primeira chamada; alter ignora se já existe
 let basePronta = false;
-const BASE_DDL = ["create table if not exists cliente (id integer primary key, sensio_id text unique, nome text not null, razao text, doc text, natureza text, ie text, email text, telefone text, endereco text, numero text, complemento text, bairro text, cep text, cidade text, uf text, vendedor text, ativo int not null default 1, criado_em text default (datetime('now')))", "create index if not exists cliente_nome on cliente(nome)", "alter table pedido add column cliente_id int", "alter table item add column ncm text", "alter table item add column origem int", "alter table item add column unidade text", "alter table item add column peso_liquido real", "alter table item add column peso_bruto real", "create table if not exists transferencia (id integer primary key, data text not null, de_id int not null, para_id int not null, documento text, transportadora text, obs text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create table if not exists transferencia_item (transferencia_id int not null, item_id int not null, qtd real not null)", "update item set codigo='PROD01001' where codigo='PROD-EXPO-0068'", "update item set codigo='PROD01002' where codigo='PROD-EXPO-0085'", "update item set codigo='PROD01003' where codigo='PROD-EXPO-0088'", "update item set codigo='PROD01004' where codigo='PROD-EXPO-0091'", "update item set codigo='PROD01005' where codigo='PROD-EXPO-0092'", "update item set codigo='PROD01006' where codigo='PROD-EXPO-0093'", "update item set codigo='PROD01007' where codigo='PROD-EXPO-0186'", "update item set codigo='PROD01008' where codigo='PROD-EXPO-0187'", "update item set codigo='PROD01009' where codigo='PROD-EXPO-0188'", "update item set codigo='PROD01010' where codigo='PROD-EXPO-0189'", "update item set codigo='PROD01011' where codigo='PROD-EXPO-0190'", "update item set codigo='PROD01012' where codigo='PROD-EXPO-0191'", "update item set codigo='PROD01013' where codigo='PROD-EXPO-0192'", "update item set codigo='PROD01014' where codigo='PROD-EXPO-0193'", "update item set codigo='PROD01015' where codigo='PROD-EXPO-0194'", "update item set codigo='PROD01016' where codigo='PROD-EXPO-0195'", "update item set codigo='PROD01017' where codigo='PROD-EXPO-0196'", "update item set codigo='PROD01018' where codigo='PROD-EXPO-0197'", "update item set codigo='PROD01019' where codigo='PROD-EXPO-0198'", "update item set codigo='PROD01020' where codigo='PROD-EXPO-0199'", "update item set codigo='PROD01021' where codigo='PROD-EXPO-0200'", "update item set codigo='PROD01022' where codigo='PROD-EXPO-0201'", "update item set ativo=0 where codigo='PROD0068' and not exists (select 1 from estoque_mov m where m.item_id=item.id)"];
+const BASE_DDL = ["create table if not exists cliente (id integer primary key, sensio_id text unique, nome text not null, razao text, doc text, natureza text, ie text, email text, telefone text, endereco text, numero text, complemento text, bairro text, cep text, cidade text, uf text, vendedor text, ativo int not null default 1, criado_em text default (datetime('now')))", "create index if not exists cliente_nome on cliente(nome)", "alter table pedido add column cliente_id int", "alter table item add column ncm text", "alter table item add column origem int", "alter table item add column unidade text", "alter table item add column peso_liquido real", "alter table item add column peso_bruto real", "create table if not exists transferencia (id integer primary key, data text not null, de_id int not null, para_id int not null, documento text, transportadora text, obs text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create table if not exists transferencia_item (transferencia_id int not null, item_id int not null, qtd real not null)", "update item set codigo='PROD01001' where codigo='PROD-EXPO-0068'", "update item set codigo='PROD01002' where codigo='PROD-EXPO-0085'", "update item set codigo='PROD01003' where codigo='PROD-EXPO-0088'", "update item set codigo='PROD01004' where codigo='PROD-EXPO-0091'", "update item set codigo='PROD01005' where codigo='PROD-EXPO-0092'", "update item set codigo='PROD01006' where codigo='PROD-EXPO-0093'", "update item set codigo='PROD01007' where codigo='PROD-EXPO-0186'", "update item set codigo='PROD01008' where codigo='PROD-EXPO-0187'", "update item set codigo='PROD01009' where codigo='PROD-EXPO-0188'", "update item set codigo='PROD01010' where codigo='PROD-EXPO-0189'", "update item set codigo='PROD01011' where codigo='PROD-EXPO-0190'", "update item set codigo='PROD01012' where codigo='PROD-EXPO-0191'", "update item set codigo='PROD01013' where codigo='PROD-EXPO-0192'", "update item set codigo='PROD01014' where codigo='PROD-EXPO-0193'", "update item set codigo='PROD01015' where codigo='PROD-EXPO-0194'", "update item set codigo='PROD01016' where codigo='PROD-EXPO-0195'", "update item set codigo='PROD01017' where codigo='PROD-EXPO-0196'", "update item set codigo='PROD01018' where codigo='PROD-EXPO-0197'", "update item set codigo='PROD01019' where codigo='PROD-EXPO-0198'", "update item set codigo='PROD01020' where codigo='PROD-EXPO-0199'", "update item set codigo='PROD01021' where codigo='PROD-EXPO-0200'", "update item set codigo='PROD01022' where codigo='PROD-EXPO-0201'", "update item set ativo=0 where codigo='PROD0068' and not exists (select 1 from estoque_mov m where m.item_id=item.id)", "alter table op_evento add column usuario_nome text", "alter table estoque_mov add column usuario_nome text", "alter table item add column produz int not null default 1", "alter table item add column estoque_min real", "create table if not exists migracao (nome text primary key)", "update item set produz=0 where tipo='Produto' and (lower(nome) like '%cloche%' or lower(nome) like 'caixa%' or lower(nome) like 'vaso tulipa p %' or lower(nome) like '% mini %' or lower(nome) like 'mini %' or lower(nome) like 'talher%') and not exists (select 1 from migracao where nome='produz1')", "insert or ignore into migracao values('produz1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel G %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo G %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel M %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo M %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Tigela Patauá %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Buriti %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert or ignore into migracao values('comp1')"];
 // financeiro: tabelas criadas sozinhas na primeira chamada (schema_v18.sql + v19)
 let finPronto = false;
 const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)", "create table if not exists fin_cobranca (id integer primary key, pessoa text not null, lancamento_id int, tipo text not null, texto text, promessa_data text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_cob_pessoa on fin_cobranca(pessoa)", "create table if not exists fin_anexo (id integer primary key, lancamento_id int not null, nome text, tipo text not null, dados text not null, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_anexo_l on fin_anexo(lancamento_id)", "create table if not exists fin_extrato (id integer primary key, conta_id int not null, fitid text not null, data text not null, valor real not null, descricao text, lancamento_id int, status text not null default 'pendente', criado_em text default (datetime('now')), unique(conta_id, fitid))"];
@@ -107,7 +107,7 @@ const CHAVES_META = ['canopique xg', 'canopique g', 'canopique m', 'pilao g', 'p
 const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const grupoMeta = tipo => ({ 'torno fase a': 'TA', 'torno fase b': 'TB', 'acabamento': 'AC', 'finalizacao': 'AC', 'marcenaria a': 'MA', 'marcenaria b': 'MB' })[semAcento(tipo)] || null;
 function chaveMeta(nome) {
-  const w = semAcento(nome).split(/\s+/);
+  const w = semAcento(nome).split(/\s+/).map(x => ({ eixo: 'canopique', buriti: 'pataua' })[x] || x); // Eixo = Canopique, Buriti = Patauá (decisão do Emanuel 24/11)
   const fam = ['canopique', 'pilao', 'tulipa', 'sussurro', 'iracema', 'pataua', 'floresta', 'tucupi', 'frondosa', 'serenata', 'jaci', 'curio', 'bem-te-vi', 'juriti', 'carcara', 'tangara'].find(f => w.includes(f));
   if (!fam) return null;
   if (['canopique', 'pilao', 'tulipa', 'sussurro', 'iracema'].includes(fam)) { const t = w.slice(w.indexOf(fam) + 1).find(x => ['xg', 'g', 'm'].includes(x)); return t ? fam + ' ' + t : null; }
@@ -179,10 +179,16 @@ const PERM = [
   [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
-  [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
+  [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/insumos/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
   [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped']],
   [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/fin\//, null, ['fin']],
 ];
+// grava quem lançou: todo insert em op_evento / estoque_mov ganha usuario_nome do login da requisição
+const comQuem = (db, u) => { const nome = u.nome || u.login || 'Sistema';
+  return new Proxy(db, { get(t, k) {
+    if (k === 'prepare') return sql => { const x = /^insert into (op_evento|estoque_mov)\(([^)]*)\) values\(([^)]*)\)$/.exec(sql); if (!x) return t.prepare(sql);
+      const s2 = `insert into ${x[1]}(${x[2]}, usuario_nome) values(${x[3]}, ?)`; return { bind: (...a) => t.prepare(s2).bind(...a, nome) }; };
+    const v = t[k]; return typeof v === 'function' ? v.bind(t) : v; } }); };
 const lePerm = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a.filter(t => TELAS.includes(t)) : []; } catch (e) { return []; } };
 async function novaSessao(DB, u) {
   const tok = crypto.randomUUID() + crypto.randomUUID();
@@ -261,7 +267,7 @@ const app = {
     usuario.permissoes = usuario.admin ? TELAS : lePerm(usuario.permissoes);
     if (!usuario.admin) { const r = PERM.find(([re, met]) => re.test(p) && (!met || met === req.method));
       if (r && !r[2].some(t => usuario.permissoes.includes(t))) return json(req, { erro: 'Você não tem permissão para isso. Fale com o administrador.' }, 403); }
-    const DB = env.DB;
+    const DB = comQuem(env.DB, usuario);
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     let m;
     if (!basePronta) { for (const s of BASE_DDL) await DB.prepare(s).run().catch(() => {}); basePronta = true; }
@@ -712,6 +718,52 @@ const app = {
             coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) saldo_patio
           from item i where (i.nome like ? or i.codigo like ?) ${q('tipo') ? 'and i.tipo=?' : ''} order by i.tipo desc, i.codigo limit 400`,
           DEP_PA, DEP_PA_SP, DEP_PATIO, busca, busca, ...(q('tipo') ? [q('tipo')] : [])));
+      }
+      if ((m = p.match(/^\/api\/itens\/(\d+)\/produz$/)) && req.method === 'POST') {
+        await DB.prepare('update item set produz=? where id=?').bind(body.produz ? 1 : 0, Number(m[1])).run();
+        return json(req, { ok: true });
+      }
+
+      // ---------- insumos (lixa, verniz, cola…): ficam no depósito Insumos; entrada = compra, saída = uso por setor, acerto = contagem
+      if (p === '/api/insumos' && req.method === 'GET') {
+        return json(req, await all(DB, `select i.id, i.codigo, i.nome, i.unidade, i.estoque_min, i.ativo,
+            coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) saldo,
+            (select max(data) from estoque_mov where item_id=i.id and deposito_id=? and qtd<0) ultimo_uso,
+            coalesce((select -sum(qtd) from estoque_mov where item_id=i.id and deposito_id=? and qtd<0 and motivo like 'Uso%' and data>=datetime('now','-30 days')),0) uso_30d
+          from item i where i.tipo='Insumo' order by i.ativo desc, i.nome`, DEP_INSUMOS, DEP_INSUMOS, DEP_INSUMOS));
+      }
+      if (p === '/api/insumos' && req.method === 'POST') {
+        const nome = String(body.nome || '').trim(); if (!nome) return json(req, { erro: 'Coloque o nome do insumo' }, 400);
+        const min = body.estoque_min === '' || body.estoque_min == null ? null : Number(body.estoque_min);
+        if (body.id) {
+          await DB.prepare("update item set nome=?, unidade=?, estoque_min=?, ativo=? where id=? and tipo='Insumo'").bind(nome, body.unidade || null, min, body.ativo === 0 ? 0 : 1, Number(body.id)).run();
+          return json(req, { ok: true, id: Number(body.id) });
+        }
+        if (await one(DB, "select 1 from item where tipo='Insumo' and lower(nome)=lower(?)", nome)) return json(req, { erro: 'Já existe um insumo com esse nome' }, 400);
+        const ult = await one(DB, "select max(cast(substr(codigo,4) as int)) n from item where codigo like 'INS%'");
+        const codigo = 'INS' + String(((ult && ult.n) || 0) + 1).padStart(4, '0');
+        const r = await DB.prepare("insert into item(codigo, nome, tipo, unidade, estoque_min, ativo, produz) values(?,?,'Insumo',?,?,1,0)").bind(codigo, nome, body.unidade || null, min).run();
+        return json(req, { ok: true, id: r.meta.last_row_id, codigo });
+      }
+      if (p === '/api/insumos/mov' && req.method === 'POST') {
+        const it = await one(DB, "select * from item where id=? and tipo='Insumo'", Number(body.item_id)); if (!it) return json(req, { erro: 'Insumo não encontrado' }, 404);
+        const q2 = Number(String(body.qtd ?? '').replace(',', '.')); if (!(q2 >= 0) || (body.tipo !== 'acerto' && !(q2 > 0))) return json(req, { erro: 'Coloque a quantidade' }, 400);
+        const saldo = (await one(DB, 'select coalesce(sum(qtd),0) s from estoque_mov where item_id=? and deposito_id=?', it.id, DEP_INSUMOS)).s;
+        const un = it.unidade ? ' ' + it.unidade : '', obs = body.obs ? ' — ' + body.obs : '';
+        let qtd, motivo;
+        if (body.tipo === 'entrada') { qtd = q2; motivo = 'Compra' + (body.fornecedor ? ' · ' + body.fornecedor : '') + (body.doc ? ' · ' + body.doc : '') + obs; }
+        else if (body.tipo === 'saida') {
+          if (q2 > saldo + 1e-9) return json(req, { erro: `Só tem ${+saldo.toFixed(3)}${un} no estoque. Se a contagem estiver errada, use "Acertar".` }, 400);
+          qtd = -q2; motivo = 'Uso' + (body.setor ? ' · ' + body.setor : '') + obs; }
+        else if (body.tipo === 'acerto') { qtd = q2 - saldo; if (Math.abs(qtd) < 1e-9) return json(req, { ok: true, igual: true }); motivo = `Acerto pela contagem (contado ${q2}${un})` + obs; }
+        else return json(req, { erro: 'Tipo inválido' }, 400);
+        await DB.prepare('insert into estoque_mov(item_id, deposito_id, qtd, motivo) values(?,?,?,?)').bind(it.id, DEP_INSUMOS, qtd, motivo).run();
+        return json(req, { ok: true, saldo: saldo + qtd });
+      }
+      if (p === '/api/insumos/movs') {
+        const id = Number(q('item_id') || 0);
+        return json(req, await all(DB, `select m.id, m.data, m.qtd, m.motivo, m.usuario_nome, i.nome, i.unidade from estoque_mov m join item i on i.id=m.item_id
+          where m.deposito_id=? and i.tipo='Insumo' ${id ? 'and m.item_id=?' : ''} order by m.id desc limit 200`, DEP_INSUMOS, ...(id ? [id] : [])));
       }
       if ((m = p.match(/^\/api\/itens\/(\d+)$/)) && req.method === 'GET') {
         const item = await one(DB, 'select * from item where id=?', Number(m[1]));
