@@ -106,7 +106,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -155,11 +155,11 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
 const MENU_PERM=[...MENU,['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
-const pode=t=>!!EU&&(t==='cli'&&(t='ped'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
+const pode=t=>!!EU&&(t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
   const fin=S.tab==='fin'; document.body.classList.toggle('fin',fin); if(fin&&!S.fsub) S.fsub=ls.get('fsub')||'resumo';
   const mb=$('#modo'); mb.textContent=fin?'FINANCEIRO':'PRODUÇÃO'; mb.classList.toggle('troca',pode('fin'));
@@ -176,7 +176,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -264,7 +264,7 @@ const novaOp = tenta(async (pre={})=>{
     <div class="row"><button class="btn" id="cria" disabled>Criar OP</button><button class="btn sec" id="mx">Cancelar</button></div>`);
   $('#mx').onclick=()=>modal('');
   let item=null, t;
-  const busca = async ()=>{ const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent($('#ib').value)); $('#il').innerHTML=l.filter(i=>i.ativo).slice(0,60).map(i=>`<div class="chip" data-id="${i.id}" data-n="${esc(i.nome)}" data-r="${i.n_rot}">${esc(i.nome)}<small>${i.codigo}${i.n_rot?'':' · sem roteiro'}</small></div>`).join('');
+  const busca = async ()=>{ const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent($('#ib').value)); $('#il').innerHTML=l.filter(i=>i.ativo&&i.produz!==0).slice(0,60).map(i=>`<div class="chip" data-id="${i.id}" data-n="${esc(i.nome)}" data-r="${i.n_rot}">${esc(i.nome)}<small>${i.codigo}${i.n_rot?'':' · sem roteiro'}</small></div>`).join('');
     $('#il').querySelectorAll('[data-id]').forEach(c=>c.onclick=async()=>{ item=+c.dataset.id; $('#il').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c)); const d=await api('/api/itens/'+item); comp=d.composicao;
       $('#sel').innerHTML='Item: <b>'+c.dataset.n+'</b>'+(+c.dataset.r?'':' <span class="bad">(sem roteiro no sistema)</span>')+'<div id="blk"></div>'; confere();
       const pis=await api('/api/pedido-itens?item_id='+item); $('#np').innerHTML='<option value="">Estoque (sem pedido)</option>'+pis.map(x=>`<option value="${x.id}" ${x.id===pre.pedido_item_id?'selected':''}>Pedido ${esc(x.numero)} · ${esc(x.cliente||'')} · falta ${fmt(x.falta)}${x.etapa_v8?' · v.8: '+esc(x.etapa_v8):''}</option>`).join('');
@@ -325,7 +325,7 @@ const abrirOp = tenta(async codigo=>{
     ${o.tipo==='RT'?'':`<h2>Blocos ${o.origem==='sensio'?'(OP veio do Sensio: blocos não baixados aqui)':'(baixados do Pátio na criação da OP)'}</h2><div class="card">${o.materiais.length?`<table><tr><th>Bloco</th><th class="n">Por peça</th><th class="n">Total</th><th class="n">Saldo Pátio agora</th></tr>
       ${o.materiais.map(m=>`<tr><td>${m.codigo} · ${esc(m.nome)}</td><td class="n">${fmt(m.qtd,3)}</td><td class="n">${fmt(m.total,3)}</td><td class="n ${m.saldo_patio<0?'bad':''}">${fmt(m.saldo_patio,3)}</td></tr>`).join('')}</table>`:'<span class="mut">Sem composição cadastrada.</span>'}</div>`}
     <h2>Fotos</h2><div class="card" id="fts">Carregando…</div>
-    <h2>Eventos</h2><div class="card">${o.eventos.map(e=>`<div><span class="mut">${brHora(e.data)}</span> · ${esc(e.texto)}</div>`).join('')}</div>
+    <h2>Eventos</h2><div class="card">${o.eventos.map(e=>`<div><span class="mut">${brHora(e.data)}</span> · ${esc(e.texto)}${e.usuario_nome?` <span class="mut" style="font-size:12px">· lançado por ${esc(e.usuario_nome)}</span>`:''}</div>`).join('')}</div>
     <br><div class="row">${o.status==='finalizada'&&o.tipo!=='RT'?'<button class="btn sm" id="qopb">★ Qualidade das peças</button>':''}<button class="btn mid sm" id="def">Registrar defeito</button>${o.status==='aberta'?`<button class="btn bad sm" id="canc">Cancelar ${o.tipo==='RT'?'RT':'OP'}</button>`:''}</div>`);
   if($('#qopb')) $('#qopb').onclick=()=>abrirQual(o.codigo,()=>abrirOp(codigo));
   $('#def').onclick=()=>registrarDefeito({op_codigo:o.codigo,item_id:o.item_id,item_nome:o.item_nome,depois:()=>abrirOp(codigo)});
@@ -401,23 +401,69 @@ const abrirPedido = tenta(async numero=>{
 async function tItens(){
   app.innerHTML = `<div class="row"><input id="ib" placeholder="Buscar item (nome ou código)" value="${esc(S.bi||'')}" style="flex:1"></div><br><div class="card" id="il">Carregando…</div>`;
   let t; const busca=async()=>{ S.bi=$('#ib').value; const l=await api('/api/itens?q='+encodeURIComponent(S.bi));
-    $('#il').innerHTML=`<table><tr><th>Código</th><th>Nome</th><th>Tipo</th><th class="n">Roteiro</th><th class="n">Manaus</th><th class="n">São Paulo</th><th class="n">Pátio</th></tr>${l.map(i=>`<tr data-id="${i.id}" style="cursor:pointer;${i.ativo?'':'opacity:.5'}"><td>${i.codigo}</td><td>${esc(i.nome)}</td><td class="mut">${i.tipo}</td><td class="n">${i.n_rot||'–'}</td><td class="n">${i.saldo_pa?fmt(i.saldo_pa,0):''}</td><td class="n">${i.saldo_sp?fmt(i.saldo_sp,0):''}</td><td class="n">${i.saldo_patio?fmt(i.saldo_patio,3):''}</td></tr>`).join('')}</table>`;
+    $('#il').innerHTML=`<table><tr><th>Código</th><th>Nome</th><th>Tipo</th><th class="n">Roteiro</th><th class="n">Manaus</th><th class="n">São Paulo</th><th class="n">Pátio</th></tr>${l.map(i=>`<tr data-id="${i.id}" style="cursor:pointer;${i.ativo?'':'opacity:.5'}"><td>${i.codigo}</td><td>${esc(i.nome)}${i.tipo==='Produto'&&i.produz===0?' <span class="mut" style="font-size:11px;border:1px solid var(--mut);border-radius:6px;padding:0 5px">não produz</span>':''}</td><td class="mut">${i.tipo}</td><td class="n">${i.n_rot||'–'}</td><td class="n">${i.saldo_pa?fmt(i.saldo_pa,0):''}</td><td class="n">${i.saldo_sp?fmt(i.saldo_sp,0):''}</td><td class="n">${i.saldo_patio?fmt(i.saldo_patio,3):''}</td></tr>`).join('')}</table>`;
     $('#il').querySelectorAll('[data-id]').forEach(r=>r.onclick=()=>abrirItem(+r.dataset.id)); };
   $('#ib').oninput=()=>{clearTimeout(t);t=setTimeout(busca,300)}; busca();
 }
 const abrirItem = tenta(async id=>{
   const i = await api('/api/itens/'+id); const tot=i.roteiro.filter(r=>!r.espera).reduce((a,r)=>a+r.tempo_min,0);
-  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">${i.codigo} · ${i.tipo}</h2><div style="font-size:20px;font-weight:800">${esc(i.nome)}</div>${i.preco?`<div class="mut">Preço R$ ${fmt(i.preco,2)}</div>`:''}</div><button class="btn sec sm" id="mx">Fechar</button></div>
+  modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">${i.codigo} · ${i.tipo}</h2><div style="font-size:20px;font-weight:800">${esc(i.nome)}</div>${i.preco?`<div class="mut">Preço R$ ${fmt(i.preco,2)}</div>`:''}${i.tipo==='Produto'?`<label style="display:block;margin-top:6px"><input type="checkbox" id="iprod" ${i.produz!==0?'checked':''}> Ainda produzimos <span class="mut">(desmarcado = some da Nova OP; o estoque continua)</span></label>`:''}</div><button class="btn sec sm" id="mx">Fechar</button></div>
     <h2>Dados fiscais</h2><div class="card row" style="justify-content:space-between"><span>NCM <b>${esc(i.ncm||'—')}</b> · Origem <b>${i.origem??'—'}</b>${i.unidade?' · Unidade '+esc(i.unidade):''}</span><button class="btn sec sm" id="incm">Mudar NCM</button></div>
     <h2>Composição</h2><div class="card">${i.composicao.map(c=>`<div>${c.codigo} · ${esc(c.nome)} — <b>${fmt(c.qtd,3)}</b></div>`).join('')||'<span class="mut">Sem composição.</span>'}</div>
     <h2>Roteiro de produção <span class="mut">(toque no tempo para mudar · ${dur(tot)} de mão de obra por peça)</span></h2><div class="card"><table><tr><th>#</th><th>Operação</th><th class="n">Tempo por peça</th></tr>
       ${i.roteiro.map(r=>`<tr><td>${r.ordem}</td><td>${esc(r.nome)}${r.espera?' <span class="mut">(espera)</span>':''}</td><td class="n"><span class="link" data-o="${r.ordem}" data-t="${r.tempo_min}">${fmt(r.tempo_min,0)} min</span></td></tr>`).join('')||'<tr><td colspan=3 class="mut">Sem roteiro.</td></tr>'}</table></div>
     <h2>Estoque</h2><div class="card">${i.estoque.map(e=>`<div>${esc(e.nome)}: <b>${fmt(e.saldo,3)}</b></div>`).join('')||'<span class="mut">Sem saldo.</span>'}</div>`);
   $('#mx').onclick=()=>modal('');
+  if($('#iprod')) $('#iprod').onchange=tenta(async()=>{ await api('/api/itens/'+i.id+'/produz',{produz:$('#iprod').checked?1:0}); toast($('#iprod').checked?'✓ Voltou pra produção':'✓ Marcado como não produz mais'); });
   if($('#incm')) $('#incm').onclick=tenta(async()=>{ const n=prompt('NCM da peça (8 números). A maioria das peças OMAMA é 44192000.', i.ncm||''); if(n===null) return; await api('/api/itens/'+i.id+'/fiscal',{ncm:n,origem:i.origem??0}); toast('✓ NCM salvo'); abrirItem(i.id); });
   document.querySelectorAll('#modal [data-o]').forEach(s=>s.onclick=tenta(async()=>{ const v=prompt('Tempo por peça em minutos:',s.dataset.t); if(v===null) return; const n=parseFloat(v.replace(',','.')); if(!(n>=0)) return toast('Número inválido',1);
     await api(`/api/itens/${id}/roteiro`,{ordem:+s.dataset.o,tempo_min:n}); toast('Tempo atualizado (vale para OPs novas)'); abrirItem(id); }));
 });
+
+// ===== insumos (lixa, verniz, cola…) – depósito Insumos
+async function tInsumos(){
+  app.innerHTML=`<div class="row"><input id="xb" placeholder="Buscar insumo" style="flex:1;min-width:160px"><button class="btn" id="xn">+ Novo insumo</button><button class="btn sec" id="xh">Histórico</button></div><br><div id="xl" class="card vazio">Carregando…</div>`;
+  const l=await api('/api/insumos');
+  const st=i=>!i.ativo?['mut','inativo']:i.estoque_min!=null&&i.saldo<=i.estoque_min?['bad','comprar']:['ok','ok'];
+  const falta=l.filter(i=>i.ativo&&i.estoque_min!=null&&i.saldo<=i.estoque_min);
+  const desenha=()=>{ const s=$('#xb').value.toLowerCase(); const v=l.filter(i=>(i.codigo+' '+i.nome).toLowerCase().includes(s));
+    $('#xl').className='card'; $('#xl').innerHTML=(l.length?`${falta.length?`<p class="bad" style="margin-top:0"><b>⚠ ${falta.length} insumo(s) no mínimo ou abaixo:</b> ${falta.map(i=>esc(i.nome)).join(', ')}</p>`:''}
+      <table><tr><th>Insumo</th><th class="n">Tem</th><th class="n">Mínimo</th><th class="n">Uso 30 dias</th><th></th><th></th></tr>
+      ${v.map(i=>{const [c,t]=st(i); return `<tr style="${i.ativo?'':'opacity:.5'}"><td><span class="link" data-ed="${i.id}">${esc(i.nome)}</span><br><span class="mut" style="font-size:12px">${i.codigo}${i.ultimo_uso?' · último uso '+brHora(i.ultimo_uso):''}</span></td>
+        <td class="n"><b>${fmt(i.saldo,2)}</b> ${esc(i.unidade||'')}</td><td class="n">${i.estoque_min!=null?fmt(i.estoque_min,2):'–'}</td><td class="n">${i.uso_30d?fmt(i.uso_30d,2):'–'}</td><td class="${c}"><b>${t}</b></td>
+        <td class="n" style="white-space:nowrap"><button class="btn sm" data-m="entrada" data-i="${i.id}">+ Entrada</button> <button class="btn mid sm" data-m="saida" data-i="${i.id}">− Uso</button> <button class="btn sec sm" data-m="acerto" data-i="${i.id}">Acertar</button> <button class="btn sec sm" data-h="${i.id}">☰</button></td></tr>`}).join('')}</table>`
+      :'<div class="vazio">Nenhum insumo cadastrado ainda. Clique em "+ Novo insumo" (ex.: Lixa 120, Verniz, Cola).</div>');
+    $('#xl').querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>editarInsumo(l.find(i=>i.id==b.dataset.ed)));
+    $('#xl').querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>movInsumo(l.find(i=>i.id==b.dataset.i),b.dataset.m));
+    $('#xl').querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>histInsumo(+b.dataset.h)); };
+  $('#xb').oninput=desenha; $('#xn').onclick=()=>editarInsumo({}); $('#xh').onclick=()=>histInsumo(0); desenha();
+}
+const editarInsumo=x=>{
+  modal(`<h2 style="margin-top:0">${x.id?'Editar insumo':'Novo insumo'}</h2>
+    <label>Nome<input id="yn" value="${esc(x.nome||'')}" placeholder="Ex.: Lixa 120" style="width:100%"></label>
+    <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:8px"><label>Unidade<input id="yu" list="yus" value="${esc(x.unidade||'')}" placeholder="un, L, kg, folha…" style="width:100%"><datalist id="yus"><option value="un"><option value="folha"><option value="L"><option value="ml"><option value="kg"><option value="g"><option value="m"><option value="rolo"><option value="lata"><option value="caixa"></datalist></label>
+    <label>Estoque mínimo <span class="mut">(avisa pra comprar)</span><input id="ym" type="number" step="any" min="0" value="${x.estoque_min??''}" style="width:100%"></label></div>
+    ${x.id?`<label style="display:block;margin-top:8px"><input type="checkbox" id="ya" ${x.ativo?'checked':''}> Ativo</label>`:''}<br>
+    <div class="row"><button class="btn" id="yok">Salvar</button><button class="btn sec" id="mx">Cancelar</button></div>`);
+  $('#mx').onclick=()=>modal('');
+  $('#yok').onclick=tenta(async()=>{ await api('/api/insumos',{id:x.id,nome:$('#yn').value,unidade:$('#yu').value.trim(),estoque_min:$('#ym').value,ativo:x.id?($('#ya').checked?1:0):1}); toast('✓ Insumo salvo'); modal(''); tInsumos(); });
+};
+const movInsumo=(x,tipo)=>{
+  const tit={entrada:'Entrada (compra)',saida:'Uso (saída)',acerto:'Acertar pela contagem'}[tipo], un=esc(x.unidade||'');
+  modal(`<h2 style="margin-top:0">${tit}</h2><div style="font-size:18px;font-weight:800">${esc(x.nome)}</div><p class="mut">Tem hoje: <b>${fmt(x.saldo,2)} ${un}</b></p>
+    <label>${tipo==='acerto'?'Quanto tem de verdade (contado)':'Quantidade'} ${un?'('+un+')':''}<input id="zq" type="number" step="any" min="0" style="width:100%"></label>
+    ${tipo==='entrada'?`<div class="grid" style="grid-template-columns:1fr 1fr;margin-top:8px"><label>Fornecedor<input id="zf" style="width:100%"></label><label>NF / pedido<input id="zd" style="width:100%"></label></div>`:''}
+    ${tipo==='saida'?`<label style="display:block;margin-top:8px">Setor<select id="zs" style="width:100%"><option value="">—</option>${B.setores.map(s=>`<option>${esc(s.nome)}</option>`).join('')}</select></label>`:''}
+    <label style="display:block;margin-top:8px">Observação<input id="zo" style="width:100%"></label><br>
+    <div class="row"><button class="btn" id="zok">Salvar</button><button class="btn sec" id="mx">Cancelar</button></div>`);
+  $('#mx').onclick=()=>modal(''); setTimeout(()=>$('#zq')&&$('#zq').focus(),50);
+  $('#zok').onclick=tenta(async()=>{ const r=await api('/api/insumos/mov',{item_id:x.id,tipo,qtd:$('#zq').value,fornecedor:$('#zf')?.value,doc:$('#zd')?.value,setor:$('#zs')?.value,obs:$('#zo').value});
+    toast(r.igual?'Contagem igual, nada mudou':`✓ Salvo · agora tem ${fmt(r.saldo,2)} ${x.unidade||''}`); modal(''); tInsumos(); });
+};
+const histInsumo=tenta(async id=>{ const l=await api('/api/insumos/movs'+(id?'?item_id='+id:''));
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Histórico de insumos</h2><button class="btn sec sm" id="mx">Fechar</button></div>
+    <div class="card" style="max-height:65vh;overflow:auto;margin-top:8px">${l.length?`<table><tr><th>Quando</th><th>Insumo</th><th class="n">Qtd</th><th>O quê</th><th>Quem</th></tr>${l.map(m=>`<tr><td class="mut">${brHora(m.data)}</td><td>${esc(m.nome)}</td><td class="n ${m.qtd<0?'bad':'ok'}">${m.qtd>0?'+':''}${fmt(m.qtd,2)} ${esc(m.unidade||'')}</td><td>${esc(m.motivo||'')}</td><td class="mut">${esc(m.usuario_nome||'—')}</td></tr>`).join('')}</table>`:'<div class="vazio">Nada ainda.</div>'}</div>`);
+  $('#mx').onclick=()=>modal(''); });
 
 // ===== estoque
 // ===== controle de qualidade (A/B/C/D por peça; só registro)
@@ -515,8 +561,8 @@ const movimentar = tenta(async()=>{
     await api('/api/estoque/mov',{item_id:item,deposito_id:+$('#md').value,qtd:q*+$('#mt').value,motivo:$('#mm').value}); toast('Movimentação salva'); modal(''); tEstoque(); });
 });
 const historico = tenta(async()=>{ const l=await api('/api/estoque/movs');
-  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Últimas movimentações</h2><button class="btn sec sm" id="mx">Fechar</button></div><br><div class="card"><table><tr><th>Quando</th><th>Item</th><th>Depósito</th><th class="n">Qtd</th><th>Motivo</th></tr>
-    ${l.map(m=>`<tr><td class="mut">${brHora(m.data)}</td><td>${m.codigo} · ${esc(m.nome)}</td><td>${esc(m.deposito)}</td><td class="n ${m.qtd<0?'bad':'ok'}">${fmt(m.qtd,3)}</td><td class="mut">${esc(m.motivo||'')}</td></tr>`).join('')}</table></div>`);
+  modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Últimas movimentações</h2><button class="btn sec sm" id="mx">Fechar</button></div><br><div class="card"><table><tr><th>Quando</th><th>Item</th><th>Depósito</th><th class="n">Qtd</th><th>Motivo</th><th>Quem</th></tr>
+    ${l.map(m=>`<tr><td class="mut">${brHora(m.data)}</td><td>${m.codigo} · ${esc(m.nome)}</td><td>${esc(m.deposito)}</td><td class="n ${m.qtd<0?'bad':'ok'}">${fmt(m.qtd,3)}</td><td class="mut">${esc(m.motivo||'')}</td><td class="mut">${esc(m.usuario_nome||'—')}</td></tr>`).join('')}</table></div>`);
   $('#mx').onclick=()=>modal(''); });
 
 // ===== inventário
