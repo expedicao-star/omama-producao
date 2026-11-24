@@ -401,7 +401,7 @@ const abrirPedido = tenta(async numero=>{
 async function tItens(){
   app.innerHTML = `<div class="row"><input id="ib" placeholder="Buscar item (nome ou código)" value="${esc(S.bi||'')}" style="flex:1"></div><br><div class="card" id="il">Carregando…</div>`;
   let t; const busca=async()=>{ S.bi=$('#ib').value; const l=await api('/api/itens?q='+encodeURIComponent(S.bi));
-    $('#il').innerHTML=`<table><tr><th>Código</th><th>Nome</th><th>Tipo</th><th class="n">Roteiro</th><th class="n">P.A.</th><th class="n">Pátio</th></tr>${l.map(i=>`<tr data-id="${i.id}" style="cursor:pointer;${i.ativo?'':'opacity:.5'}"><td>${i.codigo}</td><td>${esc(i.nome)}</td><td class="mut">${i.tipo}</td><td class="n">${i.n_rot||'–'}</td><td class="n">${i.saldo_pa?fmt(i.saldo_pa,3):''}</td><td class="n">${i.saldo_patio?fmt(i.saldo_patio,3):''}</td></tr>`).join('')}</table>`;
+    $('#il').innerHTML=`<table><tr><th>Código</th><th>Nome</th><th>Tipo</th><th class="n">Roteiro</th><th class="n">Manaus</th><th class="n">São Paulo</th><th class="n">Pátio</th></tr>${l.map(i=>`<tr data-id="${i.id}" style="cursor:pointer;${i.ativo?'':'opacity:.5'}"><td>${i.codigo}</td><td>${esc(i.nome)}</td><td class="mut">${i.tipo}</td><td class="n">${i.n_rot||'–'}</td><td class="n">${i.saldo_pa?fmt(i.saldo_pa,0):''}</td><td class="n">${i.saldo_sp?fmt(i.saldo_sp,0):''}</td><td class="n">${i.saldo_patio?fmt(i.saldo_patio,3):''}</td></tr>`).join('')}</table>`;
     $('#il').querySelectorAll('[data-id]').forEach(r=>r.onclick=()=>abrirItem(+r.dataset.id)); };
   $('#ib').oninput=()=>{clearTimeout(t);t=setTimeout(busca,300)}; busca();
 }
