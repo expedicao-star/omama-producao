@@ -1,7 +1,7 @@
 // OMAMA ERP (antes OMAMA Produção) v2 – servidor (Cloudflare Worker + D1 "DB"), no modelo do Sensio.
 // Segredo: CODIGO (código de acesso do líder/admin).
 
-const ORIGENS = ['https://expedicao-star.github.io', 'https://erp.omama.design'];
+const ORIGENS = ['https://expedicao-star.github.io', 'https://erp.omama.design', 'https://omama-erp.pages.dev'];
 const cors = (req) => {
   const o = req.headers.get('Origin') || '';
   return {
