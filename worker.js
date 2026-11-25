@@ -113,7 +113,7 @@ const HIST_COLS = {
   etapa: ['sensio_id', 'op_codigo', 'ordem', 'operacao', 'status', 'inicio', 'fim', 'duracao_seg', 'qtd_produzida', 'operadores', 'recurso'],
   evento: ['sensio_id', 'op_codigo', 'data', 'de', 'para', 'usuario'],
   mov: ['sensio_id', 'data', 'item_codigo', 'item_nome', 'item_tipo', 'deposito', 'deposito_id', 'tipo', 'qtd', 'documento', 'cancelado', 'usuario'],
-  venda: ['sensio_id', 'codigo', 'tipo_sensio', 'tipo', 'status', 'cliente', 'data_venda', 'criado_em', 'total', 'pago'],
+  venda: ['sensio_id', 'codigo', 'tipo_sensio', 'tipo', 'status', 'cliente', 'data_venda', 'criado_em', 'total', 'pago', 'data_pagamento'],
   nfe: ['sensio_id', 'numero', 'data', 'status', 'valor', 'cliente', 'venda_sensio_id', 'venda_codigo'],
 };
 const HIST_TAB = { op: 'hist_op', etapa: 'hist_op_etapa', evento: 'hist_op_evento', mov: 'hist_estoque_mov', venda: 'hist_venda', nfe: 'hist_nfe' };
@@ -665,7 +665,7 @@ const app = {
                   l.descricao like 'Pedido ' || v.codigo || ' %' or l.descricao = 'Pedido ' || v.codigo or l.descricao like 'Pedido ' || v.codigo || '-%'
                   or exists (select 1 from hist_nfe n where n.venda_sensio_id=v.sensio_id and n.status='Autorizada' and (l.nf=n.numero or l.descricao like 'NF' || n.numero || '-%' or l.descricao = 'NF' || n.numero or l.descricao like 'NF ' || n.numero || '%'))))
               update hist_venda set data_pagamento=(select max(quitacao) from lv where lv.sensio_id=hist_venda.sensio_id and lv.status='quitado')
-              where not exists (select 1 from lv where lv.sensio_id=hist_venda.sensio_id and lv.status='aberto')`)]).catch(() => {});
+              where data_pagamento is null and not exists (select 1 from lv where lv.sensio_id=hist_venda.sensio_id and lv.status='aberto')`)]).catch(() => {});
         }
         const n = await one(DB, `select count(*) n from ${tab}`);
         return json(req, { ok: true, gravadas: linhas.length, total_na_tabela: n.n });
