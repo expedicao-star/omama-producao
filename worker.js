@@ -1,4 +1,4 @@
-// OMAMA Produção v2 – servidor (Cloudflare Worker + D1 "DB"), no modelo do Sensio.
+// OMAMA ERP (antes OMAMA Produção) v2 – servidor (Cloudflare Worker + D1 "DB"), no modelo do Sensio.
 // Segredo: CODIGO (código de acesso do líder/admin).
 
 const ORIGENS = ['https://expedicao-star.github.io'];
@@ -276,7 +276,7 @@ const app = {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     const url = new URL(req.url), p = url.pathname, q = (k) => url.searchParams.get(k);
-    if (p === '/') return json(req, { ok: true, sistema: 'OMAMA Produção', versao: 2 });
+    if (p === '/') return json(req, { ok: true, sistema: 'OMAMA ERP', versao: 2 });
     if (p.startsWith('/.well-known/')) return new Response('não existe', { status: 404 });
     if (p.startsWith('/mcp/')) return p === '/mcp/' + env.CODIGO ? mcp(req, env) : new Response('não autorizado', { status: 401 });
     if (['/api/auth/estado', '/api/auth/primeiro', '/api/auth/login'].includes(p)) return rotasAbertas(req, env, p);
