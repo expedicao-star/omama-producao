@@ -290,7 +290,17 @@ const app = {
     const DB = comQuem(env.DB, usuario);
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     let m;
-    if (!basePronta) { for (const s of BASE_DDL) await DB.prepare(s).run().catch(() => {}); basePronta = true; }
+    if (!basePronta) {
+      // só roda as 60+ alterações de estrutura quando a lista muda (antes rodava a cada vez que o servidor "acordava", ~4 s)
+      const ver = 'b' + BASE_DDL.length + '-' + BASE_DDL.join('|').length;
+      const atual = await DB.prepare("select v from schema_versao where k='base'").first().catch(() => null);
+      if (!atual || atual.v !== ver) {
+        for (const s of BASE_DDL) await DB.prepare(s).run().catch(() => {});
+        await DB.prepare('create table if not exists schema_versao (k text primary key, v text)').run();
+        await DB.prepare("insert or replace into schema_versao(k, v) values('base', ?)").bind(ver).run();
+      }
+      basePronta = true;
+    }
     try {
       // ---------- usuários
       if (p === '/api/eu') return json(req, usuario);
@@ -1244,7 +1254,16 @@ const app = {
       }
       // ---------- FINANCEIRO (contas, categorias, centros de custo, lançamentos, fluxo de caixa, DRE). Tela 'fin'.
       if (p.startsWith('/api/fin/')) {
-        if (!finPronto) { await DB.batch(FIN_DDL.map(s => DB.prepare(s))); for (const s of FIN_ALTER) await DB.prepare(s).run().catch(() => {}); finPronto = true; }
+        if (!finPronto) {
+          const ver = 'f' + FIN_DDL.length + '-' + FIN_ALTER.length + '-' + (FIN_DDL.join('|') + FIN_ALTER.join('|')).length;
+          const atual = await DB.prepare("select v from schema_versao where k='fin'").first().catch(() => null);
+          if (!atual || atual.v !== ver) {
+            await DB.batch(FIN_DDL.map(s => DB.prepare(s))); for (const s of FIN_ALTER) await DB.prepare(s).run().catch(() => {});
+            await DB.prepare('create table if not exists schema_versao (k text primary key, v text)').run();
+            await DB.prepare("insert or replace into schema_versao(k, v) values('fin', ?)").bind(ver).run();
+          }
+          finPronto = true;
+        }
         const HOJE = "date('now','-4 hours')";
         const num = v => Math.round((Number(v) || 0) * 100) / 100;
         const dataOk = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
