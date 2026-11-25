@@ -661,8 +661,11 @@ const app = {
             DB.prepare(`update pedido set data_faturamento=(select v.data_faturamento from hist_venda v where cast(v.codigo as text)=pedido.numero) where data_faturamento is null`),
             DB.prepare(`update pedido set tipo=(select v.tipo from hist_venda v where cast(v.codigo as text)=pedido.numero and v.tipo is not null) where tipo='cliente' and exists (select 1 from hist_venda v where cast(v.codigo as text)=pedido.numero and v.tipo is not null and v.tipo<>'cliente')`)]);
           await DB.batch([
-            DB.prepare(`update hist_venda set data_pagamento=(select max(l.quitacao) from fin_lancamento l where l.tipo='R' and l.status='quitado' and (l.descricao like 'Pedido ' || hist_venda.codigo || ' %' or l.descricao = 'Pedido ' || hist_venda.codigo or l.descricao like 'Pedido ' || hist_venda.codigo || '-%'))
-              where not exists (select 1 from fin_lancamento l where l.tipo='R' and l.status='aberto' and (l.descricao like 'Pedido ' || hist_venda.codigo || ' %' or l.descricao = 'Pedido ' || hist_venda.codigo or l.descricao like 'Pedido ' || hist_venda.codigo || '-%'))`)]).catch(() => {});
+            DB.prepare(`with lv as (select v.sensio_id, l.status, l.quitacao from hist_venda v join fin_lancamento l on l.tipo='R' and l.status!='cancelado' and (
+                  l.descricao like 'Pedido ' || v.codigo || ' %' or l.descricao = 'Pedido ' || v.codigo or l.descricao like 'Pedido ' || v.codigo || '-%'
+                  or exists (select 1 from hist_nfe n where n.venda_sensio_id=v.sensio_id and n.status='Autorizada' and (l.nf=n.numero or l.descricao like 'NF' || n.numero || '-%' or l.descricao = 'NF' || n.numero or l.descricao like 'NF ' || n.numero || '%'))))
+              update hist_venda set data_pagamento=(select max(quitacao) from lv where lv.sensio_id=hist_venda.sensio_id and lv.status='quitado')
+              where not exists (select 1 from lv where lv.sensio_id=hist_venda.sensio_id and lv.status='aberto')`)]).catch(() => {});
         }
         const n = await one(DB, `select count(*) n from ${tab}`);
         return json(req, { ok: true, gravadas: linhas.length, total_na_tabela: n.n });
