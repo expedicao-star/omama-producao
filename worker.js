@@ -47,7 +47,7 @@ async function syncV8(DB, body) {
     const cliente = String(pv.cliente || '').trim() || null, prazo = dataBR(pv.prazo), pag = dataBR(pv.data_pagamento);
     if (!ex) {
       if (!pendPorPedido[num] || (ORDEM_ST[norm(stt)] || 1) >= 4) continue;
-      st.push(DB.prepare('insert into pedido(numero, cliente, prazo, data_pagamento, status, obs) values(?,?,?,?,?,?)').bind(num, cliente, prazo, pag, stt || 'Em produção', pv.tipo ? 'Tipo: ' + pv.tipo : null));
+      st.push(DB.prepare('insert into pedido(numero, cliente, prazo, data_pagamento, status, obs, tipo) values(?,?,?,?,?,?,?)').bind(num, cliente, prazo, pag, stt || 'Em produção', pv.tipo ? 'Tipo: ' + pv.tipo : null, tipoPedido(pv.tipo)));
       r.pedidos_novos.push(num + ' · ' + (cliente || ''));
     } else {
       const novoSt = (ORDEM_ST[norm(stt)] || 0) > (ORDEM_ST[norm(ex.status)] || 0) ? stt : ex.status;
@@ -94,7 +94,7 @@ async function finDoPedido(DB, ped) {
 }
 // clientes e dados fiscais (v21): criados sozinhos na primeira chamada; alter ignora se já existe
 let basePronta = false;
-const BASE_DDL = ["create table if not exists cliente (id integer primary key, sensio_id text unique, nome text not null, razao text, doc text, natureza text, ie text, email text, telefone text, endereco text, numero text, complemento text, bairro text, cep text, cidade text, uf text, vendedor text, ativo int not null default 1, criado_em text default (datetime('now')))", "create index if not exists cliente_nome on cliente(nome)", "alter table pedido add column cliente_id int", "alter table item add column ncm text", "alter table item add column origem int", "alter table item add column unidade text", "alter table item add column peso_liquido real", "alter table item add column peso_bruto real", "create table if not exists transferencia (id integer primary key, data text not null, de_id int not null, para_id int not null, documento text, transportadora text, obs text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create table if not exists transferencia_item (transferencia_id int not null, item_id int not null, qtd real not null)", "update item set codigo='PROD01001' where codigo='PROD-EXPO-0068'", "update item set codigo='PROD01002' where codigo='PROD-EXPO-0085'", "update item set codigo='PROD01003' where codigo='PROD-EXPO-0088'", "update item set codigo='PROD01004' where codigo='PROD-EXPO-0091'", "update item set codigo='PROD01005' where codigo='PROD-EXPO-0092'", "update item set codigo='PROD01006' where codigo='PROD-EXPO-0093'", "update item set codigo='PROD01007' where codigo='PROD-EXPO-0186'", "update item set codigo='PROD01008' where codigo='PROD-EXPO-0187'", "update item set codigo='PROD01009' where codigo='PROD-EXPO-0188'", "update item set codigo='PROD01010' where codigo='PROD-EXPO-0189'", "update item set codigo='PROD01011' where codigo='PROD-EXPO-0190'", "update item set codigo='PROD01012' where codigo='PROD-EXPO-0191'", "update item set codigo='PROD01013' where codigo='PROD-EXPO-0192'", "update item set codigo='PROD01014' where codigo='PROD-EXPO-0193'", "update item set codigo='PROD01015' where codigo='PROD-EXPO-0194'", "update item set codigo='PROD01016' where codigo='PROD-EXPO-0195'", "update item set codigo='PROD01017' where codigo='PROD-EXPO-0196'", "update item set codigo='PROD01018' where codigo='PROD-EXPO-0197'", "update item set codigo='PROD01019' where codigo='PROD-EXPO-0198'", "update item set codigo='PROD01020' where codigo='PROD-EXPO-0199'", "update item set codigo='PROD01021' where codigo='PROD-EXPO-0200'", "update item set codigo='PROD01022' where codigo='PROD-EXPO-0201'", "update item set ativo=0 where codigo='PROD0068' and not exists (select 1 from estoque_mov m where m.item_id=item.id)", "alter table op_evento add column usuario_nome text", "alter table estoque_mov add column usuario_nome text", "alter table item add column produz int not null default 1", "alter table item add column estoque_min real", "create table if not exists migracao (nome text primary key)", "update item set produz=0 where tipo='Produto' and (lower(nome) like '%cloche%' or lower(nome) like 'caixa%' or lower(nome) like 'vaso tulipa p %' or lower(nome) like '% mini %' or lower(nome) like 'mini %' or lower(nome) like 'talher%') and not exists (select 1 from migracao where nome='produz1')", "insert or ignore into migracao values('produz1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel G %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo G %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel M %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo M %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Tigela Patauá %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Buriti %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert or ignore into migracao values('comp1')"];
+const BASE_DDL = ["create table if not exists cliente (id integer primary key, sensio_id text unique, nome text not null, razao text, doc text, natureza text, ie text, email text, telefone text, endereco text, numero text, complemento text, bairro text, cep text, cidade text, uf text, vendedor text, ativo int not null default 1, criado_em text default (datetime('now')))", "create index if not exists cliente_nome on cliente(nome)", "alter table pedido add column cliente_id int", "alter table item add column ncm text", "alter table item add column origem int", "alter table item add column unidade text", "alter table item add column peso_liquido real", "alter table item add column peso_bruto real", "create table if not exists transferencia (id integer primary key, data text not null, de_id int not null, para_id int not null, documento text, transportadora text, obs text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create table if not exists transferencia_item (transferencia_id int not null, item_id int not null, qtd real not null)", "update item set codigo='PROD01001' where codigo='PROD-EXPO-0068'", "update item set codigo='PROD01002' where codigo='PROD-EXPO-0085'", "update item set codigo='PROD01003' where codigo='PROD-EXPO-0088'", "update item set codigo='PROD01004' where codigo='PROD-EXPO-0091'", "update item set codigo='PROD01005' where codigo='PROD-EXPO-0092'", "update item set codigo='PROD01006' where codigo='PROD-EXPO-0093'", "update item set codigo='PROD01007' where codigo='PROD-EXPO-0186'", "update item set codigo='PROD01008' where codigo='PROD-EXPO-0187'", "update item set codigo='PROD01009' where codigo='PROD-EXPO-0188'", "update item set codigo='PROD01010' where codigo='PROD-EXPO-0189'", "update item set codigo='PROD01011' where codigo='PROD-EXPO-0190'", "update item set codigo='PROD01012' where codigo='PROD-EXPO-0191'", "update item set codigo='PROD01013' where codigo='PROD-EXPO-0192'", "update item set codigo='PROD01014' where codigo='PROD-EXPO-0193'", "update item set codigo='PROD01015' where codigo='PROD-EXPO-0194'", "update item set codigo='PROD01016' where codigo='PROD-EXPO-0195'", "update item set codigo='PROD01017' where codigo='PROD-EXPO-0196'", "update item set codigo='PROD01018' where codigo='PROD-EXPO-0197'", "update item set codigo='PROD01019' where codigo='PROD-EXPO-0198'", "update item set codigo='PROD01020' where codigo='PROD-EXPO-0199'", "update item set codigo='PROD01021' where codigo='PROD-EXPO-0200'", "update item set codigo='PROD01022' where codigo='PROD-EXPO-0201'", "update item set ativo=0 where codigo='PROD0068' and not exists (select 1 from estoque_mov m where m.item_id=item.id)", "alter table op_evento add column usuario_nome text", "alter table estoque_mov add column usuario_nome text", "alter table item add column produz int not null default 1", "alter table item add column estoque_min real", "create table if not exists migracao (nome text primary key)", "update item set produz=0 where tipo='Produto' and (lower(nome) like '%cloche%' or lower(nome) like 'caixa%' or lower(nome) like 'vaso tulipa p %' or lower(nome) like '% mini %' or lower(nome) like 'mini %' or lower(nome) like 'talher%') and not exists (select 1 from migracao where nome='produz1')", "insert or ignore into migracao values('produz1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel G %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo G %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel M %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo M %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Tigela Patauá %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Buriti %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert or ignore into migracao values('comp1')", "alter table pedido add column tipo text not null default 'cliente'", "alter table peca_qualidade add column resultado text", "alter table foto add column envio_id int", "create index if not exists foto_envio on foto(envio_id)"];
 // financeiro: tabelas criadas sozinhas na primeira chamada (schema_v18.sql + v19)
 let finPronto = false;
 const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)", "create table if not exists fin_cobranca (id integer primary key, pessoa text not null, lancamento_id int, tipo text not null, texto text, promessa_data text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_cob_pessoa on fin_cobranca(pessoa)", "create table if not exists fin_anexo (id integer primary key, lancamento_id int not null, nome text, tipo text not null, dados text not null, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_anexo_l on fin_anexo(lancamento_id)", "create table if not exists fin_extrato (id integer primary key, conta_id int not null, fitid text not null, data text not null, valor real not null, descricao text, lancamento_id int, status text not null default 'pendente', criado_em text default (datetime('now')), unique(conta_id, fitid))"];
@@ -105,6 +105,8 @@ const GRUPOS_META = [['TA', 'Torno Fase A'], ['TB', 'Torno Fase B'], ['AC', 'Aca
 const NOME_GRUPO = Object.fromEntries(GRUPOS_META);
 const CHAVES_META = ['canopique xg', 'canopique g', 'canopique m', 'pilao g', 'pilao m', 'tulipa g', 'tulipa m', 'sussurro xg', 'sussurro g', 'sussurro m', 'iracema xg', 'iracema g', 'iracema m', 'pataua', 'floresta', 'tucupi', 'frondosa', 'serenata', 'jaci', 'curio', 'bem-te-vi', 'juriti', 'carcara', 'tangara'];
 const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const TIPOS_PEDIDO = ['cliente', 'troca', 'reposicao', 'showroom', 'brinde', 'consignado'];
+const tipoPedido = s => { const t = semAcento(s); return TIPOS_PEDIDO.find(x => x !== 'cliente' && t.includes(x.slice(0, 6))) || 'cliente'; };
 const grupoMeta = tipo => ({ 'torno fase a': 'TA', 'torno fase b': 'TB', 'acabamento': 'AC', 'finalizacao': 'AC', 'marcenaria a': 'MA', 'marcenaria b': 'MB' })[semAcento(tipo)] || null;
 function chaveMeta(nome) {
   const w = semAcento(nome).split(/\s+/).map(x => ({ eixo: 'canopique', buriti: 'pataua' })[x] || x); // Eixo = Canopique, Buriti = Patauá (decisão do Emanuel 24/11)
@@ -180,7 +182,7 @@ const PERM = [
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/insumos/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
-  [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped']],
+  [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped', 'exp']],
   [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/fin\//, null, ['fin']],
 ];
 // grava quem lançou: todo insert em op_evento / estoque_mov ganha usuario_nome do login da requisição
@@ -223,7 +225,7 @@ async function rotasAbertas(req, env, p) {
 // ---------- conector do Claude (MCP, HTTP simples) — endereço /mcp/<CODIGO>
 const FERRAMENTAS = [
   { name: 'resumo_fabrica', description: 'Resumo ao vivo da fábrica OMAMA: OPs abertas e atrasadas, peças por estágio, produção de hoje e da semana, pedidos vencendo em 7 dias, defeitos e faltas.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/painel' },
-  { name: 'pedidos_abertos', description: 'Lista os pedidos em aberto com prazo, status e quantas peças têm OP, estão conferidas, embaladas e enviadas.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/pedidos' },
+  { name: 'pedidos_abertos', description: 'Lista os pedidos em aberto com prazo, status, tipo (cliente, troca, reposicao, showroom, brinde, consignado; prazo e lead time só valem para cliente) e quantas peças têm OP, estão conferidas, embaladas e enviadas.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/pedidos' },
   { name: 'pedido', description: 'Detalhe de um pedido OMAMA pelo número: peças, OPs ligadas (estágio), conferidas/embaladas/enviadas e envios.', inputSchema: { type: 'object', properties: { numero: { type: 'string' } }, required: ['numero'] }, path: a => '/api/pedidos/' + encodeURIComponent(a.numero) },
   { name: 'ops_abertas', description: 'Lista as OPs abertas com item, quantidade, estágio, previsão de entrega, pedido e operação atual.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/ops' },
   { name: 'estoque', description: 'Saldo de estoque de um depósito. deposito_id: 1 = P.A. Manaus (produto acabado na fábrica), 3 = P.A. São Paulo, 11 = Pátio (blocos de madeira), 6 = Defeito, 2 = Insumos.', inputSchema: { type: 'object', properties: { deposito_id: { type: 'number' } }, required: ['deposito_id'] }, path: a => '/api/estoque?deposito_id=' + Number(a.deposito_id) },
@@ -231,10 +233,10 @@ const FERRAMENTAS = [
   { name: 'defeitos', description: 'Peças que estão no estoque de defeito agora (item, quantidade, motivo, OP, setor).', inputSchema: { type: 'object', properties: {} }, path: () => '/api/defeitos' },
   { name: 'faltas_semana', description: 'Faltas, atestados, atrasos e folgas lançados num período (datas AAAA-MM-DD).', inputSchema: { type: 'object', properties: { de: { type: 'string' }, ate: { type: 'string' } }, required: ['de', 'ate'] }, path: a => `/api/presenca?de=${a.de}&ate=${a.ate}` },
   { name: 'pcp_sugestao', description: 'Sugestão do PCP: peças de pedidos que ainda precisam de OP, quantas dá para fazer com o bloco do Pátio e quanta madeira falta.', inputSchema: { type: 'object', properties: {} }, path: () => '/api/pcp/sugestao' },
-  { name: 'producao_semana', description: 'Produção da semana (datas AAAA-MM-DD): OPs finalizadas (código, qtd, peça, pedido), OPs criadas, envios de pedidos (data, cliente, transportadora, peças), entradas de madeira e inventários fechados.', inputSchema: { type: 'object', properties: { de: { type: 'string' }, ate: { type: 'string' } }, required: ['de', 'ate'] }, path: a => `/api/semana?de=${encodeURIComponent(a.de || '')}&ate=${encodeURIComponent(a.ate || '')}` },
-  { name: 'qualidade_cq', description: 'Resultado do controle de qualidade por OP finalizada nos últimos N dias (padrão 60, máx 365): peça, pedido, nº de peças, quantas classificadas e as classes A/B/C/D em ordem (ex.: "AAB").', inputSchema: { type: 'object', properties: { dias: { type: 'number' } } }, path: a => `/api/qualidade?dias=${Number(a.dias) || 60}` },
-  { name: 'fotos_pedido', description: 'Lista das fotos de um pedido (das OPs e das peças do pedido): id, nome do arquivo, data, código e nome da peça, OP. Só a lista, sem a imagem.', inputSchema: { type: 'object', properties: { pedido: { type: 'string' } }, required: ['pedido'] }, path: a => `/api/fotos?pedido=${encodeURIComponent(a.pedido || '')}` },
-  { name: 'movimentacoes_estoque', description: 'As 100 últimas movimentações de estoque (data, peça, depósito, quantidade, motivo e quem lançou).', inputSchema: { type: 'object', properties: {} }, path: () => '/api/estoque/movs' },
+  { name: 'producao_semana', description: 'Produção da semana (datas AAAA-MM-DD): OPs finalizadas (código, qtd, peça, pedido, tipo_pedido), OPs criadas, envios de pedidos (envio_id, data, pedido, cliente, tipo_pedido, transportadora, peças, fotos = nº de fotos do envio/coleta, tem_foto 0/1), entradas de madeira e inventários fechados. tipo_pedido: cliente, troca, reposicao, showroom, brinde ou consignado.', inputSchema: { type: 'object', properties: { de: { type: 'string' }, ate: { type: 'string' } }, required: ['de', 'ate'] }, path: a => `/api/semana?de=${encodeURIComponent(a.de || '')}&ate=${encodeURIComponent(a.ate || '')}` },
+  { name: 'qualidade_cq', description: 'Controle de qualidade por OP finalizada nos últimos N dias (padrão 60, máx 365): peça, pedido, nº de peças, quantas classificadas, as classes em ordem (ex.: "AAB") e pecas_cq = cada peça com numero, classe A/B/C/D, resultado (aprovada, reprovada, retrabalho ou null se não informado), obs e data_cq (UTC).', inputSchema: { type: 'object', properties: { dias: { type: 'number' } } }, path: a => `/api/qualidade?dias=${Number(a.dias) || 60}` },
+  { name: 'fotos_pedido', description: 'Lista das fotos de um pedido (das OPs, das peças do pedido e dos envios/coletas, estas com codigo = ENVIO): id, nome do arquivo, data, código e nome da peça, OP. Só a lista, sem a imagem.', inputSchema: { type: 'object', properties: { pedido: { type: 'string' } }, required: ['pedido'] }, path: a => `/api/fotos?pedido=${encodeURIComponent(a.pedido || '')}` },
+  { name: 'movimentacoes_estoque', description: 'Movimentações de estoque (data UTC e data_manaus, peça, depósito, quantidade, motivo, OP e quem lançou), da mais nova pra mais antiga. Filtros opcionais: de e ate (AAAA-MM-DD, dia de Manaus) e deposito_id (1 = P.A. Manaus, 3 = P.A. São Paulo, 11 = Pátio, 6 = Defeito, 2 = Insumos). Sem nenhum filtro traz só as 100 últimas; com filtro, até 20.000.', inputSchema: { type: 'object', properties: { de: { type: 'string' }, ate: { type: 'string' }, deposito_id: { type: 'number' } } }, path: a => `/api/estoque/movs?de=${encodeURIComponent(a.de || '')}&ate=${encodeURIComponent(a.ate || '')}&deposito_id=${Number(a.deposito_id) || ''}` },
   { name: 'op_detalhe', description: 'Detalhe de uma OP pelo número (ex.: 5012): peça, estágio, etapas do roteiro com quem fez, início, fim e tempo, pausas, blocos usados e os eventos com data e hora.', inputSchema: { type: 'object', properties: { codigo: { type: 'number' } }, required: ['codigo'] }, path: a => `/api/ops/${Number(a.codigo) || 0}` },
 ];
 async function mcp(req, env) {
@@ -640,8 +642,13 @@ const app = {
           from pedido_item pi left join item i on i.id=pi.item_id where pi.pedido_id=? order by pi.id`, pd.id);
         const [ops, envios] = await Promise.all([opsAbertas(DB, "pi.pedido_id=? and op.status<>'cancelada'", pd.id),
           all(DB, `select e.*, (select group_concat(cast(ei.qtd as int) || ' × ' || pi.descricao, ' · ') from envio_item ei join pedido_item pi on pi.id=ei.pedido_item_id where ei.envio_id=e.id) itens
-            from envio e where e.pedido_id=? order by e.id desc`, pd.id)]);
+            , (select count(*) from foto f where f.envio_id=e.id) fotos from envio e where e.pedido_id=? order by e.id desc`, pd.id)]);
         return json(req, { ...pd, itens, ops, envios });
+      }
+      if ((m = p.match(/^\/api\/pedidos\/([^/]+)\/tipo$/)) && req.method === 'POST') {
+        if (!TIPOS_PEDIDO.includes(body.tipo)) return json(req, { erro: 'Tipo tem que ser: ' + TIPOS_PEDIDO.join(', ') }, 400);
+        const r = await DB.prepare('update pedido set tipo=? where numero=?').bind(body.tipo, decodeURIComponent(m[1])).run();
+        return json(req, { ok: true });
       }
       if ((m = p.match(/^\/api\/pedidos\/([^/]+)\/(status|itens)$/)) && req.method === 'POST') {
         const pd = await one(DB, 'select * from pedido where numero=?', decodeURIComponent(m[1]));
@@ -835,8 +842,14 @@ const app = {
         return json(req, { ok: true });
       }
       if (p === '/api/estoque/movs') {
-        return json(req, await all(DB, `select m.*, i.codigo, i.nome, d.nome deposito from estoque_mov m join item i on i.id=m.item_id
-          join deposito d on d.id=m.deposito_id order by m.id desc limit 100`));
+        // filtros opcionais: de / ate (AAAA-MM-DD, horário de Manaus) e deposito_id; sem filtro = as 100 últimas
+        const w2 = [], b2 = [], de = q('de'), ate = q('ate'), dep = Number(q('deposito_id') || 0);
+        if (de) { w2.push("date(m.data,'-4 hours') >= ?"); b2.push(de); }
+        if (ate) { w2.push("date(m.data,'-4 hours') <= ?"); b2.push(ate); }
+        if (dep) { w2.push('m.deposito_id=?'); b2.push(dep); }
+        const lim = w2.length ? Math.min(20000, Number(q('limite')) || 20000) : 100;
+        return json(req, await all(DB, `select m.id, m.data, datetime(m.data,'-4 hours') data_manaus, m.item_id, i.codigo, i.nome, i.tipo item_tipo, m.deposito_id, d.nome deposito, m.qtd, m.motivo, m.op_id, m.usuario_nome
+          from estoque_mov m join item i on i.id=m.item_id join deposito d on d.id=m.deposito_id ${w2.length ? 'where ' + w2.join(' and ') : ''} order by m.id desc limit ${lim}`, ...b2));
       }
 
       // ---------- inventário (contagem física por depósito; ao fechar, ajusta o saldo pela diferença)
@@ -964,7 +977,7 @@ const app = {
             where op.status='aberta' and op.previsao_fim < ? order by op.previsao_fim limit 20`, hoje),
           all(DB, `select p.numero, p.cliente, p.prazo, p.status, (select sum(qtd) from pedido_item where pedido_id=p.id) pecas,
             (select sum(conferida) from pedido_item where pedido_id=p.id) conferidas, (select sum(enviada) from pedido_item where pedido_id=p.id) enviadas
-            from pedido p where p.status in ('Em produção','Pronto / embalagem') and p.prazo is not null and p.prazo <= date(?, '+7 days') order by p.prazo`, hoje),
+            from pedido p where p.status in ('Em produção','Pronto / embalagem') and coalesce(p.tipo,'cliente')='cliente' and p.prazo is not null and p.prazo <= date(?, '+7 days') order by p.prazo`, hoje),
           one(DB, "select count(*) ops, coalesce(sum(o.qtd),0) pecas from op_operacao oo join op o on o.id=oo.op_id where oo.status='finalizado' and oo.fim >= ?", hoje + ' 00:00:00'),
           one(DB, "select count(*) n, coalesce(sum(qtd),0) pecas from op where status='finalizada' and finalizado_em >= ?", seg + ' 00:00:00'),
           all(DB, "select e.nome, count(op.id) ops, coalesce(sum(op.qtd),0) pecas from estagio e left join op on op.estagio_id=e.id and op.status='aberta' where e.ordem between 2 and 11 group by e.id order by e.ordem"),
@@ -1001,10 +1014,11 @@ const app = {
       if (p === '/api/semana') {
         const de = q('de'), ate = q('ate'), d0 = de + ' 00:00:00', d1 = ate + ' 23:59:59';
         const [finalizadas, criadas, envios, entradas, inventarios] = await Promise.all([
-          all(DB, `select o.codigo, o.qtd, i.nome, pd.numero from op o join item i on i.id=o.item_id left join pedido_item pi on pi.id=o.pedido_item_id left join pedido pd on pd.id=pi.pedido_id
+          all(DB, `select o.codigo, o.qtd, i.nome, pd.numero, pd.tipo tipo_pedido from op o join item i on i.id=o.item_id left join pedido_item pi on pi.id=o.pedido_item_id left join pedido pd on pd.id=pi.pedido_id
             where o.status='finalizada' and o.finalizado_em between ? and ? order by o.finalizado_em`, d0, d1),
           one(DB, "select count(*) n, coalesce(sum(qtd),0) pecas from op where origem is null and criado_em between ? and ?", d0, d1),
-          all(DB, `select e.data, p.numero, p.cliente, e.transportadora, (select sum(qtd) from envio_item where envio_id=e.id) pecas from envio e join pedido p on p.id=e.pedido_id
+          all(DB, `select e.id envio_id, e.data, p.numero, p.cliente, coalesce(p.tipo,'cliente') tipo_pedido, e.transportadora, (select sum(qtd) from envio_item where envio_id=e.id) pecas,
+            (select count(*) from foto f where f.envio_id=e.id) fotos, case when exists (select 1 from foto f where f.envio_id=e.id) then 1 else 0 end tem_foto from envio e join pedido p on p.id=e.pedido_id
             where e.data between ? and ? order by e.data`, de, ate),
           all(DB, `select e.data, e.fornecedor, (select sum(qtd) from entrada_item where entrada_id=e.id) qtd from entrada e where e.data between ? and ?`, de, ate),
           all(DB, `select v.id, d.nome deposito, (select count(*) from inventario_item where inventario_id=v.id and abs(coalesce(ajuste,0))>0.0001) ajustes from inventario v join deposito d on d.id=v.deposito_id
@@ -1015,13 +1029,16 @@ const app = {
 
       // ---------- fotos (guardadas no banco já reduzidas pelo navegador)
       if (p === '/api/fotos' && req.method === 'GET') {
-        const campo = q('op_id') ? 'op_id' : q('defeito_id') ? 'defeito_id' : q('pedido_item_id') ? 'pedido_item_id' : q('qualidade_id') ? 'qualidade_id' : null;
+        const campo = q('op_id') ? 'op_id' : q('defeito_id') ? 'defeito_id' : q('pedido_item_id') ? 'pedido_item_id' : q('qualidade_id') ? 'qualidade_id' : q('envio_id') ? 'envio_id' : null;
         if (q('pedido')) return json(req, await all(DB, `select * from (
             select f.id, f.nome, f.criado_em, i.codigo, i.nome item, o.codigo op_codigo from foto f join op o on o.id=f.op_id join item i on i.id=o.item_id
               join pedido_item pi on pi.id=o.pedido_item_id join pedido pd on pd.id=pi.pedido_id where pd.numero=?
             union all
             select f.id, f.nome, f.criado_em, coalesce(i.codigo, pi.descricao) codigo, coalesce(i.nome, pi.descricao) item, null op_codigo from foto f join pedido_item pi on pi.id=f.pedido_item_id
-              left join item i on i.id=pi.item_id join pedido pd on pd.id=pi.pedido_id where pd.numero=?) order by codigo, id`, q('pedido'), q('pedido')));
+              left join item i on i.id=pi.item_id join pedido pd on pd.id=pi.pedido_id where pd.numero=?
+            union all
+            select f.id, f.nome, f.criado_em, 'ENVIO' codigo, 'Envio de ' || e.data || coalesce(' · ' || e.transportadora, '') item, null op_codigo from foto f join envio e on e.id=f.envio_id
+              join pedido pd on pd.id=e.pedido_id where pd.numero=?) order by codigo, id`, q('pedido'), q('pedido'), q('pedido')));
         if (!campo) return json(req, []);
         return json(req, await all(DB, `select id, nome, criado_em from foto where ${campo}=? order by id`, Number(q(campo))));
       }
@@ -1033,8 +1050,8 @@ const app = {
       }
       if (p === '/api/fotos' && req.method === 'POST') {
         if (!String(body.dados || '').startsWith('data:image/jpeg;base64,') || body.dados.length > 1500000) return json(req, { erro: 'Foto inválida ou grande demais' }, 400);
-        if (!body.op_id && !body.defeito_id && !body.pedido_item_id && !body.qualidade_id) return json(req, { erro: 'Foto sem OP/defeito/pedido' }, 400);
-        const r = await DB.prepare('insert into foto(op_id, defeito_id, pedido_item_id, qualidade_id, nome, dados) values(?,?,?,?,?,?)').bind(body.op_id || null, body.defeito_id || null, body.pedido_item_id || null, body.qualidade_id || null, body.nome || null, body.dados).run();
+        if (!body.op_id && !body.defeito_id && !body.pedido_item_id && !body.qualidade_id && !body.envio_id) return json(req, { erro: 'Foto sem OP/defeito/pedido/envio' }, 400);
+        const r = await DB.prepare('insert into foto(op_id, defeito_id, pedido_item_id, qualidade_id, envio_id, nome, dados) values(?,?,?,?,?,?,?)').bind(body.op_id || null, body.defeito_id || null, body.pedido_item_id || null, body.qualidade_id || null, body.envio_id || null, body.nome || null, body.dados).run();
         return json(req, { ok: true, id: r.meta.last_row_id });
       }
       if ((m = p.match(/^\/api\/fotos\/(\d+)\/apagar$/)) && req.method === 'POST') {
@@ -1047,10 +1064,12 @@ const app = {
         const dias = Math.min(365, Number(q('dias')) || 60);
         const l = await all(DB, `select o.codigo, o.qtd, o.finalizado_em, i.codigo item_codigo, i.nome item, pd.numero pedido_numero, pd.cliente pedido_cliente,
             (select count(*) from peca_qualidade q where q.op_id=o.id) feitas,
-            (select group_concat(classe, '') from (select classe from peca_qualidade q where q.op_id=o.id order by numero)) classes
+            (select group_concat(classe, '') from (select classe from peca_qualidade q where q.op_id=o.id order by numero)) classes,
+            (select json_group_array(json_object('numero', numero, 'classe', classe, 'resultado', resultado, 'obs', obs, 'data_cq', coalesce(atualizado_em, criado_em)))
+               from (select * from peca_qualidade q where q.op_id=o.id order by numero)) pecas_cq
           from op o join item i on i.id=o.item_id left join pedido_item pi on pi.id=o.pedido_item_id left join pedido pd on pd.id=pi.pedido_id
           where o.status='finalizada' and o.tipo='OP' and o.finalizado_em >= datetime('now', ?) order by o.finalizado_em desc`, `-${dias} days`);
-        return json(req, l.map(o => ({ ...o, pecas: Math.max(1, Math.ceil(o.qtd - 1e-9)) })));
+        return json(req, l.map(o => ({ ...o, pecas: Math.max(1, Math.ceil(o.qtd - 1e-9)), pecas_cq: JSON.parse(o.pecas_cq || '[]') })));
       }
       if (p === '/api/qualidade/resumo') {
         const de = q('de') + ' 00:00:00', ate = q('ate') + ' 23:59:59';
@@ -1071,10 +1090,11 @@ const app = {
         if (!o || o.status !== 'finalizada' || o.tipo !== 'OP') return json(req, { erro: 'Só classifica peça de OP finalizada' }, 400);
         if (n < 1 || n > Math.max(1, Math.ceil(o.qtd - 1e-9))) return json(req, { erro: 'Número da peça fora da OP' }, 400);
         if (!['A', 'B', 'C', 'D'].includes(body.classe)) return json(req, { erro: 'Classe tem que ser A, B, C ou D' }, 400);
-        await DB.prepare(`insert into peca_qualidade(op_id, numero, classe, obs) values(?,?,?,?)
-          on conflict(op_id, numero) do update set classe=excluded.classe, obs=excluded.obs, atualizado_em=datetime('now')`).bind(o.id, n, body.classe, body.obs || null).run();
+        const res = body.resultado || null; if (res && !['aprovada', 'reprovada', 'retrabalho'].includes(res)) return json(req, { erro: 'Resultado tem que ser aprovada, reprovada ou retrabalho' }, 400);
+        await DB.prepare(`insert into peca_qualidade(op_id, numero, classe, obs, resultado) values(?,?,?,?,?)
+          on conflict(op_id, numero) do update set classe=excluded.classe, obs=excluded.obs, resultado=excluded.resultado, atualizado_em=datetime('now')`).bind(o.id, n, body.classe, body.obs || null, res).run();
         const r = await one(DB, 'select id from peca_qualidade where op_id=? and numero=?', o.id, n);
-        await evento(DB, o.id, `Qualidade: peça ${n} classificada ${body.classe}` + (body.obs ? ` (${body.obs})` : '')).run();
+        await evento(DB, o.id, `Qualidade: peça ${n} classificada ${body.classe}` + (res ? ` · ${res}` : '') + (body.obs ? ` (${body.obs})` : '')).run();
         return json(req, { ok: true, id: r.id });
       }
 
