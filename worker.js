@@ -673,7 +673,7 @@ const app = {
         const [ops, entradas, tot] = await Promise.all([
           all(DB, `select ${sem('finalizado_em')} semana, count(*) ops, sum(qtd) pecas from hist_op where status='FINALIZADO' and finalizado_em is not null group by 1 order by 1`),
           all(DB, `select ${sem('data')} semana, count(*) movs, sum(qtd) pecas from hist_estoque_mov where deposito='P.A.' and tipo='Entrada' and documento like 'OP %' and coalesce(cancelado,0)=0 group by 1 order by 1`),
-          all(DB, `select 'op' t, count(*) n from hist_op union all select 'etapa', count(*) from hist_op_etapa union all select 'evento', count(*) from hist_op_evento union all select 'mov', count(*) from hist_estoque_mov union all select 'venda', count(*) from hist_venda union all select 'nfe', count(*) from hist_nfe`),
+          one(DB, `select (select count(*) from hist_op) op, (select count(*) from hist_op_etapa) etapa, (select count(*) from hist_op_evento) evento, (select count(*) from hist_estoque_mov) mov, (select count(*) from hist_venda) venda, (select count(*) from hist_nfe) nfe`),
         ]);
         return json(req, { totais: tot, ops, entradas });
       }
@@ -681,7 +681,7 @@ const app = {
         const pd = await one(DB, 'select * from pedido where numero=?', decodeURIComponent(m[1]));
         const histSensio = async num => { const v = await one(DB, 'select * from hist_venda where codigo=?', Number(num)); if (!v) return null;
           const [nfes, envios] = await Promise.all([all(DB, 'select numero, data, status, valor from hist_nfe where venda_sensio_id=? order by data', v.sensio_id),
-            all(DB, `select data, deposito, item_codigo, item_nome, -qtd qtd, documento from hist_estoque_mov where tipo='Saída' and coalesce(cancelado,0)=0 and (documento='Venda ' || ? or documento='Venda Consignada ' || ? or documento='Bonificação/Remessa ' || ? or documento like 'NFe %' and 0) order by data`, String(v.codigo), String(v.codigo), String(v.codigo))]);
+            all(DB, `select data, deposito, item_codigo, item_nome, -qtd qtd, documento from hist_estoque_mov where tipo='Saída' and coalesce(cancelado,0)=0 and (documento in ('Venda ' || ?, 'Venda Consignada ' || ?, 'Bonificação/Remessa ' || ?, 'Outros ' || ?) or documento like '% Venda ' || ? or documento like '% Venda Consignada ' || ?) order by data`, ...Array(6).fill(String(v.codigo)))]);
           return { ...v, nfes, envios }; };
         if (!pd) { const h = await histSensio(decodeURIComponent(m[1])); if (h) return json(req, { numero: String(h.codigo), cliente: h.cliente, tipo: h.tipo, status: h.status, origem: 'sensio', data_pagamento: h.data_pagamento, data_faturamento: h.data_faturamento, itens: [], ops: [], envios: [], historico_sensio: h }); }
         if (!pd) return json(req, { erro: 'Pedido não encontrado' }, 404);
