@@ -676,12 +676,8 @@ const app = {
             DB.prepare(`update hist_venda set data_faturamento=(select min(n.data) from hist_nfe n where n.venda_sensio_id=hist_venda.sensio_id and n.status='Autorizada')`),
             DB.prepare(`update pedido set data_faturamento=(select v.data_faturamento from hist_venda v where cast(v.codigo as text)=pedido.numero) where data_faturamento is null`),
             DB.prepare(`update pedido set tipo=(select v.tipo from hist_venda v where cast(v.codigo as text)=pedido.numero and v.tipo is not null) where tipo='cliente' and exists (select 1 from hist_venda v where cast(v.codigo as text)=pedido.numero and v.tipo is not null and v.tipo<>'cliente')`)]);
-          await DB.batch([
-            DB.prepare(`with lv as (select v.sensio_id, l.status, l.quitacao from hist_venda v join fin_lancamento l on l.tipo='R' and l.status!='cancelado' and (
-                  l.descricao like 'Pedido ' || v.codigo || ' %' or l.descricao = 'Pedido ' || v.codigo or l.descricao like 'Pedido ' || v.codigo || '-%'
-                  or exists (select 1 from hist_nfe n where n.venda_sensio_id=v.sensio_id and n.status='Autorizada' and (l.nf=n.numero or l.descricao like 'NF' || n.numero || '-%' or l.descricao = 'NF' || n.numero or l.descricao like 'NF ' || n.numero || '%'))))
-              update hist_venda set data_pagamento=(select max(quitacao) from lv where lv.sensio_id=hist_venda.sensio_id and lv.status='quitado')
-              where data_pagamento is null and not exists (select 1 from lv where lv.sensio_id=hist_venda.sensio_id and lv.status='aberto')`)]).catch(() => {});
+          // (removido em 25/11: o cruzamento venda × financeiro × NF lia centenas de milhões de linhas e estourou o limite diário do D1;
+          //  a data de pagamento vem das parcelas do Sensio, enviada na própria importação)
         }
         const n = await one(DB, `select count(*) n from ${tab}`);
         return json(req, { ok: true, gravadas: linhas.length, total_na_tabela: n.n });
