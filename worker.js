@@ -295,9 +295,15 @@ const app = {
       const ver = 'b' + BASE_DDL.length + '-' + BASE_DDL.join('|').length;
       const atual = await DB.prepare("select v from schema_versao where k='base'").first().catch(() => null);
       if (!atual || atual.v !== ver) {
-        for (const s of BASE_DDL) await DB.prepare(s).run().catch(() => {});
-        await DB.prepare('create table if not exists schema_versao (k text primary key, v text)').run();
-        await DB.prepare("insert or replace into schema_versao(k, v) values('base', ?)").bind(ver).run();
+        // limite do plano gratuito: ~50 consultas por acesso. As "alter table" (que podem falhar se a coluna já existe) vão uma a uma;
+        // o resto vai num lote só (1 consulta). Se o lote falhar, tenta uma a uma.
+        try {
+          const alt = BASE_DDL.filter(s => /^alter table/i.test(s)), resto = BASE_DDL.filter(s => !/^alter table/i.test(s));
+          for (const s of alt) await DB.prepare(s).run().catch(() => {});
+          await DB.batch([...resto.map(s => DB.prepare(s)), DB.prepare('create table if not exists schema_versao (k text primary key, v text)')])
+            .catch(async () => { for (const s of resto) await DB.prepare(s).run().catch(() => {}); await DB.prepare('create table if not exists schema_versao (k text primary key, v text)').run(); });
+          await DB.prepare("insert or replace into schema_versao(k, v) values('base', ?)").bind(ver).run();
+        } catch (e) { console.log('BASE_DDL', e && e.message); }
       }
       basePronta = true;
     }
