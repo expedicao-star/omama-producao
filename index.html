@@ -443,6 +443,9 @@ async function tInsumos(){
 }
 // ===== Fila de pedidos (Comercial): ordem 1, 2, 3…, prazo comercial, previsão e consequência de mudar a ordem
 const ETQ = [['Aguardando madeira','#cfc8dc','sem madeira'],['Produção','#7aa7e8','produção'],['Acabamento','#a98be8','acabamento'],['Controle de qualidade','#f0c75e','qualidade'],['Prontas','#6cc68a','prontas'],['Enviada','#3f8f5e','enviadas']];
+const barraEt=p=>{ const t=ETQ.reduce((s,[e])=>s+((p.cont||{})[e]||0),0)||1; return `<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--card2)">${ETQ.map(([e,c,n])=>(p.cont||{})[e]?`<div title="${p.cont[e]} ${n}" style="width:${p.cont[e]/t*100}%;background:${c}"></div>`:'').join('')}</div>`; };
+const etapasEt=p=>{ const L=ETQ.filter(([e])=>p.etapas&&p.etapas[e]||(e==='Enviada'&&(p.cont||{})[e])).map(([e,c,n])=>`<div style="display:flex;gap:6px;align-items:flex-start;font-size:12px;margin-top:3px"><i style="width:9px;height:9px;border-radius:3px;background:${c};display:inline-block;margin-top:3px;flex:none"></i><b style="white-space:nowrap;min-width:150px;font-size:12px">${e==='Enviada'?'Enviadas':e}</b><span style="white-space:pre-line">${e==='Enviada'?p.cont[e]+' peça'+(p.cont[e]>1?'s':''):esc(p.etapas[e])}</span></div>`);
+  return L.length?L.join(''):'<div class="mut" style="font-size:12px;margin-top:3px">sem peças cadastradas</div>'; };
 const ehUtil=(d,F)=>{ const w=d.getUTCDay(); return w&&w<6&&!F.has(d.toISOString().slice(0,10)); };
 const maisUteis=(ini,n,F)=>{ const d=new Date(ini+'T00:00:00Z'); let k=0; while(k<n){ d.setUTCDate(d.getUTCDate()+1); if(ehUtil(d,F)) k++; } return d.toISOString().slice(0,10); };
 const proxUtil=(ini,F)=>{ const d=new Date(ini+'T00:00:00Z'); while(!ehUtil(d,F)) d.setUTCDate(d.getUTCDate()+1); return d.toISOString().slice(0,10); };
@@ -1537,16 +1540,17 @@ function unidades(it){
 const resumoUn=un=>{ const c={}; un.forEach(k=>c[k]=(c[k]||0)+1); return Object.keys(ETAPA).filter(k=>c[k]).map(k=>`<span style="color:${ETAPA[k][2]};font-weight:700">${c[k]} ${ETAPA[k][0].toLowerCase()}</span>`).join(' · '); };
 async function tExped(){
   app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Expedição · pedidos em aberto</h2><button class="btn" id="imp">Imprimir check dos marcados</button></div>
-    <p class="mut">Conferir → embalar → enviar. Ao registrar o envio a peça sai do P.A.</p><div id="el" class="vazio">Carregando…</div>`;
-  const l=await api('/api/pedidos');
+    <p class="mut">Etapas das peças de cada pedido. Clique em Abrir pra conferir, embalar e registrar o envio (a peça sai do P.A.).</p><div id="el" class="vazio">Carregando…</div>`;
+  const [l,cm]=await Promise.all([api('/api/pedidos'),api('/api/comercial').catch(()=>({pedidos:[]}))]);
+  const CM=Object.fromEntries(cm.pedidos.map(x=>[x.numero,x]));
   $('#el').className='';
-  $('#el').innerHTML=l.map(p=>{ const cli=(p.tipo||'cliente')==='cliente', d=cli?diasAte(p.prazo):null, q=p.pecas||0, pc=x=>q?Math.min(100,x/q*100):0;
+  $('#el').innerHTML=l.map(p=>{ const cli=true, d=p.prazo?diasAte(p.prazo):null, q=p.pecas||0, pc=x=>q?Math.min(100,x/q*100):0;
     return `<div class="card pd ${d!==null&&d<0?'late':''}"><div class="row" style="justify-content:space-between;align-items:flex-start">
       <label class="row" style="gap:10px;cursor:pointer;flex:1"><input type="checkbox" data-c="${esc(p.numero)}" style="width:20px;height:20px">
-        <div><b>Pedido ${esc(p.numero)} · ${esc(p.cliente||'')}</b>${tipoTag(p.tipo)}<br><span class="mut">${esc(p.status)} · ${fmt(q)} peça(s) · ${fmt(p.conferidas)} conferida(s) · ${fmt(p.embaladas)} embalada(s) · ${fmt(p.enviadas)} enviada(s)</span></div></label>
+        <div><b>Pedido ${esc(p.numero)} · ${esc(p.cliente||'')}</b>${tipoTag(p.tipo)}<br><span class="mut">${esc(CM[p.numero]?CM[p.numero].gargalo||CM[p.numero].status:p.status)} · ${fmt(q)} peça(s)</span></div></label>
       <div class="row"><span class="n">${p.prazo&&cli?`<b class="${d<0?'bad':d<=7?'midc':''}">${d<0?Math.abs(d)+' dias atrasado':d===0?'vence hoje':d+' dias'}</b><br><span class="mut">prazo ${brData(p.prazo)}</span>`:'<span class="mut">sem prazo</span>'}</span>
         <button class="btn sec sm" data-n="${esc(p.numero)}">Abrir</button></div></div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">${[['Conferidas',p.conferidas,'var(--ok)'],['Embaladas',p.embaladas,'var(--amb)'],['Enviadas',p.enviadas,'var(--txt)']].map(([n,x,c])=>`<div><div class="bar"><i style="width:${pc(x)}%;background:${c}"></i></div><span class="mut" style="font-size:11px">${n}</span></div>`).join('')}</div></div>`}).join('')||'<div class="vazio">Nenhum pedido em aberto.</div>';
+      ${CM[p.numero]?`<div style="margin-top:8px">${barraEt(CM[p.numero])}${etapasEt(CM[p.numero])}</div>`:''}</div>`}).join('')||'<div class="vazio">Nenhum pedido em aberto.</div>';
   $('#el').querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>abrirExp(b.dataset.n));
   $('#imp').onclick=()=>{ const ns=[...$('#el').querySelectorAll('[data-c]:checked')].map(c=>c.dataset.c); if(!ns.length) return toast('Marque os pedidos que quer imprimir',1); imprimirCheck(ns); };
 }
