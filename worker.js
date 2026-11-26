@@ -324,12 +324,12 @@ function etapasDoItem(pi, ops, cq) {
     else for (let i = 0; i < n; i++) unid.push(o.ordem >= 10.5 ? 'Acabamento' : 'Produção');
   }
   unid.sort((a, b) => AVANCO[b] - AVANCO[a]);
-  const usadosOp = unid.length;
-  for (const e of unid.slice(Math.min(pular, unid.length))) { if (resto <= 0) break; add(e, 1); resto--; }
+  let v = {}; const s = pi.etapa_v8 || '';
+  if (s.startsWith('{')) { try { v = JSON.parse(s); } catch (e) { v = {}; } } else if (etapaV8(s)) v[etapaV8(s)] = q;
+  const manual = !!v.m; delete v.m; // m = etapa trocada à mão no sistema: vale pra todas as peças que ainda não foram embaladas/enviadas (com ou sem OP)
+  const usadosOp = manual ? 0 : unid.length;
+  if (!manual) for (const e of unid.slice(Math.min(pular, unid.length))) { if (resto <= 0) break; add(e, 1); resto--; }
   if (resto > 0) {
-    let v = {}; const s = pi.etapa_v8 || '';
-    if (s.startsWith('{')) { try { v = JSON.parse(s); } catch (e) { v = {}; } } else if (etapaV8(s)) v[etapaV8(s)] = q;
-    const manual = !!v.m; delete v.m; // m = etapa trocada à mão no sistema (vale só pras peças sem OP/expedição)
     const lista = []; Object.entries(v).forEach(([e, n]) => { if (AVANCO[e] !== undefined) for (let i = 0; i < n; i++) lista.push(e); });
     lista.sort((a, b) => AVANCO[b] - AVANCO[a]);
     for (const e of manual ? lista : lista.slice(Math.min(pular + usadosOp, lista.length))) { if (resto <= 0) break; add(e, 1); resto--; }
