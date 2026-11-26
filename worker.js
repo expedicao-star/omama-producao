@@ -28,9 +28,11 @@ async function syncV8(DB, body) {
   const acha = (prod, mad) => { const c = prods.filter(i => tokensOk(i.nome, prod, mad)); c.sort((a, b) => a.nome.split(' ').length - b.nome.split(' ').length); return c[0] || null; };
   const r = { pedidos_novos: [], pedidos_atualizados: [], pecas_novas: [], sem_cadastro: [] };
   // peças pendentes (não enviadas) por pedido + produto + madeira
-  const grupos = new Map();
+  const grupos = new Map(), todas = new Map();
   for (const pc of body.pecas || []) {
     const num = String(pc.pedido || '').trim(); if (!num || !pc.produto) continue;
+    { const k = num + '|' + norm(pc.produto) + '|' + norm(pc.madeira), t = todas.get(k) || { num, produto: String(pc.produto).trim(), madeira: String(pc.madeira || '').trim(), un: [] };
+      const e = etapaV8(pc.etapa) || 'Aguardando madeira', q = Number(String(pc.qtd || '1').replace(',', '.')) || 1; for (let i = 0; i < q; i++) t.un.push(e); todas.set(k, t); }
     if (SAIU.includes(norm(pc.etapa))) continue;
     const k = num + '|' + norm(pc.produto) + '|' + norm(pc.madeira);
     const g = grupos.get(k) || { num, produto: String(pc.produto).trim(), madeira: String(pc.madeira || '').trim(), pend: 0, etapas: {} };
@@ -77,6 +79,26 @@ async function syncV8(DB, body) {
   if (!simular) {
     st2.push(DB.prepare('insert into sync_log(origem, resumo) values(?,?)').bind('v8', JSON.stringify(r)));
     await DB.batch(st2);
+    // etapa de cada peça segue a v.8 (só vale para peça sem OP no sistema; com OP manda o sistema)
+    const its = await all(DB, `select pi.id, pi.pedido_id, pi.item_id, pi.descricao, pi.qtd, pi.etapa_v8, p.numero from pedido_item pi join pedido p on p.id=pi.pedido_id
+      where p.status not in ('Entregue','Cancelado','Cancelada') order by pi.id`);
+    const st3 = []; r.etapas_atualizadas = 0;
+    for (const t of todas.values()) {
+      const it = acha(t.produto, t.madeira);
+      const meus = its.filter(x => x.numero === t.num && (it ? x.item_id === it.id : !x.item_id && tokensOk(x.descricao, t.produto, t.madeira)));
+      if (!meus.length) continue;
+      const tot = meus.reduce((s, x) => s + x.qtd, 0);
+      let un = t.un.slice();
+      un.sort((a, b) => (SAIU.includes(norm(a)) ? 1 : 0) - (SAIU.includes(norm(b)) ? 1 : 0));
+      un = un.slice(0, tot);
+      let i = 0;
+      for (const x of meus) {
+        const c = {}; for (let k = 0; k < x.qtd && i < un.length; k++, i++) c[un[i]] = (c[un[i]] || 0) + 1;
+        const ks = Object.keys(c); const v = !ks.length ? x.etapa_v8 : ks.length === 1 && c[ks[0]] === x.qtd ? ks[0] : JSON.stringify(c);
+        if (v !== x.etapa_v8) { st3.push(DB.prepare('update pedido_item set etapa_v8=? where id=?').bind(v, x.id)); r.etapas_atualizadas++; }
+      }
+    }
+    for (let k = 0; k < st3.length; k += 50) await DB.batch(st3.slice(k, k + 50));
   }
   return r;
 }
@@ -94,7 +116,7 @@ async function finDoPedido(DB, ped) {
 }
 // clientes e dados fiscais (v21): criados sozinhos na primeira chamada; alter ignora se já existe
 let basePronta = false;
-const BASE_DDL = ["create table if not exists cliente (id integer primary key, sensio_id text unique, nome text not null, razao text, doc text, natureza text, ie text, email text, telefone text, endereco text, numero text, complemento text, bairro text, cep text, cidade text, uf text, vendedor text, ativo int not null default 1, criado_em text default (datetime('now')))", "create index if not exists cliente_nome on cliente(nome)", "alter table pedido add column cliente_id int", "alter table item add column ncm text", "alter table item add column origem int", "alter table item add column unidade text", "alter table item add column peso_liquido real", "alter table item add column peso_bruto real", "create table if not exists transferencia (id integer primary key, data text not null, de_id int not null, para_id int not null, documento text, transportadora text, obs text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create table if not exists transferencia_item (transferencia_id int not null, item_id int not null, qtd real not null)", "update item set codigo='PROD01001' where codigo='PROD-EXPO-0068'", "update item set codigo='PROD01002' where codigo='PROD-EXPO-0085'", "update item set codigo='PROD01003' where codigo='PROD-EXPO-0088'", "update item set codigo='PROD01004' where codigo='PROD-EXPO-0091'", "update item set codigo='PROD01005' where codigo='PROD-EXPO-0092'", "update item set codigo='PROD01006' where codigo='PROD-EXPO-0093'", "update item set codigo='PROD01007' where codigo='PROD-EXPO-0186'", "update item set codigo='PROD01008' where codigo='PROD-EXPO-0187'", "update item set codigo='PROD01009' where codigo='PROD-EXPO-0188'", "update item set codigo='PROD01010' where codigo='PROD-EXPO-0189'", "update item set codigo='PROD01011' where codigo='PROD-EXPO-0190'", "update item set codigo='PROD01012' where codigo='PROD-EXPO-0191'", "update item set codigo='PROD01013' where codigo='PROD-EXPO-0192'", "update item set codigo='PROD01014' where codigo='PROD-EXPO-0193'", "update item set codigo='PROD01015' where codigo='PROD-EXPO-0194'", "update item set codigo='PROD01016' where codigo='PROD-EXPO-0195'", "update item set codigo='PROD01017' where codigo='PROD-EXPO-0196'", "update item set codigo='PROD01018' where codigo='PROD-EXPO-0197'", "update item set codigo='PROD01019' where codigo='PROD-EXPO-0198'", "update item set codigo='PROD01020' where codigo='PROD-EXPO-0199'", "update item set codigo='PROD01021' where codigo='PROD-EXPO-0200'", "update item set codigo='PROD01022' where codigo='PROD-EXPO-0201'", "update item set ativo=0 where codigo='PROD0068' and not exists (select 1 from estoque_mov m where m.item_id=item.id)", "alter table op_evento add column usuario_nome text", "alter table estoque_mov add column usuario_nome text", "alter table item add column produz int not null default 1", "alter table item add column estoque_min real", "create table if not exists migracao (nome text primary key)", "update item set produz=0 where tipo='Produto' and (lower(nome) like '%cloche%' or lower(nome) like 'caixa%' or lower(nome) like 'vaso tulipa p %' or lower(nome) like '% mini %' or lower(nome) like 'mini %' or lower(nome) like 'talher%') and not exists (select 1 from migracao where nome='produz1')", "insert or ignore into migracao values('produz1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel G %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo G %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel M %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo M %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Tigela Patauá %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Buriti %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert or ignore into migracao values('comp1')", "alter table pedido add column tipo text not null default 'cliente'", "alter table peca_qualidade add column resultado text", "alter table foto add column envio_id int", "create index if not exists foto_envio on foto(envio_id)", "create table if not exists hist_op (codigo int primary key, sensio_id text, item_codigo text, item_nome text, qtd real, status text, estagio text, criado_em text, inicio text, finalizado_em text, obs text, pedido_numero text, retrabalho int, origem text not null default 'sensio')", "create index if not exists hist_op_fim on hist_op(finalizado_em)", "create table if not exists hist_op_etapa (sensio_id text primary key, op_codigo int not null, ordem int, operacao text, status text, inicio text, fim text, duracao_seg real, qtd_produzida real, operadores text, recurso text, origem text not null default 'sensio')", "create index if not exists hist_etapa_op on hist_op_etapa(op_codigo)", "create table if not exists hist_op_evento (sensio_id text primary key, op_codigo int not null, data text, de text, para text, usuario text, origem text not null default 'sensio')", "create index if not exists hist_ev_op on hist_op_evento(op_codigo)", "create table if not exists hist_estoque_mov (sensio_id text primary key, data text not null, item_codigo text, item_nome text, item_tipo text, deposito text, deposito_id int, tipo text, qtd real, documento text, cancelado int, usuario text, origem text not null default 'sensio')", "create index if not exists hist_mov_data on hist_estoque_mov(data)", "create table if not exists hist_venda (sensio_id text primary key, codigo int, tipo_sensio text, tipo text, status text, cliente text, data_venda text, criado_em text, total real, pago int, data_pagamento text, data_faturamento text, origem text not null default 'sensio')", "create index if not exists hist_venda_cod on hist_venda(codigo)", "create table if not exists hist_nfe (sensio_id text primary key, numero text, data text, status text, valor real, cliente text, venda_sensio_id text, venda_codigo int, origem text not null default 'sensio')", "create index if not exists hist_nfe_venda on hist_nfe(venda_codigo)", "alter table pedido add column data_faturamento text", "insert or ignore into estagio(id, nome, ordem) values(14, 'LIXAMENTO', 10.5)", "insert or ignore into operacao_tipo(id, nome, estagio_id, setor_id, espera) values(11, 'Lixamento', 14, 4, 0)", "update roteiro set ordem = ordem + 1000 where not exists (select 1 from migracao where nome='lix1') and not exists (select 1 from roteiro x where x.item_id=roteiro.item_id and x.operacao_tipo_id=11) and ordem >= (select a.ordem from roteiro a where a.item_id=roteiro.item_id and a.operacao_tipo_id=8)", "update roteiro set ordem = ordem - 999 where ordem >= 1000 and not exists (select 1 from migracao where nome='lix1')", "insert into roteiro(item_id, ordem, operacao_tipo_id, tempo_min) select a.item_id, a.ordem - 1, 11, 0 from roteiro a where a.operacao_tipo_id=8 and not exists (select 1 from migracao where nome='lix1') and not exists (select 1 from roteiro x where x.item_id=a.item_id and x.operacao_tipo_id=11)", "update op_operacao set ordem = ordem + 1 where not exists (select 1 from migracao where nome='lix1') and op_id in (select o.id from op o join estagio e on e.id=o.estagio_id where o.status='aberta' and o.tipo='OP' and e.ordem < 10.5) and not exists (select 1 from op_operacao x where x.op_id=op_operacao.op_id and x.operacao_tipo_id=11) and ordem >= (select a.ordem from op_operacao a where a.op_id=op_operacao.op_id and a.operacao_tipo_id=8 and a.status='pendente')", "insert into op_operacao(op_id, ordem, operacao_tipo_id, tempo_unit_min) select a.op_id, a.ordem - 1, 11, 0 from op_operacao a join op o on o.id=a.op_id join estagio e on e.id=o.estagio_id where a.operacao_tipo_id=8 and a.status='pendente' and o.status='aberta' and o.tipo='OP' and e.ordem < 10.5 and not exists (select 1 from migracao where nome='lix1') and not exists (select 1 from op_operacao x where x.op_id=a.op_id and x.operacao_tipo_id=11)", "insert or ignore into migracao values('lix1')", "update op set estagio_id=3 where estagio_id in (1, 2)", "delete from estagio where id in (1, 2)", "delete from op_pausa where not exists (select 1 from migracao where nome='reset1') and op_operacao_id in (select oo.id from op_operacao oo join op o on o.id=oo.op_id where o.status='aberta')", "update op_operacao set status=(case when (select e.ordem from operacao_tipo t join estagio e on e.id=t.estagio_id where t.id=op_operacao.operacao_tipo_id) < (select e2.ordem from op o join estagio e2 on e2.id=o.estagio_id where o.id=op_operacao.op_id) then 'finalizado' else 'pendente' end), sem_registro=(case when (select e.ordem from operacao_tipo t join estagio e on e.id=t.estagio_id where t.id=op_operacao.operacao_tipo_id) < (select e2.ordem from op o join estagio e2 on e2.id=o.estagio_id where o.id=op_operacao.op_id) then 1 else 0 end), funcionario_id=null, inicio=null, fim=null, inicio_atual=null, minutos=0 where not exists (select 1 from migracao where nome='reset1') and op_id in (select id from op where status='aberta')", "insert into op_evento(op_id, texto, usuario_nome) select id, 'Etapas resetadas: registros de quem fez, início, fim e pausas apagados (25/11/2026, pedido do Emanuel)', 'Sistema' from op where status='aberta' and not exists (select 1 from migracao where nome='reset1')", "insert or ignore into migracao values('reset1')", "update op_operacao set sem_registro=2, minutos=tempo_unit_min*(select o.qtd from op o where o.id=op_operacao.op_id) where not exists (select 1 from migracao where nome='oper1') and status='finalizado' and sem_registro=1 and funcionario_id is null and op_id in (select id from op where status='aberta') and operacao_tipo_id in (select id from operacao_tipo where espera=0)", "update op_operacao set sem_registro=0 where not exists (select 1 from migracao where nome='oper1') and status='finalizado' and sem_registro=1 and funcionario_id is null and op_id in (select id from op where status='aberta') and operacao_tipo_id in (select id from operacao_tipo where espera=1)", "insert or ignore into migracao values('oper1')", "update op_operacao set sem_registro=2, minutos=tempo_unit_min*(select o.qtd from op o where o.id=op_operacao.op_id) where not exists (select 1 from migracao where nome='oper2') and status='finalizado' and sem_registro=1 and funcionario_id is null and op_id in (select id from op where status='aberta') and operacao_tipo_id in (select id from operacao_tipo where espera=0)", "update op_operacao set sem_registro=0 where not exists (select 1 from migracao where nome='oper2') and status='finalizado' and sem_registro=1 and funcionario_id is null and op_id in (select id from op where status='aberta') and operacao_tipo_id in (select id from operacao_tipo where espera=1)", "insert or ignore into migracao values('oper2')"];
+const BASE_DDL = ["create table if not exists cliente (id integer primary key, sensio_id text unique, nome text not null, razao text, doc text, natureza text, ie text, email text, telefone text, endereco text, numero text, complemento text, bairro text, cep text, cidade text, uf text, vendedor text, ativo int not null default 1, criado_em text default (datetime('now')))", "create index if not exists cliente_nome on cliente(nome)", "alter table pedido add column cliente_id int", "alter table item add column ncm text", "alter table item add column origem int", "alter table item add column unidade text", "alter table item add column peso_liquido real", "alter table item add column peso_bruto real", "create table if not exists transferencia (id integer primary key, data text not null, de_id int not null, para_id int not null, documento text, transportadora text, obs text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create table if not exists transferencia_item (transferencia_id int not null, item_id int not null, qtd real not null)", "update item set codigo='PROD01001' where codigo='PROD-EXPO-0068'", "update item set codigo='PROD01002' where codigo='PROD-EXPO-0085'", "update item set codigo='PROD01003' where codigo='PROD-EXPO-0088'", "update item set codigo='PROD01004' where codigo='PROD-EXPO-0091'", "update item set codigo='PROD01005' where codigo='PROD-EXPO-0092'", "update item set codigo='PROD01006' where codigo='PROD-EXPO-0093'", "update item set codigo='PROD01007' where codigo='PROD-EXPO-0186'", "update item set codigo='PROD01008' where codigo='PROD-EXPO-0187'", "update item set codigo='PROD01009' where codigo='PROD-EXPO-0188'", "update item set codigo='PROD01010' where codigo='PROD-EXPO-0189'", "update item set codigo='PROD01011' where codigo='PROD-EXPO-0190'", "update item set codigo='PROD01012' where codigo='PROD-EXPO-0191'", "update item set codigo='PROD01013' where codigo='PROD-EXPO-0192'", "update item set codigo='PROD01014' where codigo='PROD-EXPO-0193'", "update item set codigo='PROD01015' where codigo='PROD-EXPO-0194'", "update item set codigo='PROD01016' where codigo='PROD-EXPO-0195'", "update item set codigo='PROD01017' where codigo='PROD-EXPO-0196'", "update item set codigo='PROD01018' where codigo='PROD-EXPO-0197'", "update item set codigo='PROD01019' where codigo='PROD-EXPO-0198'", "update item set codigo='PROD01020' where codigo='PROD-EXPO-0199'", "update item set codigo='PROD01021' where codigo='PROD-EXPO-0200'", "update item set codigo='PROD01022' where codigo='PROD-EXPO-0201'", "update item set ativo=0 where codigo='PROD0068' and not exists (select 1 from estoque_mov m where m.item_id=item.id)", "alter table op_evento add column usuario_nome text", "alter table estoque_mov add column usuario_nome text", "alter table item add column produz int not null default 1", "alter table item add column estoque_min real", "create table if not exists migracao (nome text primary key)", "update item set produz=0 where tipo='Produto' and (lower(nome) like '%cloche%' or lower(nome) like 'caixa%' or lower(nome) like 'vaso tulipa p %' or lower(nome) like '% mini %' or lower(nome) like 'mini %' or lower(nome) like 'talher%') and not exists (select 1 from migracao where nome='produz1')", "insert or ignore into migracao values('produz1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel G %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo G %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Canopique Vessel M %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Eixo M %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert into composicao(item_id, insumo_id, qtd) select e.id, c.insumo_id, c.qtd from item e join item k on k.madeira=e.madeira and k.nome like 'Tigela Patauá %' and k.nome not like '%Mini%' join composicao c on c.item_id=k.id where e.nome like 'Buriti %' and not exists (select 1 from composicao x where x.item_id=e.id) and not exists (select 1 from migracao where nome='comp1')", "insert or ignore into migracao values('comp1')", "alter table pedido add column tipo text not null default 'cliente'", "alter table peca_qualidade add column resultado text", "alter table foto add column envio_id int", "create index if not exists foto_envio on foto(envio_id)", "create table if not exists hist_op (codigo int primary key, sensio_id text, item_codigo text, item_nome text, qtd real, status text, estagio text, criado_em text, inicio text, finalizado_em text, obs text, pedido_numero text, retrabalho int, origem text not null default 'sensio')", "create index if not exists hist_op_fim on hist_op(finalizado_em)", "create table if not exists hist_op_etapa (sensio_id text primary key, op_codigo int not null, ordem int, operacao text, status text, inicio text, fim text, duracao_seg real, qtd_produzida real, operadores text, recurso text, origem text not null default 'sensio')", "create index if not exists hist_etapa_op on hist_op_etapa(op_codigo)", "create table if not exists hist_op_evento (sensio_id text primary key, op_codigo int not null, data text, de text, para text, usuario text, origem text not null default 'sensio')", "create index if not exists hist_ev_op on hist_op_evento(op_codigo)", "create table if not exists hist_estoque_mov (sensio_id text primary key, data text not null, item_codigo text, item_nome text, item_tipo text, deposito text, deposito_id int, tipo text, qtd real, documento text, cancelado int, usuario text, origem text not null default 'sensio')", "create index if not exists hist_mov_data on hist_estoque_mov(data)", "create table if not exists hist_venda (sensio_id text primary key, codigo int, tipo_sensio text, tipo text, status text, cliente text, data_venda text, criado_em text, total real, pago int, data_pagamento text, data_faturamento text, origem text not null default 'sensio')", "create index if not exists hist_venda_cod on hist_venda(codigo)", "create table if not exists hist_nfe (sensio_id text primary key, numero text, data text, status text, valor real, cliente text, venda_sensio_id text, venda_codigo int, origem text not null default 'sensio')", "create index if not exists hist_nfe_venda on hist_nfe(venda_codigo)", "alter table pedido add column data_faturamento text", "insert or ignore into estagio(id, nome, ordem) values(14, 'LIXAMENTO', 10.5)", "insert or ignore into operacao_tipo(id, nome, estagio_id, setor_id, espera) values(11, 'Lixamento', 14, 4, 0)", "update roteiro set ordem = ordem + 1000 where not exists (select 1 from migracao where nome='lix1') and not exists (select 1 from roteiro x where x.item_id=roteiro.item_id and x.operacao_tipo_id=11) and ordem >= (select a.ordem from roteiro a where a.item_id=roteiro.item_id and a.operacao_tipo_id=8)", "update roteiro set ordem = ordem - 999 where ordem >= 1000 and not exists (select 1 from migracao where nome='lix1')", "insert into roteiro(item_id, ordem, operacao_tipo_id, tempo_min) select a.item_id, a.ordem - 1, 11, 0 from roteiro a where a.operacao_tipo_id=8 and not exists (select 1 from migracao where nome='lix1') and not exists (select 1 from roteiro x where x.item_id=a.item_id and x.operacao_tipo_id=11)", "update op_operacao set ordem = ordem + 1 where not exists (select 1 from migracao where nome='lix1') and op_id in (select o.id from op o join estagio e on e.id=o.estagio_id where o.status='aberta' and o.tipo='OP' and e.ordem < 10.5) and not exists (select 1 from op_operacao x where x.op_id=op_operacao.op_id and x.operacao_tipo_id=11) and ordem >= (select a.ordem from op_operacao a where a.op_id=op_operacao.op_id and a.operacao_tipo_id=8 and a.status='pendente')", "insert into op_operacao(op_id, ordem, operacao_tipo_id, tempo_unit_min) select a.op_id, a.ordem - 1, 11, 0 from op_operacao a join op o on o.id=a.op_id join estagio e on e.id=o.estagio_id where a.operacao_tipo_id=8 and a.status='pendente' and o.status='aberta' and o.tipo='OP' and e.ordem < 10.5 and not exists (select 1 from migracao where nome='lix1') and not exists (select 1 from op_operacao x where x.op_id=a.op_id and x.operacao_tipo_id=11)", "insert or ignore into migracao values('lix1')", "update op set estagio_id=3 where estagio_id in (1, 2)", "delete from estagio where id in (1, 2)", "delete from op_pausa where not exists (select 1 from migracao where nome='reset1') and op_operacao_id in (select oo.id from op_operacao oo join op o on o.id=oo.op_id where o.status='aberta')", "update op_operacao set status=(case when (select e.ordem from operacao_tipo t join estagio e on e.id=t.estagio_id where t.id=op_operacao.operacao_tipo_id) < (select e2.ordem from op o join estagio e2 on e2.id=o.estagio_id where o.id=op_operacao.op_id) then 'finalizado' else 'pendente' end), sem_registro=(case when (select e.ordem from operacao_tipo t join estagio e on e.id=t.estagio_id where t.id=op_operacao.operacao_tipo_id) < (select e2.ordem from op o join estagio e2 on e2.id=o.estagio_id where o.id=op_operacao.op_id) then 1 else 0 end), funcionario_id=null, inicio=null, fim=null, inicio_atual=null, minutos=0 where not exists (select 1 from migracao where nome='reset1') and op_id in (select id from op where status='aberta')", "insert into op_evento(op_id, texto, usuario_nome) select id, 'Etapas resetadas: registros de quem fez, início, fim e pausas apagados (25/11/2026, pedido do Emanuel)', 'Sistema' from op where status='aberta' and not exists (select 1 from migracao where nome='reset1')", "insert or ignore into migracao values('reset1')", "update op_operacao set sem_registro=2, minutos=tempo_unit_min*(select o.qtd from op o where o.id=op_operacao.op_id) where not exists (select 1 from migracao where nome='oper1') and status='finalizado' and sem_registro=1 and funcionario_id is null and op_id in (select id from op where status='aberta') and operacao_tipo_id in (select id from operacao_tipo where espera=0)", "update op_operacao set sem_registro=0 where not exists (select 1 from migracao where nome='oper1') and status='finalizado' and sem_registro=1 and funcionario_id is null and op_id in (select id from op where status='aberta') and operacao_tipo_id in (select id from operacao_tipo where espera=1)", "insert or ignore into migracao values('oper1')", "update op_operacao set sem_registro=2, minutos=tempo_unit_min*(select o.qtd from op o where o.id=op_operacao.op_id) where not exists (select 1 from migracao where nome='oper2') and status='finalizado' and sem_registro=1 and funcionario_id is null and op_id in (select id from op where status='aberta') and operacao_tipo_id in (select id from operacao_tipo where espera=0)", "update op_operacao set sem_registro=0 where not exists (select 1 from migracao where nome='oper2') and status='finalizado' and sem_registro=1 and funcionario_id is null and op_id in (select id from op where status='aberta') and operacao_tipo_id in (select id from operacao_tipo where espera=1)", "insert or ignore into migracao values('oper2')", "alter table pedido add column prioridade int", "alter table pedido add column coleta text", "alter table pedido add column prazo_combinado text", "alter table pedido add column madeira_prevista text", "alter table pedido add column status_manual text", "alter table pedido add column pedido_origem text", "alter table pedido add column previsao_entrega text", "alter table pedido add column data_entrega text", "alter table pedido add column env_v8 text", "create table if not exists feriado (data text primary key)", "insert or ignore into feriado(data) values ('2026-09-07'),('2026-10-12'),('2026-10-24'),('2026-11-02'),('2026-11-20'),('2026-12-25'),('2027-01-01'),('2027-02-08'),('2027-02-09'),('2027-03-26'),('2027-04-21'),('2027-05-27'),('2027-09-05'),('2027-10-24')"];
 // financeiro: tabelas criadas sozinhas na primeira chamada (schema_v18.sql + v19)
 let finPronto = false;
 const FIN_DDL = ["create table if not exists fin_conta (id integer primary key, nome text not null unique, tipo text, saldo_inicial real not null default 0, ativo int not null default 1)", "create table if not exists fin_categoria (id integer primary key, nome text not null, tipo text not null, grupo_dre text, plano text, ativo int not null default 1, unique(nome, tipo))", "create table if not exists fin_centro (id integer primary key, nome text not null unique, ativo int not null default 1)", "create table if not exists fin_lancamento ( id integer primary key, tipo text not null, descricao text not null, obs text, pessoa text, conta_id int, conta_destino_id int, categoria_id int, centro_id int, metodo text, valor real not null, pago real not null default 0, vencimento text not null, competencia text, quitacao text, parcela text, nf text, pedido_id int, status text not null default 'aberto', origem text not null default 'manual', sensio_id text unique, criado_em text default (datetime('now')), criado_por int)", "create index if not exists fin_l_venc on fin_lancamento(vencimento)", "create index if not exists fin_l_quit on fin_lancamento(quitacao)", "create index if not exists fin_l_comp on fin_lancamento(competencia)", "create index if not exists fin_l_status on fin_lancamento(status)", "create table if not exists fin_cobranca (id integer primary key, pessoa text not null, lancamento_id int, tipo text not null, texto text, promessa_data text, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_cob_pessoa on fin_cobranca(pessoa)", "create table if not exists fin_anexo (id integer primary key, lancamento_id int not null, nome text, tipo text not null, dados text not null, criado_em text default (datetime('now')), criado_por int, criado_nome text)", "create index if not exists fin_anexo_l on fin_anexo(lancamento_id)", "create table if not exists fin_extrato (id integer primary key, conta_id int not null, fitid text not null, data text not null, valor real not null, descricao text, lancamento_id int, status text not null default 'pendente', criado_em text default (datetime('now')), unique(conta_id, fitid))"];
@@ -117,7 +139,7 @@ const HIST_COLS = {
   nfe: ['sensio_id', 'numero', 'data', 'status', 'valor', 'cliente', 'venda_sensio_id', 'venda_codigo'],
 };
 const HIST_TAB = { op: 'hist_op', etapa: 'hist_op_etapa', evento: 'hist_op_evento', mov: 'hist_estoque_mov', venda: 'hist_venda', nfe: 'hist_nfe' };
-const TIPOS_PEDIDO = ['cliente', 'troca', 'reposicao', 'showroom', 'brinde', 'consignado'];
+const TIPOS_PEDIDO = ['cliente', 'troca', 'reposicao', 'devolucao', 'outros', 'showroom', 'brinde', 'consignado'];
 const tipoPedido = s => { const t = semAcento(s); return TIPOS_PEDIDO.find(x => x !== 'cliente' && t.includes(x.slice(0, 6))) || 'cliente'; };
 const grupoMeta = tipo => ({ 'torno fase a': 'TA', 'torno fase b': 'TB', 'acabamento': 'AC', 'lixamento': 'AC', 'finalizacao': 'AC', 'marcenaria a': 'MA', 'marcenaria b': 'MB' })[semAcento(tipo)] || null;
 function chaveMeta(nome) {
@@ -170,7 +192,7 @@ async function recalcularOp(DB, op_id) {
 
 async function opsAbertas(DB, where = "op.status='aberta'", ...b) {
   return all(DB, `select op.id, op.codigo, op.qtd, op.estagio_id, op.previsao_inicio, op.previsao_fim, op.pedido, op.status, op.origem, op.tipo, op.motivo, op.defeito_id,
-      i.id item_id, i.codigo item_codigo, i.nome item_nome, op.pedido_item_id, pd.numero pedido_numero, pd.cliente pedido_cliente,
+      i.id item_id, i.codigo item_codigo, i.nome item_nome, op.pedido_item_id, pd.numero pedido_numero, pd.cliente pedido_cliente, pd.prioridade,
       (select t.nome || '|' || oo.status || '|' || coalesce(f.nome,'') from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id
          left join funcionario f on f.id=oo.funcionario_id where oo.op_id=op.id and oo.status<>'finalizado' order by oo.ordem limit 1) atual
     from op join item i on i.id=op.item_id left join pedido_item pi on pi.id=op.pedido_item_id left join pedido pd on pd.id=pi.pedido_id where ${where} order by op.previsao_fim is null, op.previsao_fim, op.codigo`, ...b);
@@ -188,14 +210,14 @@ async function hashSenha(senha, salt) {
 const USADOS = 'select count(*) n from usuario where ativo=1 and id != (select min(id) from usuario where admin=1)';
 const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
-const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem', 'fin'];
+const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem', 'fin', 'com'];
 const PERM = [
   [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/insumos/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
   [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped', 'exp']],
-  [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/fin\//, null, ['fin']],
+  [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/comercial\/importar/, 'POST', ['admin']], [/^\/api\/comercial/, null, ['com']], [/^\/api\/fin\//, null, ['fin']],
 ];
 // grava quem lançou: todo insert em op_evento / estoque_mov ganha usuario_nome do login da requisição
 const comQuem = (db, u) => { const nome = u.nome || u.login || 'Sistema';
@@ -270,6 +292,107 @@ async function mcp(req, env) {
     return responde(msg.id, { content: [{ type: 'text', text: await r.text() }], isError: !r.ok });
   }
   return erro(msg.id, -32601, 'Método não suportado');
+}
+
+// ---------- Comercial: mesma lógica da v.8 (abas Pedidos, Peças, Quadro do dia, Acompanhamento cliente)
+const ETAPAS_V8 = ['Aguardando madeira', 'Produção', 'Acabamento', 'Controle de qualidade', 'Prontas'];
+const AVANCO = { 'Cancelado': -1, 'Aguardando madeira': 0, 'Produção': 1, 'Acabamento': 2, 'Controle de qualidade': 3, 'Em Separação': 4, 'Prontas': 5, 'Enviada': 6, 'Entregue': 7 };
+const ETAPA_NORM = Object.fromEntries(Object.keys(AVANCO).map(e => [semAcento(e), e]));
+const etapaV8 = s => ETAPA_NORM[semAcento(s || '')] || null;
+const TIPO_V8 = { cliente: 'Venda', troca: 'Troca', reposicao: 'Reposição (falta na entrega)', devolucao: 'Devolução', outros: 'Outros', showroom: 'Showroom', brinde: 'Brinde', consignado: 'Consignado' };
+const POS_VENDA = ['troca', 'reposicao', 'devolucao', 'outros'];
+const STATUS_MANUAL = ['Transportadora', 'Entregue', 'Cancelada', 'Em revisão', 'Avaliando estoque', 'Em Avaliação'];
+// dias úteis (seg–sex, sem feriados), como WORKDAY / NETWORKDAYS da planilha
+const dIso = d => d.toISOString().slice(0, 10);
+const util = (d, fer) => { const w = d.getUTCDay(); return w !== 0 && w !== 6 && !fer.has(dIso(d)); };
+function workday(ini, n, fer) { const d = new Date(ini + 'T00:00:00Z'); let k = 0; while (k < n) { d.setUTCDate(d.getUTCDate() + 1); if (util(d, fer)) k++; } return dIso(d); }
+function networkdays(a, b, fer) { let d = new Date(a + 'T00:00:00Z'), f = new Date(b + 'T00:00:00Z'), n = 0; while (d <= f) { if (util(d, fer)) n++; d.setUTCDate(d.getUTCDate() + 1); } return n; }
+const diasAte = (hoje, d, fer) => d >= hoje ? networkdays(hoje, d, fer) - 1 : -(networkdays(d, hoje, fer) - 1);
+const hojeManaus = () => dIso(new Date(Date.now() - 4 * 3600e3));
+const colecao = it => /^banco /i.test(it.familia || it.nome || '') ? 'PAS' : 'BF';
+const nomeCurto = n => String(n || '').replace(/ CM /, ' ').replace(/^(Vaso|Banco|Tigela|Bandeja|Tábua|Talheres|Pegadores)\s+/i, '').replace(/^Canopique Vessel/i, 'Canopique');
+// etapa de cada peça de um item de pedido: enviada > embalada > OP do sistema > etapa vinda da v.8 > aguardando madeira
+function etapasDoItem(pi, ops, cq) {
+  const out = {}, add = (e, n) => { if (n > 0) out[e] = (out[e] || 0) + n; };
+  const q = Number(pi.qtd) || 0, env = Math.min(q, Number(pi.enviada) || 0), emb = Math.max(0, Math.min(q - env, (Number(pi.embalada) || 0) - env));
+  add('Enviada', env); add('Prontas', emb);
+  let resto = q - env - emb, pular = env + emb;
+  const unid = [];
+  for (const o of ops) {
+    const n = Number(o.qtd) || 0;
+    if (o.status === 'finalizada') { const c = Math.min(n, cq[o.id] || 0); for (let i = 0; i < c; i++) unid.push('Prontas'); for (let i = c; i < n; i++) unid.push('Controle de qualidade'); }
+    else for (let i = 0; i < n; i++) unid.push(o.ordem >= 10.5 ? 'Acabamento' : 'Produção');
+  }
+  unid.sort((a, b) => AVANCO[b] - AVANCO[a]);
+  const usadosOp = unid.length;
+  for (const e of unid.slice(Math.min(pular, unid.length))) { if (resto <= 0) break; add(e, 1); resto--; }
+  if (resto > 0) {
+    let v = {}; const s = pi.etapa_v8 || '';
+    if (s.startsWith('{')) { try { v = JSON.parse(s); } catch (e) { v = {}; } } else if (etapaV8(s)) v[etapaV8(s)] = q;
+    const lista = []; Object.entries(v).forEach(([e, n]) => { for (let i = 0; i < n; i++) lista.push(e); });
+    lista.sort((a, b) => AVANCO[b] - AVANCO[a]);
+    for (const e of lista.slice(Math.min(pular + usadosOp, lista.length))) { if (resto <= 0) break; add(e, 1); resto--; }
+    add('Aguardando madeira', resto);
+  }
+  return out;
+}
+async function comercial(DB) {
+  const hoje = hojeManaus();
+  const [peds, itens, ops, cqs, fers] = await Promise.all([
+    all(DB, 'select * from pedido'),
+    all(DB, 'select pi.*, i.nome item_nome, i.familia from pedido_item pi left join item i on i.id=pi.item_id'),
+    all(DB, `select o.id, o.qtd, o.status, o.pedido_item_id, e.ordem from op o join estagio e on e.id=o.estagio_id where o.pedido_item_id is not null and o.status<>'cancelada' and o.tipo='OP'`),
+    all(DB, 'select op_id, count(*) n from peca_qualidade group by op_id'),
+    all(DB, 'select data from feriado')]);
+  const fer = new Set(fers.map(f => f.data)), cq = Object.fromEntries(cqs.map(c => [c.op_id, c.n]));
+  const opsPor = {}; ops.forEach(o => (opsPor[o.pedido_item_id] = opsPor[o.pedido_item_id] || []).push(o));
+  const itPor = {}; itens.forEach(i => (itPor[i.pedido_id] = itPor[i.pedido_id] || []).push(i));
+  const pecasEstoque = {}; // peças prontas (CQ / prontas) que já são de pedido em aberto, por item
+  const r = peds.map(p => {
+    const its = itPor[p.id] || [], cont = {}, porEtapa = {};
+    for (const pi of its) {
+      const et = etapasDoItem(pi, opsPor[pi.id] || [], cq);
+      for (const [e, n] of Object.entries(et)) {
+        cont[e] = (cont[e] || 0) + n;
+        const c = colecao(pi), nm = nomeCurto(pi.item_nome || pi.descricao);
+        ((porEtapa[e] = porEtapa[e] || {})[c] = porEtapa[e][c] || {})[nm] = (porEtapa[e][c][nm] || 0) + n;
+        if (pi.item_id && ['Controle de qualidade', 'Prontas', 'Em Separação'].includes(e)) pecasEstoque[pi.item_id] = (pecasEstoque[pi.item_id] || []).concat([{ pedido: p.numero, n }]);
+      }
+    }
+    const tot = Object.entries(cont).reduce((s, [e, n]) => s + (e === 'Cancelado' ? 0 : n), 0);
+    const env = (cont['Enviada'] || 0) + (cont['Entregue'] || 0), entr = cont['Entregue'] || 0;
+    const falta = Object.entries(cont).reduce((s, [e, n]) => s + (['Prontas', 'Enviada', 'Entregue', 'Cancelado'].includes(e) ? 0 : n), 0);
+    let status = p.status_manual || (p.data_entrega ? 'Entregue' : null);
+    if (!status) {
+      if (!its.length) status = ['Em produção', 'Pronto / embalagem'].includes(p.status) ? 'Sem peças cadastradas' : (p.status === 'Cancelado' ? 'Cancelada' : p.status);
+      else if (tot === 0) status = 'Cancelada';
+      else if (falta > 0) status = 'Em produção';
+      else if (entr === tot) status = 'Entregue';
+      else if (env === tot) status = 'Transportadora';
+      else status = 'Pronto / embalagem';
+    }
+    const tipo = p.tipo || 'cliente', posVenda = POS_VENDA.includes(tipo);
+    const prazo = ['Transportadora', 'Entregue', 'Cancelada', 'Em Avaliação'].includes(status) ? null
+      : p.prazo_combinado || (tipo !== 'cliente' ? null : p.data_pagamento ? workday(p.data_pagamento, 60, fer) : null);
+    const meta = !prazo ? null : p.prazo_combinado || (p.data_pagamento && p.data_pagamento >= '2026-10-27' ? workday(p.data_pagamento, 30, fer) : prazo);
+    const textoEtapa = e => Object.entries(porEtapa[e] || {}).sort().map(([c, ns]) => c + ': ' + Object.entries(ns).map(([nm, n]) => n + ' ' + nm).join(' / ')).join('\n');
+    const etapas = Object.fromEntries(ETAPAS_V8.map(e => [e, textoEtapa(e)]));
+    const dd = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
+    let gargalo = '';
+    if (!['Transportadora', 'Entregue', 'Cancelada'].includes(status)) {
+      if (status === 'Pronto / embalagem') gargalo = p.coleta ? 'Coleta ' + dd(p.coleta) : 'Pronto, sem coleta marcada';
+      else if (status === 'Em revisão') gargalo = 'Em revisão';
+      else if (etapas['Aguardando madeira']) gargalo = 'Aguardando madeira' + (p.madeira_prevista ? ` (prev. ${dd(p.madeira_prevista)}${prazo && p.madeira_prevista > prazo ? ', depois do prazo' : ''})` : '');
+      else gargalo = ETAPAS_V8.slice(1).find(e => etapas[e]) || '';
+    }
+    return { numero: p.numero, prioridade: p.prioridade, data_pagamento: p.data_pagamento, prazo, dias: prazo ? diasAte(hoje, prazo, fer) : null,
+      cliente: p.cliente, status, env_total: tot ? `${env}/${tot}` : (p.env_v8 || ''), coleta: p.coleta, gargalo, etapas, obs: p.obs,
+      prazo_combinado: p.prazo_combinado, madeira_prevista: p.madeira_prevista, status_manual: p.status_manual, tipo, tipo_v8: TIPO_V8[tipo] || tipo, pos_venda: posVenda,
+      pedido_origem: p.pedido_origem, previsao_entrega: p.previsao_entrega, data_entrega: p.data_entrega,
+      pos_venda_dias: posVenda && p.data_pagamento && !['Entregue', 'Cancelada'].includes(status) ? networkdays(p.data_pagamento, hoje, fer) - 1 : null,
+      meta, dias_meta: meta ? diasAte(hoje, meta, fer) : null, pecas: tot, cont };
+  });
+  return { hoje, proximo_util: workday(hoje, 1, fer), pedidos: r, pecasEstoque };
 }
 
 const app = {
@@ -634,16 +757,81 @@ const app = {
       }
 
       // fila do setor: operações prontas (a próxima de cada OP) + as que estão produzindo/pausadas
+      // ---------- Comercial (aba da Araci): quadro do dia, pedidos, acompanhamento e estoque pra venda
+      if (p === '/api/comercial' && req.method === 'GET') {
+        const c = await comercial(DB); delete c.pecasEstoque;
+        return json(req, c);
+      }
+      if (p === '/api/comercial/estoque') {
+        const [l, cl, c] = await Promise.all([
+          all(DB, `select i.id, i.codigo, i.nome, i.familia, i.madeira,
+              coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) manaus,
+              coalesce((select sum(qtd) from estoque_mov where item_id=i.id and deposito_id=?),0) sp
+            from item i where i.tipo='Produto'`, DEP_PA, DEP_PA_SP),
+          all(DB, `select o.item_id, q.classe from peca_qualidade q join op o on o.id=q.op_id order by o.finalizado_em desc, q.numero`),
+          comercial(DB)]);
+        const abertos = new Set(c.pedidos.filter(x => !['Transportadora', 'Entregue', 'Cancelada'].includes(x.status)).map(x => x.numero));
+        const por = {}; cl.forEach(x => (por[x.item_id] = por[x.item_id] || []).push(x.classe));
+        const r = l.filter(i => i.manaus > 0.0001 || i.sp > 0.0001).map(i => {
+          const n = Math.max(0, Math.floor(i.manaus + 1e-9)), k = (por[i.id] || []).slice(0, n), cls = { A: 0, B: 0, C: 0, D: 0 };
+          k.forEach(x => cls[x]++);
+          const res = (c.pecasEstoque[i.id] || []).filter(x => abertos.has(x.pedido));
+          const reservado = res.reduce((s, x) => s + x.n, 0);
+          return { ...i, colecao: colecao(i), classes: cls, sem_classe: n - k.length, reservado, reservas: res.map(x => `${x.n} no ${x.pedido}`).join(', '),
+            disponivel: Math.max(0, n - reservado) };
+        }).sort((a, b) => a.nome.localeCompare(b.nome));
+        return json(req, r);
+      }
+      if ((m = p.match(/^\/api\/comercial\/pedido\/([^/]+)$/)) && req.method === 'POST') {
+        const pd = await one(DB, 'select * from pedido where numero=?', decodeURIComponent(m[1]));
+        if (!pd) return json(req, { erro: 'Pedido não encontrado' }, 404);
+        const d = v => v === undefined ? undefined : (v === '' || v === null ? null : String(v));
+        const set = {}, ok = s => !s || /^\d{4}-\d{2}-\d{2}$/.test(s);
+        if (body.prioridade !== undefined) { const v = body.prioridade === '' || body.prioridade === null ? null : Number(body.prioridade); if (v !== null && ![1, 2].includes(v)) return json(req, { erro: 'Prioridade é 1 ou 2' }, 400); set.prioridade = v; }
+        for (const k of ['data_pagamento', 'coleta', 'prazo_combinado', 'madeira_prevista', 'previsao_entrega', 'data_entrega']) if (body[k] !== undefined) { if (!ok(d(body[k]))) return json(req, { erro: 'Data inválida: ' + k }, 400); set[k] = d(body[k]); }
+        for (const k of ['cliente', 'obs', 'pedido_origem']) if (body[k] !== undefined) set[k] = d(body[k]);
+        if (body.status_manual !== undefined) { const v = d(body.status_manual); if (v && !STATUS_MANUAL.includes(v)) return json(req, { erro: 'Status: ' + STATUS_MANUAL.join(', ') }, 400); set.status_manual = v;
+          if (['Transportadora', 'Entregue'].includes(v)) set.status = v; else if (v === 'Cancelada') set.status = 'Cancelado'; }
+        if (body.tipo !== undefined) { if (!TIPOS_PEDIDO.includes(body.tipo)) return json(req, { erro: 'Tipo inválido' }, 400); set.tipo = body.tipo; }
+        if (set.data_entrega) set.status = 'Entregue';
+        const ks = Object.keys(set); if (!ks.length) return json(req, { ok: true });
+        await DB.prepare(`update pedido set ${ks.map(k => k + '=?').join(', ')} where id=?`).bind(...ks.map(k => set[k]), pd.id).run();
+        return json(req, { ok: true });
+      }
+      if (p === '/api/comercial/importar-v8' && req.method === 'POST') {
+        // uma vez: traz da v.8 os campos que a aba Comercial passa a cuidar (prioridade, coleta, observações, tipo, entregas…)
+        const ex = new Map((await all(DB, 'select id, numero from pedido')).map(x => [String(x.numero), x.id]));
+        const st = [], r = { atualizados: 0, novos: 0 };
+        for (const v of body.pedidos || []) {
+          const num = String(v.numero || '').trim(); if (!/^\d+$/.test(num)) continue;
+          const tipo = v.tipo ? tipoPedido(v.tipo) : 'cliente', sm = STATUS_MANUAL.includes(v.status_manual) ? v.status_manual : null;
+          const vals = [Number(v.prioridade) || null, dataBR(v.data_pagamento), dataBR(v.coleta), dataBR(v.prazo_combinado), dataBR(v.madeira_prevista), sm,
+            v.origem ? String(v.origem) : null, dataBR(v.previsao), dataBR(v.entrega), String(v.obs || '').trim() || null, v.env_total || null];
+          if (ex.has(num)) {
+            st.push(DB.prepare(`update pedido set prioridade=?, data_pagamento=coalesce(?, data_pagamento), coleta=?, prazo_combinado=?, madeira_prevista=?, status_manual=?, pedido_origem=?,
+              previsao_entrega=?, data_entrega=?, obs=?, env_v8=?, tipo=? where id=?`).bind(...vals, tipo, ex.get(num))); r.atualizados++;
+          } else {
+            const stt = String(v.status || '').trim() || 'Entregue';
+            st.push(DB.prepare(`insert into pedido(prioridade, data_pagamento, coleta, prazo_combinado, madeira_prevista, status_manual, pedido_origem, previsao_entrega, data_entrega, obs, env_v8, tipo, numero, cliente, status)
+              values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...vals, tipo, num, String(v.cliente || '').trim() || null, stt === 'Cancelada' ? 'Cancelado' : stt)); r.novos++;
+          }
+        }
+        for (let i = 0; i < st.length; i += 50) await DB.batch(st.slice(i, i + 50));
+        return json(req, r);
+      }
+
       if (p === '/api/fila') {
         const setor = Number(q('setor_id'));
         const r = await all(DB, `select oo.id, oo.status, oo.ordem, oo.tempo_unit_min, oo.minutos, oo.inicio_atual, t.nome operacao, t.setor_id,
             op.codigo, op.qtd, op.previsao_fim, op.motivo, i.nome item_nome, f.nome funcionario, oo.funcionario_id,
+            (select pd.prioridade from pedido_item pi join pedido pd on pd.id=pi.pedido_id where pi.id=op.pedido_item_id) prioridade,
+            (select pd.numero from pedido_item pi join pedido pd on pd.id=pi.pedido_id where pi.id=op.pedido_item_id) pedido_numero,
             (select x.motivo || coalesce(' – ' || x.obs, '') from op_pausa x where x.op_operacao_id=oo.id and x.fim is null order by x.id desc limit 1) pausa_motivo,
             (select count(*) from op_operacao x where x.op_id=oo.op_id and x.ordem<oo.ordem and x.status<>'finalizado') antes
           from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id join op on op.id=oo.op_id join item i on i.id=op.item_id
           left join funcionario f on f.id=oo.funcionario_id
           where op.status='aberta' and oo.status<>'finalizado' and ${setor ? 't.setor_id=?' : 't.espera=1 and ?=0'}
-          order by case oo.status when 'produzindo' then 0 when 'pausado' then 1 else 2 end, op.previsao_fim is null, op.previsao_fim, op.codigo`, setor || 0);
+          order by case oo.status when 'produzindo' then 0 when 'pausado' then 1 else 2 end, coalesce(prioridade, 2), op.previsao_fim is null, op.previsao_fim, op.codigo`, setor || 0);
         return json(req, r.filter(x => x.status !== 'pendente' || x.antes === 0));
       }
 
