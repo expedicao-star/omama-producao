@@ -36,7 +36,8 @@ body.logado #side{display:block}body.menu #side{transform:none}
 .t-blue{background:#e1eefb;color:#2d6aa3}
 input[type=checkbox]{accent-color:var(--amb)}
 @media(max-width:600px){header .sub{display:none}}
-@media print{#side,#sideBg,header,.noprint,.toast{display:none!important}body.logado main{margin:0;max-width:none}body{background:#fff}.card{box-shadow:none;break-inside:avoid}}
+table.quadro td{vertical-align:top}table.quadro th{background:#5b4636;color:#fff;font-size:12px;position:sticky;top:0}
+@media print{@page{size:A4 landscape}#side,#sideBg,header,.noprint,.toast{display:none!important}body.logado main{margin:0;max-width:none}body{background:#fff}.card{box-shadow:none;break-inside:avoid}}
 body.tv #side,body.tv #sideBg{display:none!important}body.tv main{margin-left:0!important;max-width:none}body.tv{font-size:18px}
 .st{border:2px solid var(--line);background:#fff;border-radius:20px;padding:5px 10px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;color:var(--mut)}
 .st.on.ok{background:var(--ok);border-color:var(--ok);color:#fff}.st.on.bad{background:var(--bad);border-color:var(--bad);color:#fff}.st.on.midc{background:var(--mid);border-color:var(--mid);color:#fff}.st.on.blue{background:var(--blue);border-color:var(--blue);color:#fff}.st.on.mut{background:var(--mut);border-color:var(--mut);color:#fff}
@@ -106,7 +107,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -155,7 +156,7 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com','◆','Comercial'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
 const MENU_PERM=[...MENU,['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
@@ -176,7 +177,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tComercial})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -219,7 +220,7 @@ const botoes = o => o.status==='finalizado' ? `<button class="btn sec sm" data-a
   : `<button class="btn sm" data-a="iniciar">▶ Iniciar</button> <button class="btn sec sm" data-a="finalizar">✓ Finalizar</button>`;
 const tag = s => `<span class="tag t-${s}">${s}</span>`;
 const nomeOp = c => +c>=100000 ? 'RT '+(c-100000) : 'OP '+c;
-const pedTag = o => o.pedido_numero ? `<span class="ped" data-ped="${esc(o.pedido_numero)}">Pedido ${esc(o.pedido_numero)} · ${esc(o.pedido_cliente||'')}</span>` : `<span class="ped est">Estoque</span>`;
+const pedTag = o => o.pedido_numero ? `${o.prioridade===1?'<span class="tag" style="background:var(--amb);color:#fff">Prioridade 1</span> ':''}<span class="ped" data-ped="${esc(o.pedido_numero)}">Pedido ${esc(o.pedido_numero)} · ${esc(o.pedido_cliente||'')}</span>` : `<span class="ped est">Estoque</span>`;
 const ligaPed = root => root.querySelectorAll('[data-ped]').forEach(c=>c.onclick=e=>{e.stopPropagation(); abrirPedido(c.dataset.ped);});
 const diasAte = s => s ? Math.round((new Date(s.slice(0,10)+'T12:00')-new Date(hojeISO()+'T12:00'))/864e5) : null;
 
@@ -231,7 +232,7 @@ async function tFila(){
   const l = await api('/api/fila?setor_id='+S.setor);
   const t = (B.tipos.find(x=>x.setor_id===S.setor)||{});
   $('#fila').innerHTML = l.length ? l.map((o,i)=>`<div class="card ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-i="${i}">
-      <div class="info"><b>${esc(o.operacao)}</b> ${tag(o.status)}<br>
+      <div class="info"><b>${esc(o.operacao)}</b> ${tag(o.status)}${o.prioridade===1?' <span class="tag" style="background:var(--amb);color:#fff">Prioridade 1</span>':''}${o.pedido_numero?' <span class="mut">· pedido '+esc(o.pedido_numero)+'</span>':''}<br>
         <span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.item_nome)} · <b>${fmt(o.qtd)} un</b>${o.motivo?`<br><span class="bad">Motivo: ${esc(o.motivo)}</span>`:''}${o.status==='pausado'&&o.pausa_motivo?`<br><span class="${/^(Acidente|Saúde)/.test(o.pausa_motivo)?'bad':'midc'}">Pausado: ${esc(o.pausa_motivo)}</span>`:''}<br>
         <span class="mut">${o.funcionario?'👤 '+esc(o.funcionario)+' · ':''}tempo <span data-tempo='${JSON.stringify({minutos:o.minutos,status:o.status,inicio_atual:o.inicio_atual})}'>${dur(decorrido(o))}</span> / padrão ${dur(o.tempo_unit_min*o.qtd)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</span></div>
       <div>${botoes(o)}</div></div>`).join('') : '<div class="vazio">Nada na fila desse setor agora.</div>';
@@ -439,6 +440,128 @@ async function tInsumos(){
     $('#xl').querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>histInsumo(+b.dataset.h)); };
   $('#xb').oninput=desenha; $('#xn').onclick=()=>editarInsumo({}); $('#xh').onclick=()=>histInsumo(0); desenha();
 }
+// ===== Comercial (Araci): segue a v.8 · Quadro do dia, Pedidos, Acompanhamento cliente, Estoque pra venda
+const ddmm = s => s ? s.slice(8,10)+'/'+s.slice(5,7) : '';
+const COR = {pv:'#d8c6f2', coleta:'#8cd18c', pronto:'#d8efd8', revisao:'#fff4c6', transp:'#efefef', atraso:'#f49999', dez:'#ffe07f', semcol:'#f9bf7f', sempeca:'#f9d8d8', p1:'#e5d8f7', p2:'#e0eaf7', ent:'#f1f1f1'};
+const leg = l => `<div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${l.map(([c,t])=>`<span style="background:${c};border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700">${t}</span>`).join('')}</div>`;
+const TIPOS_COM = [['cliente','Venda'],['troca','Troca'],['reposicao','Reposição (falta na entrega)'],['devolucao','Devolução'],['outros','Outros'],['showroom','Showroom'],['brinde','Brinde'],['consignado','Consignado']];
+const ST_MANUAL = ['Transportadora','Entregue','Cancelada','Em revisão','Avaliando estoque','Em Avaliação'];
+async function tComercial(){
+  S.csub = S.csub || 'quadro';
+  const abas=[['quadro','Quadro do dia'],['ped','Pedidos'],['acomp','Acompanhamento cliente'],['est','Estoque pra venda']];
+  app.innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap">${abas.map(([k,n])=>`<button class="st ${S.csub===k?'on blue':''}" data-cs="${k}">${n}</button>`).join('')}<span style="flex:1"></span><button class="btn sec sm" id="cimp">Imprimir</button></div><div id="cc" class="card vazio" style="margin-top:10px">Carregando…</div>`;
+  app.querySelectorAll('[data-cs]').forEach(b=>b.onclick=()=>{ S.csub=b.dataset.cs; tComercial(); });
+  $('#cimp').onclick=()=>window.print();
+  if(S.csub==='est') return comEstoque();
+  const d=await api('/api/comercial'); const P=d.pedidos;
+  ({quadro:comQuadro, ped:comPedidos, acomp:comAcomp})[S.csub](d,P);
+}
+function comQuadro(d,P){
+  const rk=s=>({'Pronto / embalagem':1,'Em produção':2,'Em revisão':3,'Avaliando estoque':3,'Sem peças cadastradas':4,'Transportadora':5})[s]||0;
+  const k=(v)=>v==null||v===''?99999:v;
+  const L=P.filter(p=>rk(p.status)>0).sort((a,b)=>rk(a.status)-rk(b.status)||(a.pos_venda?0:1)-(b.pos_venda?0:1)
+    ||String(k(a.status==='Transportadora'?a.previsao_entrega:a.coleta)).localeCompare(String(k(b.status==='Transportadora'?b.previsao_entrega:b.coleta)))||k(a.dias_meta)-k(b.dias_meta)||(+a.numero)-(+b.numero));
+  const n=f=>P.filter(f).length;
+  const res=`Em produção: <b>${n(p=>p.status==='Em produção')}</b> · Prontos: <b>${n(p=>p.status==='Pronto / embalagem')}</b> · Prontos sem coleta marcada: <b>${n(p=>p.gargalo==='Pronto, sem coleta marcada')}</b> · Atrasados: <b>${n(p=>p.dias_meta!=null&&p.dias_meta<0)}</b> · Na transportadora: <b>${n(p=>p.status==='Transportadora')}</b>${n(p=>p.status==='Sem peças cadastradas')?` · Sem peças cadastradas: <b>${n(p=>p.status==='Sem peças cadastradas')}</b>`:''}`;
+  $('#cc').className='card'; $('#cc').style.overflowX='auto';
+  $('#cc').innerHTML=`<div class="row" style="justify-content:space-between"><b>QUADRO DO DIA · EXPEDIÇÃO</b><span class="mut">Data: ${brData(d.hoje)}</span></div><p style="margin:6px 0">${res}</p>
+    ${leg([[COR.pv,'Pós-venda'],[COR.coleta,'Coleta hoje/amanhã'],[COR.pronto,'Pronto / embalagem'],[COR.revisao,'Em revisão / avaliando estoque'],[COR.transp,'Na transportadora'],[COR.atraso,'Prazo atrasado'],[COR.dez,'Prazo ≤ 10 dias úteis'],[COR.semcol,'Pronto, sem coleta marcada']])}
+    <table class="quadro"><tr><th>Pedido</th><th>Prior.</th><th>Cliente</th><th>Meta da fábrica (dias úteis)</th><th>Situação</th><th>Env. / Total</th><th>Coleta</th>${['Aguardando madeira','Produção','Acabamento','Controle de qualidade','Prontas'].map(e=>`<th>${e}</th>`).join('')}<th>Observações</th></tr>
+    ${L.map(p=>{ const bg=p.status==='Pronto / embalagem'?COR.pronto:p.status==='Transportadora'?COR.transp:p.status==='Sem peças cadastradas'?COR.sempeca:['Em revisão','Avaliando estoque'].includes(p.status)?COR.revisao:'';
+      const meta=p.status==='Transportadora'?(p.previsao_entrega?'Entrega prev. '+ddmm(p.previsao_entrega):''):!p.meta?(p.pos_venda?(p.pos_venda_dias==null?'definir prazo':'definir prazo · aberto há '+p.pos_venda_dias+' dias úteis'):''):`${ddmm(p.meta)} (${p.dias_meta})`;
+      const cm=/^definir prazo/.test(meta)?COR.dez:p.status==='Transportadora'?(p.previsao_entrega&&p.previsao_entrega<d.hoje?COR.atraso:''):p.dias_meta!=null&&p.dias_meta<0?COR.atraso:p.dias_meta!=null&&p.dias_meta<=10?COR.dez:'';
+      const cc=p.coleta?(p.coleta<d.hoje?COR.atraso:p.coleta<=d.proximo_util?COR.coleta:''):'';
+      const sit=p.gargalo||p.status;
+      return `<tr style="background:${bg}"><td style="${p.pos_venda?'background:'+COR.pv:''}"><span class="link" data-cped="${esc(p.numero)}"><b>${esc(p.numero)}</b></span></td>
+        <td>${p.prioridade?`<span class="tag" style="background:${p.prioridade===1?'var(--amb)':'var(--card2)'};color:${p.prioridade===1?'#fff':'var(--txt)'}">${p.prioridade}</span>`:''}</td>
+        <td style="${p.pos_venda?'background:'+COR.pv+';font-weight:700':''}">${esc(p.cliente||'')}${p.pos_venda?`<br><span style="font-size:12px">PÓS-VENDA · ${esc(p.tipo_v8)}${p.pedido_origem?' (orig. '+esc(p.pedido_origem)+')':''}</span>`:''}</td>
+        <td style="${cm?'background:'+cm+';font-weight:700':''}">${meta}</td><td style="${sit==='Pronto, sem coleta marcada'?'background:'+COR.semcol+';font-weight:700':''}">${esc(sit)}</td>
+        <td>${esc(p.env_total)}</td><td style="${cc?'background:'+cc+';font-weight:700':''}">${ddmm(p.coleta)}</td>
+        ${['Aguardando madeira','Produção','Acabamento','Controle de qualidade','Prontas'].map(e=>`<td style="font-size:12px;white-space:pre-line;min-width:110px">${esc(p.etapas[e]||'')}</td>`).join('')}
+        <td style="font-size:12px">${esc((p.obs||'').replace(/\s+/g,' ').trim())}</td></tr>`; }).join('')||'<tr><td colspan="13" class="vazio">Nenhum pedido em aberto</td></tr>'}</table>`;
+  $('#cc').querySelectorAll('[data-cped]').forEach(b=>b.onclick=()=>comEditar(P.find(p=>p.numero===b.dataset.cped)));
+}
+function comPedidos(d,P){
+  S.cfil = S.cfil || 'abertos';
+  const fil={abertos:p=>!['Entregue','Cancelada'].includes(p.status), todos:()=>true, p1:p=>p.prioridade===1&&!['Entregue','Cancelada'].includes(p.status)};
+  const desenha=()=>{ const b=($('#cb').value||'').toLowerCase();
+    const L=P.filter(fil[S.cfil]).filter(p=>!b||(p.numero+' '+(p.cliente||'')).toLowerCase().includes(b)).sort((a,b)=>(+b.numero)-(+a.numero));
+    $('#cl').innerHTML=`<table class="quadro"><tr><th>Pedido</th><th>Prioridade</th><th>Pagamento</th><th>Prazo</th><th>Dias úteis</th><th>Cliente</th><th>Status</th><th>Env. / Total</th><th>Coleta</th><th>Gargalo</th><th>Tipo</th><th>Meta da fábrica</th><th>Observações</th></tr>
+      ${L.map(p=>`<tr><td><span class="link" data-cped="${esc(p.numero)}"><b>${esc(p.numero)}</b></span></td>
+        <td><select data-pri="${esc(p.numero)}" style="padding:4px 6px"><option value="">–</option><option value="1" ${p.prioridade===1?'selected':''}>1</option><option value="2" ${p.prioridade===2?'selected':''}>2</option></select></td>
+        <td>${brData(p.data_pagamento)}</td><td>${brData(p.prazo)}</td><td class="n" style="${p.dias!=null&&p.dias<0?'color:var(--bad);font-weight:700':''}">${p.dias??''}</td>
+        <td>${esc(p.cliente||'')}</td><td>${esc(p.status)}</td><td>${esc(p.env_total)}</td><td>${brData(p.coleta)}</td><td>${esc(p.gargalo)}</td><td>${esc(p.tipo_v8)}${p.pedido_origem?' · orig. '+esc(p.pedido_origem):''}</td>
+        <td>${p.meta?brData(p.meta)+' ('+p.dias_meta+')':''}</td><td style="font-size:12px">${esc((p.obs||'').replace(/\s+/g,' ').trim())}</td></tr>`).join('')||'<tr><td colspan="13" class="vazio">Nada aqui</td></tr>'}</table>`;
+    $('#cl').querySelectorAll('[data-cped]').forEach(b=>b.onclick=()=>comEditar(P.find(p=>p.numero===b.dataset.cped)));
+    $('#cl').querySelectorAll('[data-pri]').forEach(s=>s.onchange=tenta(async()=>{ await api('/api/comercial/pedido/'+encodeURIComponent(s.dataset.pri),{prioridade:s.value}); const p=P.find(x=>x.numero===s.dataset.pri); p.prioridade=s.value?+s.value:null; toast('✓ Prioridade do pedido '+s.dataset.pri+(s.value?': '+s.value:' tirada')); })); };
+  $('#cc').className='card'; $('#cc').style.overflowX='auto';
+  $('#cc').innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap"><input id="cb" placeholder="Buscar pedido ou cliente" style="flex:1;min-width:160px">${[['abertos','Em aberto'],['p1','Prioridade 1'],['todos','Todos']].map(([k,n])=>`<button class="st ${S.cfil===k?'on blue':''}" data-cf="${k}">${n}</button>`).join('')}</div>
+    <p class="mut">Prioridade 1 passa na frente na fila dos setores. Clique no número do pedido para editar coleta, prazo combinado, tipo, entrega e observações.</p><div id="cl"></div>`;
+  $('#cc').querySelectorAll('[data-cf]').forEach(b=>b.onclick=()=>{ S.cfil=b.dataset.cf; comPedidos(d,P); });
+  $('#cb').oninput=desenha; desenha();
+}
+function comAcomp(d,P){
+  const menos14=new Date(new Date(d.hoje+'T12:00')-14*864e5).toISOString().slice(0,10);
+  const grp=p=>p.status==='Cancelada'?0:p.status==='Em Avaliação'?6:p.status==='Entregue'?(p.data_entrega&&p.data_entrega>=menos14?4:0):p.pos_venda?1:p.status==='Transportadora'?2:p.status==='Pronto / embalagem'?3:5;
+  const NOME={1:'Pós-venda em aberto',2:'Na transportadora',3:'Pronto para coleta',4:'Entregue (últimos 14 dias)',5:'Em produção',6:'Em avaliação com o cliente'};
+  const BG={1:'#e5d8f7',2:'#dfeaf7',3:COR.pronto,4:COR.ent,6:'#fff'};
+  const key=p=>{const g=grp(p), v=g===6?p.prazo_combinado:g===2?p.previsao_entrega:g===3?p.coleta:null; if(g===4) return -new Date(p.data_entrega); if([2,3,6].includes(g)) return v?+new Date(v):1e15; return p.dias??1e15; };
+  const L=P.filter(p=>grp(p)>0).sort((a,b)=>grp(a)-grp(b)||key(a)-key(b)||(+a.numero)-(+b.numero));
+  const n=g=>L.filter(p=>grp(p)===g).length;
+  $('#cc').className='card'; $('#cc').style.overflowX='auto';
+  $('#cc').innerHTML=`<div class="row" style="justify-content:space-between"><b>ACOMPANHAMENTO CLIENTE · PÓS-VENDA E ENTREGAS</b><span class="mut">Data: ${brData(d.hoje)}</span></div>
+    <p style="margin:6px 0">Pós-venda em aberto: <b>${n(1)}</b> · Na transportadora: <b>${n(2)}</b> · Entrega prevista atrasada: <b>${L.filter(p=>grp(p)===2&&p.previsao_entrega&&p.previsao_entrega<d.hoje).length}</b> · Sem previsão de entrega: <b>${L.filter(p=>grp(p)===2&&!p.previsao_entrega).length}</b> · Prontos p/ coleta: <b>${n(3)}</b> · Entregues (14 dias): <b>${n(4)}</b> · Em avaliação com o cliente: <b>${n(6)}</b></p>
+    ${leg([['#e5d8f7','Pós-venda em aberto'],['#dfeaf7','Na transportadora'],[COR.pronto,'Pronto p/ coleta'],[COR.ent,'Entregue (14 dias)'],[COR.atraso,'Previsão de entrega atrasada'],[COR.dez,'Na transportadora, sem previsão'],[COR.dez,'Definir prazo']])}
+    <table class="quadro"><tr><th>Grupo</th><th>Pedido</th><th>Cliente</th><th>Tipo</th><th>Pedido de origem</th><th>Status</th><th>Env. / Total</th><th>Prazo (dias úteis)</th><th>Coleta</th><th>Previsão de entrega</th><th>Entregue em</th><th>Observações</th></tr>
+    ${L.map(p=>{ const g=grp(p); const prazo=g===6?(p.prazo_combinado?'decisão até '+ddmm(p.prazo_combinado):'definir data de decisão'):!p.prazo?(p.pos_venda?(p.pos_venda_dias==null?'definir prazo':'definir prazo · aberto há '+p.pos_venda_dias+' dias úteis'):''):`${ddmm(p.prazo)} (${p.dias})`;
+      const cv=g===2?(!p.previsao_entrega?COR.dez:p.previsao_entrega<d.hoje?COR.atraso:''):'';
+      return `<tr style="background:${BG[g]||''}"><td>${NOME[g]}</td><td><span class="link" data-cped="${esc(p.numero)}"><b>${esc(p.numero)}</b></span></td><td>${esc(p.cliente||'')}</td><td>${g===6?'Avaliação':esc(p.tipo_v8)}</td><td>${esc(p.pedido_origem||'')}</td><td>${esc(p.status)}</td><td>${esc(p.env_total)}</td>
+        <td style="${/^definir/.test(prazo)?'background:'+COR.dez+';font-weight:700;font-style:italic':''}">${prazo}</td><td>${brData(p.coleta)}</td><td style="${cv?'background:'+cv+';font-weight:700':''}">${brData(p.previsao_entrega)}</td><td>${brData(p.data_entrega)}</td><td style="font-size:12px">${esc((p.obs||'').replace(/\s+/g,' ').trim())}</td></tr>`; }).join('')||'<tr><td colspan="12" class="vazio">Nada a acompanhar</td></tr>'}</table>`;
+  $('#cc').querySelectorAll('[data-cped]').forEach(b=>b.onclick=()=>comEditar(P.find(p=>p.numero===b.dataset.cped)));
+}
+function comEditar(p){
+  const dt=(id,l,v)=>`<label>${l}<input type="date" id="${id}" value="${v||''}" style="width:100%"></label>`;
+  modal(`<h2 style="margin-top:0">Pedido ${esc(p.numero)} · ${esc(p.cliente||'')}</h2>
+    <p class="mut" style="margin-top:0">${esc(p.status)}${p.gargalo?' · '+esc(p.gargalo):''} · Env. ${esc(p.env_total)}${p.prazo?' · prazo '+brData(p.prazo)+' ('+p.dias+' dias úteis)':''}${p.meta?' · meta '+brData(p.meta):''}</p>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px">
+      <label>Prioridade<select id="ep" style="width:100%"><option value="">–</option><option value="1" ${p.prioridade===1?'selected':''}>1</option><option value="2" ${p.prioridade===2?'selected':''}>2</option></select></label>
+      <label>Tipo<select id="et" style="width:100%">${TIPOS_COM.map(([v,n])=>`<option value="${v}" ${p.tipo===v?'selected':''}>${n}</option>`).join('')}</select></label>
+      ${dt('epg','Data de pagamento',p.data_pagamento)}${dt('ec','Data prevista de coleta',p.coleta)}
+      ${dt('eq','Prazo combinado',p.prazo_combinado)}${dt('em','Madeira prevista',p.madeira_prevista)}
+      <label>Status manual<select id="es" style="width:100%"><option value="">– (automático)</option>${ST_MANUAL.map(s=>`<option ${p.status_manual===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label>Pedido de origem<input id="eo" value="${esc(p.pedido_origem||'')}" style="width:100%"></label>
+      ${dt('ev','Previsão de entrega',p.previsao_entrega)}${dt('ew','Data de entrega',p.data_entrega)}
+    </div>
+    <label style="display:block;margin-top:8px">A FAZER / Observações<textarea id="eob" rows="3" style="width:100%">${esc(p.obs||'')}</textarea></label><br>
+    <div class="row"><button class="btn" id="eok">Salvar</button><button class="btn sec" id="mx">Cancelar</button><button class="btn sec" id="eped">Abrir pedido</button></div>`);
+  $('#mx').onclick=()=>modal('');
+  $('#eped').onclick=()=>{ modal(''); if(typeof abrirPedido==='function') abrirPedido(p.numero); };
+  $('#eok').onclick=tenta(async()=>{ await api('/api/comercial/pedido/'+encodeURIComponent(p.numero),{prioridade:$('#ep').value,tipo:$('#et').value,data_pagamento:$('#epg').value,coleta:$('#ec').value,prazo_combinado:$('#eq').value,
+      madeira_prevista:$('#em').value,status_manual:$('#es').value,pedido_origem:$('#eo').value.trim(),previsao_entrega:$('#ev').value,data_entrega:$('#ew').value,obs:$('#eob').value.trim()});
+    toast('✓ Pedido '+p.numero+' salvo'); modal(''); tComercial(); });
+}
+async function comEstoque(){
+  const l=await api('/api/comercial/estoque');
+  const mads=[...new Set(l.map(i=>i.madeira).filter(Boolean))].sort();
+  S.cest=S.cest||{b:'',m:'',c:'',disp:true};
+  const desenha=()=>{ const f=S.cest, b=f.b.toLowerCase();
+    const L=l.filter(i=>(!b||i.nome.toLowerCase().includes(b))&&(!f.m||i.madeira===f.m)&&(!f.c||i.colecao===f.c)&&(!f.disp||i.disponivel>0||i.sp>0));
+    const t=k=>L.reduce((s,i)=>s+(typeof k==='function'?k(i):i[k]),0);
+    $('#el').innerHTML=`<table class="quadro"><tr><th>Peça</th><th>Coleção</th><th class="n">Manaus</th><th class="n">Reservado p/ pedidos</th><th class="n">Disponível Manaus</th><th class="n">A</th><th class="n">B</th><th class="n">C</th><th class="n">D</th><th class="n">Sem classe</th><th class="n">São Paulo</th></tr>
+      ${L.map(i=>`<tr><td>${esc(i.nome)}<br><span class="mut" style="font-size:12px">${esc(i.codigo)}</span></td><td>${i.colecao}</td><td class="n">${fmt(i.manaus)}</td>
+        <td class="n" title="${esc(i.reservas)}">${i.reservado?fmt(i.reservado)+`<br><span class="mut" style="font-size:11px">${esc(i.reservas)}</span>`:'–'}</td><td class="n"><b>${fmt(i.disponivel)}</b></td>
+        ${['A','B','C','D'].map(c=>`<td class="n">${i.classes[c]||''}</td>`).join('')}<td class="n mut">${i.sem_classe||''}</td><td class="n"><b>${i.sp>0?fmt(i.sp):''}</b></td></tr>`).join('')||'<tr><td colspan="11" class="vazio">Nada com esse filtro</td></tr>'}
+      <tr style="font-weight:800"><td>Total (${L.length} peças)</td><td></td><td class="n">${fmt(t('manaus'))}</td><td class="n">${fmt(t('reservado'))}</td><td class="n">${fmt(t('disponivel'))}</td>${['A','B','C','D'].map(c=>`<td class="n">${t(i=>i.classes[c])}</td>`).join('')}<td class="n">${t('sem_classe')}</td><td class="n">${fmt(t('sp'))}</td></tr></table>`; };
+  $('#cc').className='card'; $('#cc').style.overflowX='auto';
+  $('#cc').innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap"><input id="eb" placeholder="Buscar peça" value="${esc(S.cest.b)}" style="flex:1;min-width:150px">
+    <select id="emd"><option value="">Todas as madeiras</option>${mads.map(m=>`<option ${S.cest.m===m?'selected':''}>${esc(m)}</option>`).join('')}</select>
+    <select id="ecl"><option value="">BF e PAS</option><option ${S.cest.c==='BF'?'selected':''}>BF</option><option ${S.cest.c==='PAS'?'selected':''}>PAS</option></select>
+    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="edp" ${S.cest.disp?'checked':''}> Só o que tem pra vender</label></div>
+    <p class="mut">P.A. Manaus e P.A. São Paulo. Reservado = peça pronta ou no controle de qualidade que já é de um pedido em aberto. Classe A/B/C/D vem do Controle de Qualidade (peças antigas sem CQ aparecem como "sem classe").</p><div id="el"></div>`;
+  $('#eb').oninput=e=>{S.cest.b=e.target.value;desenha();}; $('#emd').onchange=e=>{S.cest.m=e.target.value;desenha();}; $('#ecl').onchange=e=>{S.cest.c=e.target.value;desenha();}; $('#edp').onchange=e=>{S.cest.disp=e.target.checked;desenha();};
+  desenha();
+}
+
 const editarInsumo=x=>{
   modal(`<h2 style="margin-top:0">${x.id?'Editar insumo':'Novo insumo'}</h2>
     <label>Nome<input id="yn" value="${esc(x.nome||'')}" placeholder="Ex.: Lixa 120" style="width:100%"></label>
@@ -621,7 +744,7 @@ const abrirInv=tenta(async id=>{
 // ===== fotos (OP, defeito) e zip do pedido
 const reduzFoto=file=>new Promise((res,rej)=>{ const img=new Image(), u=URL.createObjectURL(file); img.onload=()=>{ const s=Math.min(1,1280/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg',0.75)); }; img.onerror=()=>rej(new Error('Não consegui ler a foto')); img.src=u; });
 const fotoUrl=id=>`${API()}/api/fotos/${id}?t=${encodeURIComponent(ls.get('token')||'')}`;
-const TIPOS_PED=[['cliente','Cliente'],['troca','Troca'],['reposicao','Reposição'],['showroom','Showroom'],['brinde','Brinde'],['consignado','Consignado']];
+const TIPOS_PED=[['cliente','Cliente'],['troca','Troca'],['reposicao','Reposição'],['devolucao','Devolução'],['outros','Outros'],['showroom','Showroom'],['brinde','Brinde'],['consignado','Consignado']];
 const tipoTag=t=>t&&t!=='cliente'?` <span style="font-size:11px;font-weight:700;border:1px solid var(--mid);color:var(--mid);border-radius:6px;padding:0 6px">${(TIPOS_PED.find(x=>x[0]===t)||[t,t])[1].toUpperCase()}</span>`:'';
 async function galeria(el,ref){
   const k=Object.keys(ref)[0], l=await api(`/api/fotos?${k}=${ref[k]}`);
