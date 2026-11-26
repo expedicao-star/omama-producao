@@ -214,7 +214,7 @@ const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', '
 const PERM = [
   [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
-  [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped', 'com']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
+  [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/etapa/, 'POST', ['exp', 'com', 'ped']], [/^\/api\/pedidos/, 'POST', ['ped', 'com']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/insumos/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
   [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped', 'exp']],
   [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/comercial\/(importar|mover)/, 'POST', ['admin']], [/^\/api\/comercial\/fila/, 'POST', ['com']], [/^\/api\/comercial\/estoque/, null, ['com', 'ped']], [/^\/api\/comercial$/, 'GET', ['com', 'ped', 'exp']], [/^\/api\/comercial/, null, ['com', 'ped']], [/^\/api\/fin\//, null, ['fin']],
@@ -329,9 +329,10 @@ function etapasDoItem(pi, ops, cq) {
   if (resto > 0) {
     let v = {}; const s = pi.etapa_v8 || '';
     if (s.startsWith('{')) { try { v = JSON.parse(s); } catch (e) { v = {}; } } else if (etapaV8(s)) v[etapaV8(s)] = q;
-    const lista = []; Object.entries(v).forEach(([e, n]) => { for (let i = 0; i < n; i++) lista.push(e); });
+    const manual = !!v.m; delete v.m; // m = etapa trocada à mão no sistema (vale só pras peças sem OP/expedição)
+    const lista = []; Object.entries(v).forEach(([e, n]) => { if (AVANCO[e] !== undefined) for (let i = 0; i < n; i++) lista.push(e); });
     lista.sort((a, b) => AVANCO[b] - AVANCO[a]);
-    for (const e of lista.slice(Math.min(pular + usadosOp, lista.length))) { if (resto <= 0) break; add(e, 1); resto--; }
+    for (const e of manual ? lista : lista.slice(Math.min(pular + usadosOp, lista.length))) { if (resto <= 0) break; add(e, 1); resto--; }
     add('Aguardando madeira', resto);
   }
   return out;
@@ -1044,6 +1045,14 @@ const app = {
         return json(req, { ok: true });
       }
       // ---------- expedição: conferir / embalar por item de pedido, registrar envio (baixa do P.A.)
+      if ((m = p.match(/^\/api\/pedido-itens\/(\d+)\/etapa$/)) && req.method === 'POST') {
+        // troca a etapa das peças (as que não têm OP nem saíram na expedição), como na aba Peças da v.8
+        const pi = await one(DB, 'select * from pedido_item where id=?', Number(m[1]));
+        if (!pi) return json(req, { erro: 'Peça não encontrada' }, 404);
+        const c = { m: 1 }; for (const [e, n] of Object.entries(body.etapas || {})) { const k = etapaV8(e); if (k && Number(n) > 0) c[k] = (c[k] || 0) + Math.round(Number(n)); }
+        await DB.prepare('update pedido_item set etapa_v8=? where id=?').bind(JSON.stringify(c), pi.id).run();
+        return json(req, { ok: true });
+      }
       if ((m = p.match(/^\/api\/pedido-itens\/(\d+)\/exp$/)) && req.method === 'POST') {
         const pi = await one(DB, 'select * from pedido_item where id=?', Number(m[1]));
         if (!pi) return json(req, { erro: 'Item não encontrado' }, 404);
