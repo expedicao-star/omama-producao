@@ -370,10 +370,10 @@ const abrirPedido = tenta(async numero=>{
       <div class="mut">${p.prazo?'prazo '+(p.prazo_combinado?'comercial ':'')+brData(p.prazo)+' · <b class="'+(d<0?'bad':'')+'">'+(d<0?Math.abs(d)+' dias atrasado':d+' dias')+'</b>':'sem prazo'}${p.prazo_padrao&&p.prazo_combinado?' · padrão '+brData(p.prazo_padrao):''}${p.data_pagamento?' · pago em '+brData(p.data_pagamento):''}</div></div>
       <div class="row"><select id="ptp" title="Tipo do pedido (prazo e lead time só contam Cliente)">${TIPOS_PED.map(([v,n])=>`<option value="${v}" ${v===(p.tipo||'cliente')?'selected':''}>${n}</option>`).join('')}</select><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select>${pode('ped')?'<button class="btn sm" id="pedit">Editar pedido</button>':''}<button class="btn sec sm" id="mx">Fechar</button></div></div>
     <div id="pcli"></div><div id="pfin"></div><h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa</th><th>OPs</th><th>Fotos</th><th></th></tr>
-    ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return `<tr><td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td><td>${etapaEditor(x)}</td>
-      <td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
+    ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return linhasPecas(x, `<td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td>`,
+      `<td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
       <td><button class="btn sec sm" data-fp="${x.id}">📷 ${x.fotos||0}</button></td>
-      <td style="white-space:nowrap">${x.item_id&&falta>0?`<button class="btn sm" data-cria="${x.id}">+ OP (${fmt(falta)})</button>`:''}</td></tr>`}).join('')||'<tr><td colspan=6 class="vazio">Sem peças.</td></tr>'}</table></div>
+      <td style="white-space:nowrap">${x.item_id&&falta>0?`<button class="btn sm" data-cria="${x.id}">+ OP (${fmt(falta)})</button>`:''}</td>`, 6)}).join('')||'<tr><td colspan=6 class="vazio">Sem peças.</td></tr>'}</table></div>
     <br><div class="row"><button class="btn sec sm" id="addi">+ Adicionar peça ao pedido</button>${p.itens.some(x=>x.fotos)?'<button class="btn sec sm" id="pzip">Baixar fotos do pedido (zip)</button>':''}</div>`);
   document.querySelectorAll('#modal [data-fp]').forEach(b=>b.onclick=()=>{ const x=p.itens.find(i=>i.id===+b.dataset.fp);
     modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Fotos · Pedido ${esc(p.numero)}</h2><div style="font-weight:800">${esc(x.descricao)}</div><div class="mut">Fotos da peça no pedido. As fotos tiradas nas OPs dessa peça também entram no zip do pedido.</div></div><button class="btn sec sm" id="fv">Voltar</button></div><br><div class="card" id="fts">Carregando…</div>`);
@@ -1549,6 +1549,20 @@ function etapaEditor(it){
   const fixo=[env?env+' enviada'+(env>1?'s':''):'',emb?emb+' embalada'+(emb>1?'s':''):'',op?op+' pela OP':''].filter(Boolean).join(' · ');
   return `${L.map(e=>`<select data-et="${it.id}" style="padding:4px 6px;margin:2px 0;display:block">${ETAPAS_MAO.map(o=>`<option ${o===e?'selected':''}>${o}</option>`).join('')}</select>`).join('')}${fixo?`<span class="mut" style="font-size:12px">${fixo}</span>`:''}`;
 }
+// uma linha por peça: devolve [{txt, html}] pra cada unidade do item
+function unidadesEt(it){
+  const q=Math.round(it.qtd), env=Math.min(q,it.enviada||0), emb=Math.max(0,(it.embalada||0)-env), op=it.com_op||0, livre=Math.max(0,q-env-emb-op);
+  let v={}; const s=it.etapa_v8||''; if(s.startsWith('{')){ try{ v=JSON.parse(s); }catch(e){} } else if(s) v[s]=it.qtd;
+  const manual=!!v.m; delete v.m; let L=[]; Object.entries(v).forEach(([e,n])=>{ if(RANK[e]!==undefined) for(let i=0;i<n;i++) L.push(e); }); L.sort((a,b)=>RANK[b]-RANK[a]);
+  if(!manual) L=L.slice(Math.min(env+emb+op,L.length)); while(L.length<livre) L.push('Aguardando madeira'); L=L.slice(0,livre);
+  const sel=e=>`<select data-et="${it.id}" style="padding:4px 6px">${ETAPAS_MAO.map(o=>`<option ${o===e?'selected':''}>${o}</option>`).join('')}</select>`;
+  return [...Array(env).fill('<span class="mut">enviada</span>'),...Array(emb).fill('<span class="mut">embalada</span>'),...Array(Math.min(op,q-env-emb)).fill('<span class="mut">pela OP</span>'),...L.map(sel)];
+}
+// linhas da tabela: item com 1 peça = 1 linha; com várias = linha do item + uma linha por peça
+function linhasPecas(it, antes, depois, ncol){
+  const u=unidadesEt(it); if(u.length<=1) return `<tr>${antes}<td>${u[0]||''}</td>${depois}</tr>`;
+  return `<tr>${antes}<td class="mut" style="font-size:12px">${u.length} peças ↓</td>${depois}</tr>`+u.map((h,i)=>`<tr style="background:var(--card2)"><td style="padding-left:22px;font-size:13px">↳ peça ${i+1} de ${u.length}</td><td></td><td>${h}</td><td colspan="${ncol-3}"></td></tr>`).join('');
+}
 function ligaEtapas(root,depois){ root.querySelectorAll('[data-et]').forEach(sel=>sel.onchange=tenta(async()=>{ const id=sel.dataset.et, c={};
   root.querySelectorAll(`[data-et="${id}"]`).forEach(x=>c[x.value]=(c[x.value]||0)+1);
   await api('/api/pedido-itens/'+id+'/etapa',{etapas:c}); toast('✓ Etapa trocada'); depois&&depois(); })); }
@@ -1580,8 +1594,8 @@ const abrirExp=tenta(async numero=>{
     <br><div class="row"><button class="btn" id="env" ${paraEnviar?'':'disabled'}>Registrar envio${paraEnviar?' ('+fmt(paraEnviar)+' embalada'+(paraEnviar>1?'s':'')+')':''}</button><button class="btn sec" id="chk">Imprimir check</button><button class="btn sec" id="zip">Baixar fotos</button>
       ${!falta&&p.status!=='Entregue'?'<button class="btn ok" id="ent">Marcar entregue</button>':''}<button class="btn sec" id="tc">Conferir tudo que está pronto</button></div>
     <h2>Peças</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa</th><th>Conferidas</th><th>Embaladas</th><th class="n">Enviadas</th></tr>
-    ${p.itens.map(it=>`<tr><td><b>${esc(it.descricao)}</b>${it.item_id?'':' <span class="mut">(sem cadastro)</span>'}</td><td class="n">${fmt(it.qtd)}</td><td>${etapaEditor(it)}</td>
-      <td>${ctl(it,'conferida',it.conferida)}</td><td>${ctl(it,'embalada',it.embalada)}</td><td class="n"><b>${fmt(it.enviada)}</b></td></tr>`).join('')||'<tr><td colspan=6 class="vazio">Pedido sem peças.</td></tr>'}</table></div>
+    ${p.itens.map(it=>linhasPecas(it, `<td><b>${esc(it.descricao)}</b>${it.item_id?'':' <span class="mut">(sem cadastro)</span>'}</td><td class="n">${fmt(it.qtd)}</td>`,
+      `<td>${ctl(it,'conferida',it.conferida)}</td><td>${ctl(it,'embalada',it.embalada)}</td><td class="n"><b>${fmt(it.enviada)}</b></td>`, 6)).join('')||'<tr><td colspan=6 class="vazio">Pedido sem peças.</td></tr>'}</table></div>
     <p class="mut">Conferida = passou no controle de qualidade e subiu pra prateleira. Só embala peça conferida.</p>
     <h2>Envios</h2><div class="card">${p.envios.map(e=>`<div style="padding:4px 0"><button class="btn ${e.fotos?'sec':'mid'} sm" data-fe="${e.id}" style="float:right" title="Foto da coleta / envio">📷 ${e.fotos||'foto da coleta'}</button><b>${brData(e.data)}</b> · ${esc(e.itens||'')}<br><span class="mut">${[e.transportadora,e.nf?'NF '+e.nf:'',e.volumes?e.volumes+' volume(s)':'',e.obs].filter(Boolean).map(esc).join(' · ')}</span></div>`).join('')||'<span class="mut">Nenhum envio ainda.</span>'}</div>`);
   $('#mx').onclick=()=>{ modal(''); render(); };
