@@ -367,7 +367,7 @@ const abrirPedido = tenta(async numero=>{
   const opsDe = id => p.ops.filter(o=>o.pedido_item_id===id);
   const est = id => (B.estagios.find(e=>e.id===id)||{}).nome||'';
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
-      <div class="mut">${p.prazo?'prazo '+brData(p.prazo)+' · <b class="'+(d<0?'bad':'')+'">'+(d<0?Math.abs(d)+' dias atrasado':d+' dias')+'</b>':'sem prazo'}${p.data_pagamento?' · pago em '+brData(p.data_pagamento):''}</div></div>
+      <div class="mut">${p.prazo?'prazo '+(p.prazo_combinado?'comercial ':'')+brData(p.prazo)+' · <b class="'+(d<0?'bad':'')+'">'+(d<0?Math.abs(d)+' dias atrasado':d+' dias')+'</b>':'sem prazo'}${p.prazo_padrao&&p.prazo_combinado?' · padrão '+brData(p.prazo_padrao):''}${p.data_pagamento?' · pago em '+brData(p.data_pagamento):''}</div></div>
       <div class="row"><select id="ptp" title="Tipo do pedido (prazo e lead time só contam Cliente)">${TIPOS_PED.map(([v,n])=>`<option value="${v}" ${v===(p.tipo||'cliente')?'selected':''}>${n}</option>`).join('')}</select><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select>${pode('ped')?'<button class="btn sm" id="pedit">Editar pedido</button>':''}<button class="btn sec sm" id="mx">Fechar</button></div></div>
     <div id="pcli"></div><div id="pfin"></div><h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th>Fotos</th><th></th></tr>
     ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return `<tr><td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td><td class="mut">${esc(x.etapa_v8||'')}</td>
@@ -476,7 +476,7 @@ async function tFilaPed(){
         <div style="font-size:22px;font-weight:800;color:var(--amb)">${i+1}</div>
         <div style="min-width:0"><div><span class="link" data-ab="${esc(n)}"><b>${esc(n)}</b></span> · ${esc(p.cliente||'')} ${p.pos_venda?'<span class="tag" style="background:#d8c6f2">pós-venda</span>':''}${p.sem_madeira?' <span class="tag" style="background:#cfc8dc">sem madeira</span>':''}</div>
           <div style="margin-top:5px">${barra(p)}</div>${etapasTxt(p)}</div>
-        <div><div class="mut" style="font-size:11px">PRAZO</div>${podeMexer?`<input type="date" data-pz="${esc(n)}" value="${p.prazo_combinado||''}" title="${p.prazo_combinado?'Prazo comercial':'Sem prazo comercial: usando o padrão '+brData(p.prazo_comercial)}" style="padding:4px 6px;font-weight:700;${p.prazo_combinado?'':'color:var(--mut)'}" placeholder="">${p.prazo_combinado?'':`<div class="mut" style="font-size:11px">padrão ${brData(p.prazo_comercial)}</div>`}`:`<b>${brData(p.prazo_comercial)||'–'}</b>`}</div>
+        <div><div class="mut" style="font-size:11px">PRAZO COMERCIAL</div>${podeMexer?`<input type="date" data-pz="${esc(n)}" value="${p.prazo_combinado||''}" title="Prazo comercial (vazio = usa o padrão)" style="padding:4px 6px;font-weight:700;${p.prazo_combinado?'':'color:var(--mut)'}" placeholder=""><div class="mut" style="font-size:11px">padrão ${brData(p.prazo_padrao)||'–'}</div>`:`<b>${brData(p.prazo_comercial)||'–'}</b>`}</div>
 </div>`; }).join('')||'<div class="card vazio">Nenhum pedido em produção</div>'}</div>
 `;
     ligaTopo();
@@ -546,12 +546,12 @@ function comPedidos(d,P){
   const fil={abertos:p=>!['Entregue','Cancelada'].includes(p.status), todos:()=>true, p1:p=>p.prioridade===1&&!['Entregue','Cancelada'].includes(p.status)};
   const desenha=()=>{ const b=($('#cb').value||'').toLowerCase();
     const L=P.filter(fil[S.cfil]).filter(p=>!b||(p.numero+' '+(p.cliente||'')).toLowerCase().includes(b)).sort((a,b)=>(+b.numero)-(+a.numero));
-    $('#cl').innerHTML=`<table class="quadro"><tr><th>Pedido</th><th>Fila</th><th>Pagamento</th><th>Prazo</th><th>Dias úteis</th><th>Cliente</th><th>Status</th><th>Env. / Total</th><th>Coleta</th><th>Gargalo</th><th>Tipo</th><th>Meta da fábrica</th><th>Observações</th></tr>
+    $('#cl').innerHTML=`<table class="quadro"><tr><th>Pedido</th><th>Fila</th><th>Pagamento</th><th>Prazo comercial</th><th>Prazo padrão</th><th>Cliente</th><th>Status</th><th>Env. / Total</th><th>Coleta</th><th>Gargalo</th><th>Tipo</th><th>Observações</th></tr>
       ${L.map(p=>`<tr><td style="white-space:nowrap"><span class="link" data-aped="${esc(p.numero)}"><b>${esc(p.numero)}</b></span> <button class="btn sec sm" data-cped="${esc(p.numero)}" title="Prioridade, coleta, entrega, observações">✎</button></td>
         <td class="n">${p.posicao&&!['Transportadora','Entregue','Cancelada'].includes(p.status)?'<b>'+p.posicao+'º</b>':''}</td>
-        <td>${brData(p.data_pagamento)}</td><td>${brData(p.prazo)}</td><td class="n" style="${p.dias!=null&&p.dias<0?'color:var(--bad);font-weight:700':''}">${p.dias??''}</td>
+        <td>${brData(p.data_pagamento)}</td><td><b>${brData(p.prazo_combinado)||''}</b></td><td>${brData(p.prazo_padrao)}</td>
         <td>${esc(p.cliente||'')}</td><td>${esc(p.status)}</td><td>${esc(p.env_total)}</td><td>${brData(p.coleta)}</td><td>${esc(p.gargalo)}</td><td>${esc(p.tipo_v8)}${p.pedido_origem?' · orig. '+esc(p.pedido_origem):''}</td>
-        <td>${p.meta?brData(p.meta)+' ('+p.dias_meta+')':''}</td><td style="font-size:12px">${esc((p.obs||'').replace(/\s+/g,' ').trim())}</td></tr>`).join('')||'<tr><td colspan="13" class="vazio">Nada aqui</td></tr>'}</table>`;
+        <td style="font-size:12px">${esc((p.obs||'').replace(/\s+/g,' ').trim())}</td></tr>`).join('')||'<tr><td colspan="13" class="vazio">Nada aqui</td></tr>'}</table>`;
     $('#cl').querySelectorAll('[data-cped]').forEach(b=>b.onclick=()=>comEditar(P.find(p=>p.numero===b.dataset.cped)));
     $('#cl').querySelectorAll('[data-aped]').forEach(b=>b.onclick=()=>abrirPedido(b.dataset.aped));
     $('#cl').querySelectorAll('[data-pri]').forEach(s=>s.onchange=tenta(async()=>{ await api('/api/comercial/pedido/'+encodeURIComponent(s.dataset.pri),{prioridade:s.value}); const p=P.find(x=>x.numero===s.dataset.pri); p.prioridade=s.value?+s.value:null; toast('✓ Prioridade do pedido '+s.dataset.pri+(s.value?': '+s.value:' tirada')); })); };
@@ -1539,7 +1539,7 @@ const abrirExp=tenta(async numero=>{
   const paraEnviar=p.itens.reduce((s,i)=>s+i.embalada-i.enviada,0), falta=p.itens.reduce((s,i)=>s+i.qtd-i.enviada,0);
   const ctl=(it,campo,n)=>`<div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sec sm" data-i="${it.id}" data-c="${campo}" data-v="${n-1}" ${n<=0?'disabled':''}>−</button><b style="min-width:42px;text-align:center">${fmt(n)}/${fmt(it.qtd)}</b><button class="btn sec sm" data-i="${it.id}" data-c="${campo}" data-v="${n+1}" ${n>=it.qtd?'disabled':''}>+</button></div>`;
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Expedição · Pedido ${esc(p.numero)}${tipoTag(p.tipo)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
-      <div class="mut">${esc(p.status)}${p.prazo?' · prazo '+brData(p.prazo):''}</div></div><button class="btn sec sm" id="mx">Fechar</button></div>
+      <div class="mut">${esc(p.status)}${p.prazo?' · prazo '+(p.prazo_combinado?'comercial ':'')+brData(p.prazo):''}${p.prazo_padrao&&p.prazo_combinado?' · padrão '+brData(p.prazo_padrao):''}</div></div><button class="btn sec sm" id="mx">Fechar</button></div>
     ${al&&al.vencido>0?`<div class="card" style="margin-top:10px;border:2px solid var(--bad);background:#fdecec"><b class="bad">⚠ Este pedido tem ${brl(al.vencido)} vencido no financeiro.</b> Confira com o financeiro antes de enviar.</div>`:''}
     <br><div class="row"><button class="btn" id="env" ${paraEnviar?'':'disabled'}>Registrar envio${paraEnviar?' ('+fmt(paraEnviar)+' embalada'+(paraEnviar>1?'s':'')+')':''}</button><button class="btn sec" id="chk">Imprimir check</button><button class="btn sec" id="zip">Baixar fotos</button>
       ${!falta&&p.status!=='Entregue'?'<button class="btn ok" id="ent">Marcar entregue</button>':''}<button class="btn sec" id="tc">Conferir tudo que está pronto</button></div>
