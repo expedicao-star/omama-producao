@@ -107,7 +107,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_ped','com_acomp','com_est'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -156,11 +156,11 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com','◆','Comercial'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Comercial',[['com','◆','Quadro do dia'],['com_ped','✉','Pedidos e prioridade'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
-const MENU_PERM=[...MENU,['Financeiro',[['fin','$','Financeiro (tudo)']]]];
+const MENU_PERM=[['Comercial',[['com','◆','Comercial (as 4 telas)']]],...MENU.slice(1),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
-const pode=t=>!!EU&&(t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
+const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
   const fin=S.tab==='fin'; document.body.classList.toggle('fin',fin); if(fin&&!S.fsub) S.fsub=ls.get('fsub')||'resumo';
   const mb=$('#modo'); mb.textContent=fin?'FINANCEIRO':'PRODUÇÃO'; mb.classList.toggle('troca',pode('fin'));
@@ -177,7 +177,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tComercial})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tComercial, com_ped:tComercial, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -447,10 +447,8 @@ const leg = l => `<div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">$
 const TIPOS_COM = [['cliente','Venda'],['troca','Troca'],['reposicao','Reposição (falta na entrega)'],['devolucao','Devolução'],['outros','Outros'],['showroom','Showroom'],['brinde','Brinde'],['consignado','Consignado']];
 const ST_MANUAL = ['Transportadora','Entregue','Cancelada','Em revisão','Avaliando estoque','Em Avaliação'];
 async function tComercial(){
-  S.csub = S.csub || 'quadro';
-  const abas=[['quadro','Quadro do dia'],['ped','Pedidos'],['acomp','Acompanhamento cliente'],['est','Estoque pra venda']];
-  app.innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap">${abas.map(([k,n])=>`<button class="st ${S.csub===k?'on blue':''}" data-cs="${k}">${n}</button>`).join('')}<span style="flex:1"></span><button class="btn sec sm" id="cimp">Imprimir</button></div><div id="cc" class="card vazio" style="margin-top:10px">Carregando…</div>`;
-  app.querySelectorAll('[data-cs]').forEach(b=>b.onclick=()=>{ S.csub=b.dataset.cs; tComercial(); });
+  S.csub = ({com:'quadro',com_ped:'ped',com_acomp:'acomp',com_est:'est'})[S.tab]||'quadro';
+  app.innerHTML=`<div class="row noprint"><span style="flex:1"></span><button class="btn sec sm" id="cimp">Imprimir</button></div><div id="cc" class="card vazio" style="margin-top:10px">Carregando…</div>`;
   $('#cimp').onclick=()=>window.print();
   if(S.csub==='est') return comEstoque();
   const d=await api('/api/comercial'); const P=d.pedidos;
