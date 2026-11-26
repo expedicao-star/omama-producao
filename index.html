@@ -638,22 +638,32 @@ async function pedidoForm(numero){
 }
 function comAcomp(d,P){
   const menos14=new Date(new Date(d.hoje+'T12:00')-14*864e5).toISOString().slice(0,10);
-  const grp=p=>p.status==='Cancelada'?0:p.status==='Em Avaliação'?6:p.status==='Entregue'?(p.data_entrega&&p.data_entrega>=menos14?4:0):p.pos_venda?1:p.status==='Transportadora'?2:p.status==='Pronto / embalagem'?3:5;
-  const NOME={1:'Pós-venda em aberto',2:'Na transportadora',3:'Pronto para coleta',4:'Entregue (últimos 14 dias)',5:'Em produção',6:'Em avaliação com o cliente'};
-  const BG={1:'#e5d8f7',2:'#dfeaf7',3:COR.pronto,4:COR.ent,6:'#fff'};
-  const key=p=>{const g=grp(p), v=g===6?p.prazo_combinado:g===2?p.previsao_entrega:g===3?p.coleta:null; if(g===4) return -new Date(p.data_entrega); if([2,3,6].includes(g)) return v?+new Date(v):1e15; return p.dias??1e15; };
-  const L=P.filter(p=>grp(p)>0).sort((a,b)=>grp(a)-grp(b)||key(a)-key(b)||(+a.numero)-(+b.numero));
-  const n=g=>L.filter(p=>grp(p)===g).length;
-  $('#cc').className='card'; $('#cc').style.overflowX='auto';
-  $('#cc').innerHTML=`<div class="row" style="justify-content:space-between"><b>ACOMPANHAMENTO CLIENTE · PÓS-VENDA E ENTREGAS</b><span class="mut">Data: ${brData(d.hoje)}</span></div>
-    <p style="margin:6px 0">Pós-venda em aberto: <b>${n(1)}</b> · Na transportadora: <b>${n(2)}</b> · Entrega prevista atrasada: <b>${L.filter(p=>grp(p)===2&&p.previsao_entrega&&p.previsao_entrega<d.hoje).length}</b> · Sem previsão de entrega: <b>${L.filter(p=>grp(p)===2&&!p.previsao_entrega).length}</b> · Prontos p/ coleta: <b>${n(3)}</b> · Entregues (14 dias): <b>${n(4)}</b> · Em avaliação com o cliente: <b>${n(6)}</b></p>
-    ${leg([['#e5d8f7','Pós-venda em aberto'],['#dfeaf7','Na transportadora'],[COR.pronto,'Pronto p/ coleta'],[COR.ent,'Entregue (14 dias)'],[COR.atraso,'Previsão de entrega atrasada'],[COR.dez,'Na transportadora, sem previsão'],[COR.dez,'Definir prazo']])}
-    <table class="quadro"><tr><th>Grupo</th><th>Pedido</th><th>Cliente</th><th>Tipo</th><th>Pedido de origem</th><th>Status</th><th>Env. / Total</th><th>Prazo (dias úteis)</th><th>Coleta</th><th>Previsão de entrega</th><th>Entregue em</th><th>Observações</th></tr>
-    ${L.map(p=>{ const g=grp(p); const prazo=g===6?(p.prazo_combinado?'decisão até '+ddmm(p.prazo_combinado):'definir data de decisão'):!p.prazo?(p.pos_venda?(p.pos_venda_dias==null?'definir prazo':'definir prazo · aberto há '+p.pos_venda_dias+' dias úteis'):''):`${ddmm(p.prazo)} (${p.dias})`;
-      const cv=g===2?(!p.previsao_entrega?COR.dez:p.previsao_entrega<d.hoje?COR.atraso:''):'';
-      return `<tr style="background:${BG[g]||''}"><td>${NOME[g]}</td><td><span class="link" data-cped="${esc(p.numero)}"><b>${esc(p.numero)}</b></span></td><td>${esc(p.cliente||'')}</td><td>${g===6?'Avaliação':esc(p.tipo_v8)}</td><td>${esc(p.pedido_origem||'')}</td><td>${esc(p.status)}</td><td>${esc(p.env_total)}</td>
-        <td style="${/^definir/.test(prazo)?'background:'+COR.dez+';font-weight:700;font-style:italic':''}">${prazo}</td><td>${brData(p.coleta)}</td><td style="${cv?'background:'+cv+';font-weight:700':''}">${brData(p.previsao_entrega)}</td><td>${brData(p.data_entrega)}</td><td style="font-size:12px">${esc((p.obs||'').replace(/\s+/g,' ').trim())}</td></tr>`; }).join('')||'<tr><td colspan="12" class="vazio">Nada a acompanhar</td></tr>'}</table>`;
-  $('#cc').querySelectorAll('[data-cped]').forEach(b=>b.onclick=()=>comEditar(P.find(p=>p.numero===b.dataset.cped)));
+  const grp=p=>p.status==='Cancelada'?0:p.status==='Em Avaliação'?6:p.status==='Entregue'?(p.data_entrega&&p.data_entrega>=menos14?4:0):p.pos_venda?1:p.status==='Transportadora'?2:p.status==='Pronto / embalagem'?3:0;
+  const G=[[1,'Pós-venda em aberto','#a98be8'],[2,'Na transportadora','#7aa7e8'],[3,'Pronto pra coleta','#6cc68a'],[6,'Em avaliação com o cliente','#f0c75e'],[4,'Entregues (14 dias)','#b9b4c4']];
+  S.agrp=S.agrp||0;
+  const chip=(t,c)=>`<span class="tag" style="background:${c};color:#fff;font-size:12px">${t}</span>`;
+  const info=(p,g)=>{ const x=[];
+    if(g===1){ x.push(esc(p.tipo_v8)+(p.pedido_origem?' do pedido '+esc(p.pedido_origem):'')); x.push(p.prazo?'prazo '+ddmm(p.prazo):'<b class="bad">sem prazo</b>'); if(p.pos_venda_dias!=null) x.push('aberto há '+p.pos_venda_dias+' dias úteis'); }
+    if(g===2){ x.push(p.coleta?'saiu '+ddmm(p.coleta):''); }
+    if(g===3){ x.push(p.coleta?'coleta '+ddmm(p.coleta):'<b style="color:var(--mid)">sem coleta marcada</b>'); }
+    if(g===4){ x.push('entregue '+ddmm(p.data_entrega)); }
+    if(g===6){ x.push(p.prazo_combinado?'decisão até '+ddmm(p.prazo_combinado):'<b class="bad">sem data de decisão</b>'); }
+    return x.filter(Boolean).join(' · '); };
+  const dir=(p,g)=>{ if(g===2){ if(!p.previsao_entrega) return chip('sem previsão','var(--mid)'); return p.previsao_entrega<d.hoje?chip('entrega atrasada · '+ddmm(p.previsao_entrega),'var(--bad)'):`<div class="mut" style="font-size:11px">ENTREGA</div><b>${ddmm(p.previsao_entrega)}</b>`; }
+    if(g===3&&p.coleta&&p.coleta<=d.proximo_util) return chip('coleta '+(p.coleta===d.hoje?'hoje':p.coleta<d.hoje?'atrasada':'amanhã'),p.coleta<d.hoje?'var(--bad)':'var(--ok)');
+    return ''; };
+  const desenha=()=>{ const L=P.filter(p=>grp(p)>0);
+    $('#cc').className=''; $('#cc').style.overflowX='';
+    $('#cc').innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:10px"><button class="st ${!S.agrp?'on blue':''}" data-ag="0">Tudo (${L.length})</button>${G.map(([g,n,c])=>{ const k=L.filter(p=>grp(p)===g).length; return k?`<button class="st ${S.agrp===g?'on blue':''}" data-ag="${g}"><i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${c};margin-right:5px"></i>${n} (${k})</button>`:''; }).join('')}</div>
+      ${G.filter(([g])=>!S.agrp||S.agrp===g).map(([g,n,c])=>{ const l=L.filter(p=>grp(p)===g).sort((a,b)=>String(a.previsao_entrega||a.coleta||a.prazo||'9').localeCompare(String(b.previsao_entrega||b.coleta||b.prazo||'9'))); if(!l.length) return '';
+        return `<h2 style="display:flex;align-items:center;gap:8px"><i style="width:12px;height:12px;border-radius:4px;background:${c};display:inline-block"></i>${n}</h2>`+l.map(p=>`<div class="card" style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;margin-bottom:6px;border-left:5px solid ${c};padding:10px 12px">
+          <div style="min-width:0"><div><span class="link" data-ab="${esc(p.numero)}"><b>${esc(p.numero)}</b></span> · ${esc(p.cliente||'')} <span class="mut">· ${esc(p.env_total)} peças</span></div>
+            <div class="mut" style="font-size:13px;margin-top:2px">${info(p,g)}</div>${p.obs?`<div style="font-size:12px;margin-top:3px;color:var(--txt)">${esc(p.obs.replace(/\s+/g,' ').trim())}</div>`:''}</div>
+          <div style="text-align:right">${dir(p,g)}</div><button class="btn sec sm" data-ce="${esc(p.numero)}" title="Coleta, previsão e data de entrega, observações">✎</button></div>`).join(''); }).join('')||'<div class="card vazio">Nada pra acompanhar agora.</div>'}`;
+    $('#cc').querySelectorAll('[data-ag]').forEach(b=>b.onclick=()=>{ S.agrp=+b.dataset.ag; desenha(); });
+    $('#cc').querySelectorAll('[data-ab]').forEach(b=>b.onclick=()=>abrirPedido(b.dataset.ab));
+    $('#cc').querySelectorAll('[data-ce]').forEach(b=>b.onclick=()=>comEditar(P.find(p=>p.numero===b.dataset.ce))); };
+  desenha();
 }
 function comEditar(p){
   const dt=(id,l,v)=>`<label>${l}<input type="date" id="${id}" value="${v||''}" style="width:100%"></label>`;
