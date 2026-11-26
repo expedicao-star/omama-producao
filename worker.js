@@ -212,7 +212,7 @@ const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
 const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem', 'fin', 'com'];
 const PERM = [
-  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']],
+  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']], [/^\/api\/mapa/, null, ['painel', 'ops', 'fila']],
   [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/etapa/, 'POST', ['exp', 'com', 'ped']], [/^\/api\/pedidos/, 'POST', ['ped', 'com']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/insumos/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
@@ -862,6 +862,25 @@ const app = {
         }
         await sincPrazos(DB);
         return json(req, { ok: true, numero, avisos });
+      }
+      // ---------- Mapa da fábrica: onde está cada OP aberta agora (etapa atual) + peças de pedido antes/depois da fábrica
+      if (p === '/api/mapa') {
+        const [ops, c] = await Promise.all([
+          all(DB, `select o.codigo, o.qtd, o.criado_em, i.nome item, pd.numero pedido, pd.cliente, pd.posicao,
+              oo.operacao_tipo_id, oo.status, oo.inicio_atual, f.nome funcionario,
+              (select max(x.fim) from op_operacao x where x.op_id=o.id and x.status='finalizado') desde
+            from op o join item i on i.id=o.item_id
+            join op_operacao oo on oo.id=(select x.id from op_operacao x where x.op_id=o.id and x.status<>'finalizado' order by x.ordem limit 1)
+            left join funcionario f on f.id=oo.funcionario_id
+            left join pedido_item pi on pi.id=o.pedido_item_id left join pedido pd on pd.id=pi.pedido_id
+            where o.status='aberta' and o.tipo='OP'`),
+          comercial(DB)]);
+        const abertos = c.pedidos.filter(x => !['Transportadora', 'Entregue', 'Cancelada'].includes(x.status));
+        const soma = e => abertos.reduce((s, x) => s + ((x.cont || {})[e] || 0), 0);
+        return json(req, { hoje: c.hoje, ops, sem_madeira: soma('Aguardando madeira'), qualidade: soma('Controle de qualidade'), prontas: soma('Prontas'),
+          sem_madeira_pedidos: abertos.filter(x => (x.cont || {})['Aguardando madeira']).map(x => ({ numero: x.numero, cliente: x.cliente, n: x.cont['Aguardando madeira'], texto: x.etapas['Aguardando madeira'] })),
+          qualidade_pedidos: abertos.filter(x => (x.cont || {})['Controle de qualidade']).map(x => ({ numero: x.numero, cliente: x.cliente, n: x.cont['Controle de qualidade'], texto: x.etapas['Controle de qualidade'] })),
+          prontas_pedidos: abertos.filter(x => (x.cont || {})['Prontas']).map(x => ({ numero: x.numero, cliente: x.cliente, n: x.cont['Prontas'], texto: x.etapas['Prontas'] })) });
       }
       // ---------- Comercial (aba da Araci): quadro do dia, pedidos, acompanhamento e estoque pra venda
       if (p === '/api/comercial' && req.method === 'GET') {
