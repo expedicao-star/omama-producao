@@ -217,7 +217,7 @@ const PERM = [
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedidos/, 'POST', ['ped', 'com']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/insumos/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
   [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped', 'exp']],
-  [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/comercial\/(importar|mover)/, 'POST', ['admin']], [/^\/api\/comercial\/fila/, 'POST', ['com']], [/^\/api\/comercial\/estoque/, null, ['com', 'ped']], [/^\/api\/comercial/, null, ['com', 'ped']], [/^\/api\/fin\//, null, ['fin']],
+  [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/comercial\/(importar|mover)/, 'POST', ['admin']], [/^\/api\/comercial\/fila/, 'POST', ['com']], [/^\/api\/comercial\/estoque/, null, ['com', 'ped']], [/^\/api\/comercial$/, 'GET', ['com', 'ped', 'exp']], [/^\/api\/comercial/, null, ['com', 'ped']], [/^\/api\/fin\//, null, ['fin']],
 ];
 // grava quem lançou: todo insert em op_evento / estoque_mov ganha usuario_nome do login da requisição
 const comQuem = (db, u) => { const nome = u.nome || u.login || 'Sistema';
