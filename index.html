@@ -156,9 +156,9 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Comercial',[['com','◆','Quadro do dia'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Comercial',[['com','◆','Fila de pedidos'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
-const MENU_PERM=[['Comercial',[['com','◆','Quadro, acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
+const MENU_PERM=[['Comercial',[['com','◆','Fila de pedidos (mudar ordem e prazo), acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
@@ -177,7 +177,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tComercial, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tFila, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -220,7 +220,7 @@ const botoes = o => o.status==='finalizado' ? `<button class="btn sec sm" data-a
   : `<button class="btn sm" data-a="iniciar">▶ Iniciar</button> <button class="btn sec sm" data-a="finalizar">✓ Finalizar</button>`;
 const tag = s => `<span class="tag t-${s}">${s}</span>`;
 const nomeOp = c => +c>=100000 ? 'RT '+(c-100000) : 'OP '+c;
-const pedTag = o => o.pedido_numero ? `${o.prioridade===1?'<span class="tag" style="background:var(--amb);color:#fff">Prioridade 1</span> ':''}<span class="ped" data-ped="${esc(o.pedido_numero)}">Pedido ${esc(o.pedido_numero)} · ${esc(o.pedido_cliente||'')}</span>` : `<span class="ped est">Estoque</span>`;
+const pedTag = o => o.pedido_numero ? `${o.posicao?'<span class="tag" style="background:var(--amb);color:#fff">fila '+o.posicao+'º</span> ':''}<span class="ped" data-ped="${esc(o.pedido_numero)}">Pedido ${esc(o.pedido_numero)} · ${esc(o.pedido_cliente||'')}</span>` : `<span class="ped est">Estoque</span>`;
 const ligaPed = root => root.querySelectorAll('[data-ped]').forEach(c=>c.onclick=e=>{e.stopPropagation(); abrirPedido(c.dataset.ped);});
 const diasAte = s => s ? Math.round((new Date(s.slice(0,10)+'T12:00')-new Date(hojeISO()+'T12:00'))/864e5) : null;
 
@@ -232,7 +232,7 @@ async function tFila(){
   const l = await api('/api/fila?setor_id='+S.setor);
   const t = (B.tipos.find(x=>x.setor_id===S.setor)||{});
   $('#fila').innerHTML = l.length ? l.map((o,i)=>`<div class="card ${o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO()?'late':''}" data-i="${i}">
-      <div class="info"><b>${esc(o.operacao)}</b> ${tag(o.status)}${o.prioridade===1?' <span class="tag" style="background:var(--amb);color:#fff">Prioridade 1</span>':''}${o.pedido_numero?' <span class="mut">· pedido '+esc(o.pedido_numero)+'</span>':''}<br>
+      <div class="info"><b>${esc(o.operacao)}</b> ${tag(o.status)}${o.posicao?' <span class="tag" style="background:var(--amb);color:#fff">fila '+o.posicao+'º</span>':''}${o.pedido_numero?' <span class="mut">· pedido '+esc(o.pedido_numero)+'</span>':''}<br>
         <span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.item_nome)} · <b>${fmt(o.qtd)} un</b>${o.motivo?`<br><span class="bad">Motivo: ${esc(o.motivo)}</span>`:''}${o.status==='pausado'&&o.pausa_motivo?`<br><span class="${/^(Acidente|Saúde)/.test(o.pausa_motivo)?'bad':'midc'}">Pausado: ${esc(o.pausa_motivo)}</span>`:''}<br>
         <span class="mut">${o.funcionario?'👤 '+esc(o.funcionario)+' · ':''}tempo <span data-tempo='${JSON.stringify({minutos:o.minutos,status:o.status,inicio_atual:o.inicio_atual})}'>${dur(decorrido(o))}</span> / padrão ${dur(o.tempo_unit_min*o.qtd)}${o.previsao_fim?' · entrega '+brData(o.previsao_fim):''}</span></div>
       <div>${botoes(o)}</div></div>`).join('') : '<div class="vazio">Nada na fila desse setor agora.</div>';
@@ -441,6 +441,64 @@ async function tInsumos(){
     $('#xl').querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>histInsumo(+b.dataset.h)); };
   $('#xb').oninput=desenha; $('#xn').onclick=()=>editarInsumo({}); $('#xh').onclick=()=>histInsumo(0); desenha();
 }
+// ===== Fila de pedidos (Comercial): ordem 1, 2, 3…, prazo comercial, previsão e consequência de mudar a ordem
+const ETQ = [['Aguardando madeira','#cfc8dc','sem madeira'],['Produção','#7aa7e8','produção'],['Acabamento','#a98be8','acabamento'],['Controle de qualidade','#f0c75e','qualidade'],['Prontas','#6cc68a','prontas'],['Enviada','#3f8f5e','enviadas']];
+const ehUtil=(d,F)=>{ const w=d.getUTCDay(); return w&&w<6&&!F.has(d.toISOString().slice(0,10)); };
+const maisUteis=(ini,n,F)=>{ const d=new Date(ini+'T00:00:00Z'); let k=0; while(k<n){ d.setUTCDate(d.getUTCDate()+1); if(ehUtil(d,F)) k++; } return d.toISOString().slice(0,10); };
+const proxUtil=(ini,F)=>{ const d=new Date(ini+'T00:00:00Z'); while(!ehUtil(d,F)) d.setUTCDate(d.getUTCDate()+1); return d.toISOString().slice(0,10); };
+const difUteis=(a,b,F)=>{ if(a===b) return 0; const s=a<b?1:-1; let d=new Date((s>0?a:b)+'T00:00:00Z'), f=(s>0?b:a), n=0; while(d.toISOString().slice(0,10)<f){ d.setUTCDate(d.getUTCDate()+1); if(ehUtil(d,F)) n++; } return s*n; };
+function previsoes(L, d){ const F=new Set(d.feriados), cap=Math.max(60,d.ritmo.min_dia||0); let acc=0; const out={};
+  L.forEach(p=>{ acc+=p.trabalho_min||0; const pelaFila=maisUteis(d.hoje,Math.ceil(acc/cap),F);
+    const ini=p.sem_madeira&&p.madeira_prevista&&p.madeira_prevista>d.hoje?p.madeira_prevista:d.hoje;
+    const e=new Date(ini+'T00:00:00Z'); e.setUTCDate(e.getUTCDate()+(p.espera_dias||0)); const pelaEspera=maisUteis(proxUtil(e.toISOString().slice(0,10),F),Math.ceil((p.trabalho_min||0)/cap),F);
+    out[p.numero]=(p.trabalho_min||p.espera_dias)?(pelaFila>pelaEspera?pelaFila:pelaEspera):d.hoje; }); return out; }
+async function tFila(){
+  app.innerHTML='<div class="card vazio">Carregando…</div>';
+  const d=await api('/api/comercial'), F=new Set(d.feriados), podeMexer=pode('com');
+  const naFila=d.pedidos.filter(p=>p.status==='Em produção'||p.status==='Sem peças cadastradas'||p.status==='Em revisão'||p.status==='Avaliando estoque');
+  naFila.sort((a,b)=>(a.posicao??1e9)-(b.posicao??1e9)||(a.prioridade??3)-(b.prioridade??3)||String(a.prazo_comercial||'9').localeCompare(String(b.prazo_comercial||'9'))||(+a.numero)-(+b.numero));
+  const prontos=d.pedidos.filter(p=>p.status==='Pronto / embalagem'), transp=d.pedidos.filter(p=>p.status==='Transportadora');
+  let ordem=naFila.map(p=>p.numero); const P=Object.fromEntries(d.pedidos.map(p=>[p.numero,p]));
+  const situ=(p,prev)=>{ const pz=p.prazo_comercial; if(!pz) return ['mut','sem prazo',null]; const k=difUteis(pz,prev,F); return k>0?['bad','atrasa '+k+' dia'+(k>1?'s':''),k]:k>=-3?['midc','no limite',k]:['ok','no prazo',k]; };
+  const barra=p=>{ const t=ETQ.reduce((s,[e])=>s+(p.cont[e]||0),0)||1; return `<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--card2);min-width:140px">${ETQ.map(([e,c,n])=>p.cont[e]?`<div title="${p.cont[e]} ${n}" style="width:${p.cont[e]/t*100}%;background:${c}"></div>`:'').join('')}</div>`; };
+  const pecasTxt=p=>ETQ.filter(([e])=>p.cont[e]).map(([e,c,n])=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px"><i style="width:9px;height:9px;border-radius:3px;background:${c};display:inline-block"></i>${p.cont[e]} ${n}</span>`).join('');
+  const desenha=()=>{
+    const prev=previsoes(ordem.map(n=>P[n]),d), atras=ordem.filter(n=>situ(P[n],prev[n])[0]==='bad').length;
+    app.innerHTML=`<div class="grid" style="grid-template-columns:repeat(4,1fr);gap:10px">
+      ${[['Na fila',ordem.length,'var(--amb)','fila'],['Vão atrasar',atras,'var(--bad)','atr'],['Prontos pra sair',prontos.length,'var(--ok)','pro'],['Na transportadora',transp.length,'var(--mut)','tra']].map(([t,n,c,k])=>`<div class="card" data-ir="${k}" style="cursor:pointer;border-top:4px solid ${c}"><div class="mut">${t}</div><div style="font-size:30px;font-weight:800">${n}</div></div>`).join('')}</div>
+      <p class="mut" style="margin:8px 2px">A fábrica produz de cima pra baixo. Previsão pelo ritmo das últimas 8 semanas (${d.ritmo.pecas_8sem} peças).${podeMexer?' Use ↑ ↓ ou arraste pra mudar a ordem; clique no prazo pra mudar.':''}</p>
+      <div id="fl">${ordem.map((n,i)=>{ const p=P[n], [c,t]=situ(p,prev[n]); return `<div class="card fcard" draggable="${podeMexer}" data-n="${esc(n)}" style="display:grid;grid-template-columns:${podeMexer?'54px ':''}34px 1fr 160px 120px 120px;gap:10px;align-items:center;margin-bottom:6px;padding:10px 12px">
+        ${podeMexer?`<div style="display:flex;flex-direction:column;gap:2px"><button class="btn sec sm" data-up="${i}" ${i?'':'disabled'} style="padding:2px 8px">↑</button><button class="btn sec sm" data-dn="${i}" ${i<ordem.length-1?'':'disabled'} style="padding:2px 8px">↓</button></div>`:''}
+        <div style="font-size:22px;font-weight:800;color:var(--amb)">${i+1}</div>
+        <div style="min-width:0"><div><span class="link" data-ab="${esc(n)}"><b>${esc(n)}</b></span> · ${esc(p.cliente||'')} ${p.pos_venda?'<span class="tag" style="background:#d8c6f2">pós-venda</span>':''}${p.sem_madeira?' <span class="tag" style="background:#cfc8dc">sem madeira</span>':''}</div>
+          <div style="margin-top:5px">${barra(p)}</div><div class="mut" style="font-size:12px;margin-top:3px">${pecasTxt(p)}</div></div>
+        <div><div class="mut" style="font-size:11px">PRAZO</div>${podeMexer?`<input type="date" data-pz="${esc(n)}" value="${p.prazo_combinado||''}" title="${p.prazo_combinado?'Prazo comercial':'Sem prazo comercial: usando o padrão '+brData(p.prazo_comercial)}" style="padding:4px 6px;font-weight:700;${p.prazo_combinado?'':'color:var(--mut)'}" placeholder="">${p.prazo_combinado?'':`<div class="mut" style="font-size:11px">padrão ${brData(p.prazo_comercial)}</div>`}`:`<b>${brData(p.prazo_comercial)||'–'}</b>`}</div>
+        <div><div class="mut" style="font-size:11px">PREVISÃO</div><b style="font-size:16px">${brData(prev[n])}</b></div>
+        <div><span class="tag" style="background:var(--${c==='midc'?'mid':c==='mut'?'card2':c});color:${c==='mut'?'var(--txt)':'#fff'};font-size:12px">${t}</span></div></div>`; }).join('')||'<div class="card vazio">Nenhum pedido em produção</div>'}</div>
+      <h2 id="pro">Prontos pra sair</h2>${prontos.length?prontos.map(p=>`<div class="card" style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><span class="link" data-ab="${esc(p.numero)}"><b>${esc(p.numero)}</b></span><span style="flex:1">${esc(p.cliente||'')} · ${p.env_total} peças</span>${p.coleta?`<span class="tag" style="background:var(--ok);color:#fff">coleta ${ddmm(p.coleta)}</span>`:'<span class="tag" style="background:var(--mid);color:#fff">sem coleta marcada</span>'}<button class="btn sec sm" data-ce="${esc(p.numero)}">✎</button></div>`).join(''):'<div class="mut">Nenhum.</div>'}
+      <h2 id="tra">Na transportadora</h2>${transp.length?transp.map(p=>`<div class="card" style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><span class="link" data-ab="${esc(p.numero)}"><b>${esc(p.numero)}</b></span><span style="flex:1">${esc(p.cliente||'')}</span>${p.previsao_entrega?`<span class="${p.previsao_entrega<d.hoje?'bad':'mut'}">entrega prev. ${ddmm(p.previsao_entrega)}</span>`:'<span class="mut">sem previsão de entrega</span>'}<button class="btn sec sm" data-ce="${esc(p.numero)}">✎</button></div>`).join(''):'<div class="mut">Nenhum.</div>'}`;
+    app.querySelectorAll('[data-ab]').forEach(b=>b.onclick=()=>abrirPedido(b.dataset.ab));
+    app.querySelectorAll('[data-ce]').forEach(b=>b.onclick=()=>comEditar(P[b.dataset.ce]));
+    app.querySelectorAll('[data-ir]').forEach(c=>c.onclick=()=>{ const k=c.dataset.ir; if(k==='atr'){ const x=app.querySelector('.fcard .tag[style*="--bad"]'); x&&x.scrollIntoView({behavior:'smooth',block:'center'}); } else { const el=k==='fila'?$('#fl'):$('#'+k); el&&el.scrollIntoView({behavior:'smooth'}); } });
+    app.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.up; mover(i,i-1); });
+    app.querySelectorAll('[data-dn]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.dn; mover(i,i+1); });
+    app.querySelectorAll('[data-pz]').forEach(e=>e.onchange=tenta(async()=>{ const n=e.dataset.pz; await api('/api/comercial/pedido/'+encodeURIComponent(n),{prazo_combinado:e.value}); P[n].prazo_combinado=e.value||null; if(e.value) P[n].prazo_comercial=e.value; toast('✓ Prazo do '+n+': '+(e.value?brData(e.value):'padrão')); desenha(); }));
+    let arr=null; app.querySelectorAll('.fcard').forEach(c=>{ c.ondragstart=()=>{arr=ordem.indexOf(c.dataset.n); c.style.opacity=.4;}; c.ondragend=()=>c.style.opacity=1; c.ondragover=e=>e.preventDefault(); c.ondrop=e=>{ e.preventDefault(); const para=ordem.indexOf(c.dataset.n); if(arr!=null&&arr!==para) mover(arr,para); }; });
+  };
+  const mover=(de,para)=>{ const nova=ordem.slice(); const [n]=nova.splice(de,1); nova.splice(para,0,n);
+    const a=previsoes(ordem.map(x=>P[x]),d), b=previsoes(nova.map(x=>P[x]),d);
+    const muda=nova.filter(x=>a[x]!==b[x]).map(x=>({n:x, antes:a[x], depois:b[x], d:difUteis(a[x],b[x],F), pz:P[x].prazo_comercial}));
+    const piora=muda.filter(m=>m.d>0), melhora=muda.filter(m=>m.d<0);
+    const lin=m=>{ const estoura=m.pz&&m.depois>m.pz&&!(m.antes>m.pz); return `<tr><td><b>${esc(m.n)}</b> · ${esc(P[m.n].cliente||'')}</td><td>${brData(m.antes)} → <b>${brData(m.depois)}</b></td><td class="${m.d>0?'bad':'ok'}"><b>${m.d>0?'+':''}${m.d} dia${Math.abs(m.d)>1?'s':''}</b></td><td>${estoura?'<span class="tag" style="background:var(--bad);color:#fff">passa do prazo '+ddmm(m.pz)+'</span>':m.pz&&m.depois>m.pz?'<span class="bad">continua atrasado</span>':''}</td></tr>`; };
+    modal(`<h2 style="margin-top:0">${esc(n)} vai pra posição ${para+1}</h2>
+      ${melhora.length?`<p class="ok" style="margin:6px 0"><b>Adianta</b></p><table>${melhora.map(lin).join('')}</table>`:''}
+      ${piora.length?`<p class="bad" style="margin:10px 0 6px"><b>Atrasa</b></p><table>${piora.map(lin).join('')}</table>`:''}
+      ${!muda.length?'<p>As previsões não mudam (peças sem madeira ou esperando estufa seguram as datas).</p>':''}
+      <br><div class="row"><button class="btn" id="mok">Confirmar nova ordem</button><button class="btn sec" id="mx">Cancelar</button></div>`);
+    $('#mx').onclick=()=>modal('');
+    $('#mok').onclick=tenta(async()=>{ await api('/api/comercial/fila',{numeros:nova}); ordem=nova; nova.forEach((x,i)=>P[x].posicao=i+1); modal(''); toast('✓ Fila atualizada · a fábrica já vê a nova ordem'); desenha(); }); };
+  desenha();
+}
 // ===== Comercial (Araci): segue a v.8 · Quadro do dia, Pedidos, Acompanhamento cliente, Estoque pra venda
 const ddmm = s => s ? s.slice(8,10)+'/'+s.slice(5,7) : '';
 const COR = {pv:'#d8c6f2', coleta:'#8cd18c', pronto:'#d8efd8', revisao:'#fff4c6', transp:'#efefef', atraso:'#f49999', dez:'#ffe07f', semcol:'#f9bf7f', sempeca:'#f9d8d8', p1:'#e5d8f7', p2:'#e0eaf7', ent:'#f1f1f1'};
@@ -485,9 +543,9 @@ function comPedidos(d,P){
   const fil={abertos:p=>!['Entregue','Cancelada'].includes(p.status), todos:()=>true, p1:p=>p.prioridade===1&&!['Entregue','Cancelada'].includes(p.status)};
   const desenha=()=>{ const b=($('#cb').value||'').toLowerCase();
     const L=P.filter(fil[S.cfil]).filter(p=>!b||(p.numero+' '+(p.cliente||'')).toLowerCase().includes(b)).sort((a,b)=>(+b.numero)-(+a.numero));
-    $('#cl').innerHTML=`<table class="quadro"><tr><th>Pedido</th><th>Prioridade</th><th>Pagamento</th><th>Prazo</th><th>Dias úteis</th><th>Cliente</th><th>Status</th><th>Env. / Total</th><th>Coleta</th><th>Gargalo</th><th>Tipo</th><th>Meta da fábrica</th><th>Observações</th></tr>
+    $('#cl').innerHTML=`<table class="quadro"><tr><th>Pedido</th><th>Fila</th><th>Pagamento</th><th>Prazo</th><th>Dias úteis</th><th>Cliente</th><th>Status</th><th>Env. / Total</th><th>Coleta</th><th>Gargalo</th><th>Tipo</th><th>Meta da fábrica</th><th>Observações</th></tr>
       ${L.map(p=>`<tr><td style="white-space:nowrap"><span class="link" data-aped="${esc(p.numero)}"><b>${esc(p.numero)}</b></span> <button class="btn sec sm" data-cped="${esc(p.numero)}" title="Prioridade, coleta, entrega, observações">✎</button></td>
-        <td><select data-pri="${esc(p.numero)}" style="padding:4px 6px"><option value="">–</option><option value="1" ${p.prioridade===1?'selected':''}>1</option><option value="2" ${p.prioridade===2?'selected':''}>2</option></select></td>
+        <td class="n">${p.posicao&&!['Transportadora','Entregue','Cancelada'].includes(p.status)?'<b>'+p.posicao+'º</b>':''}</td>
         <td>${brData(p.data_pagamento)}</td><td>${brData(p.prazo)}</td><td class="n" style="${p.dias!=null&&p.dias<0?'color:var(--bad);font-weight:700':''}">${p.dias??''}</td>
         <td>${esc(p.cliente||'')}</td><td>${esc(p.status)}</td><td>${esc(p.env_total)}</td><td>${brData(p.coleta)}</td><td>${esc(p.gargalo)}</td><td>${esc(p.tipo_v8)}${p.pedido_origem?' · orig. '+esc(p.pedido_origem):''}</td>
         <td>${p.meta?brData(p.meta)+' ('+p.dias_meta+')':''}</td><td style="font-size:12px">${esc((p.obs||'').replace(/\s+/g,' ').trim())}</td></tr>`).join('')||'<tr><td colspan="13" class="vazio">Nada aqui</td></tr>'}</table>`;
@@ -495,8 +553,8 @@ function comPedidos(d,P){
     $('#cl').querySelectorAll('[data-aped]').forEach(b=>b.onclick=()=>abrirPedido(b.dataset.aped));
     $('#cl').querySelectorAll('[data-pri]').forEach(s=>s.onchange=tenta(async()=>{ await api('/api/comercial/pedido/'+encodeURIComponent(s.dataset.pri),{prioridade:s.value}); const p=P.find(x=>x.numero===s.dataset.pri); p.prioridade=s.value?+s.value:null; toast('✓ Prioridade do pedido '+s.dataset.pri+(s.value?': '+s.value:' tirada')); })); };
   $('#cc').className='card'; $('#cc').style.overflowX='auto';
-  $('#cc').innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn" id="cnovo">+ Novo pedido</button><input id="cb" placeholder="Buscar pedido ou cliente" style="flex:1;min-width:160px">${[['abertos','Em aberto'],['p1','Prioridade 1'],['todos','Todos']].map(([k,n])=>`<button class="st ${S.cfil===k?'on blue':''}" data-cf="${k}">${n}</button>`).join('')}</div>
-    <p class="mut">Prioridade 1 passa na frente na fila dos setores. Clique no número pra abrir o pedido (lá tem \"Editar pedido\"); no ✎ muda coleta, prazo combinado, entrega e observações.</p><div id="cl"></div>`;
+  $('#cc').innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn" id="cnovo">+ Novo pedido</button><input id="cb" placeholder="Buscar pedido ou cliente" style="flex:1;min-width:160px">${[['abertos','Em aberto'],['todos','Todos']].map(([k,n])=>`<button class="st ${S.cfil===k?'on blue':''}" data-cf="${k}">${n}</button>`).join('')}</div>
+    <p class="mut">A ordem e o prazo se mudam na Fila de pedidos. Clique no número pra abrir o pedido (lá tem \"Editar pedido\"); no ✎ muda coleta, entrega e observações.</p><div id="cl"></div>`;
   $('#cc').querySelectorAll('[data-cf]').forEach(b=>b.onclick=()=>{ S.cfil=b.dataset.cf; comPedidos(d,P); });
   $('#cb').oninput=desenha; $('#cnovo').onclick=()=>pedidoForm(); desenha();
 }
@@ -517,9 +575,8 @@ async function pedidoForm(numero){
     <label>Cliente<div class="row" style="gap:6px;flex-wrap:nowrap"><input id="f_cli" value="${esc(cliNome)}" readonly placeholder="Escolha no cadastro" style="flex:1;background:var(--card2)"><button class="btn sec sm" id="fcli">${F.cliente_id||cliNome?'Trocar':'Escolher'}</button></div></label>
     <label>Data da venda${inp('data_venda','date')}</label>
     <label>Tipo<select id="f_tipo" style="width:100%">${TIPOS_COM.map(([v,n])=>`<option value="${v}" ${F.tipo===v?'selected':''}>${n}</option>`).join('')}</select></label>
-    <label>Prioridade<select id="f_prioridade" style="width:100%"><option value="1" ${F.prioridade==1?'selected':''}>1</option><option value="2" ${F.prioridade==2?'selected':''}>2</option></select></label>
     <label>Vendedor / especificador${inp('vendedor')}</label><label>Pedido de origem <span class="mut">(pós-venda)</span>${inp('pedido_origem')}</label>
-    <label>Prazo combinado <span class="mut">(se diferente do padrão)</span>${inp('prazo_combinado','date')}</label><label>Coleta prevista${inp('coleta','date')}</label>
+    <label>Prazo comercial <span class="mut">(vazio = padrão)</span>${inp('prazo_combinado','date')}</label><label>Coleta prevista${inp('coleta','date')}</label>
   </div></div>
   <h2>Peças</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Preço un.</th><th class="n">Desc. %</th><th class="n">Total</th><th></th></tr><tbody id="fit"></tbody></table>
     <div class="row" style="margin-top:8px"><input id="fbus" placeholder="Buscar peça pra adicionar (nome ou código)" style="flex:1"></div><div id="fres" class="grid" style="margin-top:6px;max-height:34vh;overflow:auto"></div></div>
@@ -535,7 +592,7 @@ async function pedidoForm(numero){
     <div id="fpar" style="margin-top:8px"></div>${travado?'<p class="mut">Já tem parcela recebida: parcelas só mudam no Financeiro.</p>':'<p class="mut">As parcelas viram contas a receber no Financeiro (Pedido N - cliente).</p>'}</div>
   <h2>Observações</h2><textarea id="f_obs" rows="3" style="width:100%">${esc(F.obs||'')}</textarea>
   <br><br><div class="row"><button class="btn" id="fsalva">${P?'Salvar pedido':'Lançar pedido'}</button><button class="btn sec" id="fcanc">Cancelar</button></div><br>`;
-  const pega=()=>{ ['data_venda','vendedor','pedido_origem','prazo_combinado','coleta','desconto','frete','data_pagamento','obs','tipo','prioridade','forma_pagamento','categoria_id'].forEach(k=>{ const e=$('#f_'+k); if(e) F[k]=e.value; }); };
+  const pega=()=>{ ['data_venda','vendedor','pedido_origem','prazo_combinado','coleta','desconto','frete','data_pagamento','obs','tipo','forma_pagamento','categoria_id'].forEach(k=>{ const e=$('#f_'+k); if(e) F[k]=e.value; }); };
   const desTot=()=>{ pega(); $('#ftot').innerHTML=`Peças <b>${brl2(sub())}</b>${+F.desconto?` · desconto <b>−${brl2(F.desconto)}</b>`:''}${+F.frete?` · frete <b>${brl2(F.frete)}</b>`:''} · <b style="font-size:22px">Total ${brl2(total())}</b>`;
     const sp=F.parcelas.reduce((s,x)=>s+(+x.valor||0),0); if(F.parcelas.length&&Math.abs(sp-total())>0.009) $('#ftot').innerHTML+=` <span class="bad">· parcelas somam ${brl2(sp)}</span>`; };
   const desPar=()=>{ $('#fpar').innerHTML=F.parcelas.length?`<table><tr><th>Parcela</th><th>Vencimento</th><th class="n">Valor</th></tr>${F.parcelas.map((x,i)=>`<tr><td>${i+1}/${F.parcelas.length}${x.pago>0?' <span class="tag t-produzindo">recebida</span>':''}</td><td><input type="date" data-pv="${i}" value="${x.vencimento||''}" ${travado?'disabled':''}></td><td class="n"><input type="number" step="0.01" data-pval="${i}" value="${x.valor}" style="width:130px;text-align:right" ${travado?'disabled':''}></td></tr>`).join('')}</table>`:'<span class="mut">Nenhuma parcela ainda. Coloque as peças e clique "Dividir o total".</span>';
@@ -593,10 +650,9 @@ function comEditar(p){
   modal(`<h2 style="margin-top:0">Pedido ${esc(p.numero)} · ${esc(p.cliente||'')}</h2>
     <p class="mut" style="margin-top:0">${esc(p.status)}${p.gargalo?' · '+esc(p.gargalo):''} · Env. ${esc(p.env_total)}${p.prazo?' · prazo '+brData(p.prazo)+' ('+p.dias+' dias úteis)':''}${p.meta?' · meta '+brData(p.meta):''}</p>
     <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px">
-      <label>Prioridade<select id="ep" style="width:100%"><option value="">–</option><option value="1" ${p.prioridade===1?'selected':''}>1</option><option value="2" ${p.prioridade===2?'selected':''}>2</option></select></label>
       <label>Tipo<select id="et" style="width:100%">${TIPOS_COM.map(([v,n])=>`<option value="${v}" ${p.tipo===v?'selected':''}>${n}</option>`).join('')}</select></label>
       ${dt('epg','Data de pagamento',p.data_pagamento)}${dt('ec','Data prevista de coleta',p.coleta)}
-      ${dt('eq','Prazo combinado',p.prazo_combinado)}${dt('em','Madeira prevista',p.madeira_prevista)}
+      ${dt('eq','Prazo comercial',p.prazo_combinado)}${dt('em','Madeira prevista',p.madeira_prevista)}
       <label>Status manual<select id="es" style="width:100%"><option value="">– (automático)</option>${ST_MANUAL.map(s=>`<option ${p.status_manual===s?'selected':''}>${s}</option>`).join('')}</select></label>
       <label>Pedido de origem<input id="eo" value="${esc(p.pedido_origem||'')}" style="width:100%"></label>
       ${dt('ev','Previsão de entrega',p.previsao_entrega)}${dt('ew','Data de entrega',p.data_entrega)}
@@ -605,7 +661,7 @@ function comEditar(p){
     <div class="row"><button class="btn" id="eok">Salvar</button><button class="btn sec" id="mx">Cancelar</button><button class="btn sec" id="eped">Abrir pedido</button></div>`);
   $('#mx').onclick=()=>modal('');
   $('#eped').onclick=()=>{ modal(''); if(typeof abrirPedido==='function') abrirPedido(p.numero); };
-  $('#eok').onclick=tenta(async()=>{ await api('/api/comercial/pedido/'+encodeURIComponent(p.numero),{prioridade:$('#ep').value,tipo:$('#et').value,data_pagamento:$('#epg').value,coleta:$('#ec').value,prazo_combinado:$('#eq').value,
+  $('#eok').onclick=tenta(async()=>{ await api('/api/comercial/pedido/'+encodeURIComponent(p.numero),{tipo:$('#et').value,data_pagamento:$('#epg').value,coleta:$('#ec').value,prazo_combinado:$('#eq').value,
       madeira_prevista:$('#em').value,status_manual:$('#es').value,pedido_origem:$('#eo').value.trim(),previsao_entrega:$('#ev').value,data_entrega:$('#ew').value,obs:$('#eob').value.trim()});
     toast('✓ Pedido '+p.numero+' salvo'); modal(''); tComercial(); });
 }
