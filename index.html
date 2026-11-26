@@ -470,13 +470,15 @@ async function tFilaPed(){
   const pecasTxt=p=>ETQ.filter(([e])=>p.cont[e]).map(([e,c,n])=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px"><i style="width:9px;height:9px;border-radius:3px;background:${c};display:inline-block"></i>${p.cont[e]} ${n}</span>`).join('');
   const desenha=()=>{
     
-    app.innerHTML=topo()+`<p class="mut" style="margin:0 2px 8px">A fábrica faz de cima pra baixo.${podeMexer?' Mude a ordem com ↑ ↓ ou arrastando; antes de confirmar aparece quem fica pra trás.':''}</p>
-      <div id="fl">${ordem.map((n,i)=>{ const p=P[n]; return `<div class="card fcard" draggable="${podeMexer}" data-n="${esc(n)}" style="display:grid;grid-template-columns:${podeMexer?'54px ':''}34px 1fr 160px;gap:10px;align-items:center;margin-bottom:6px;padding:10px 12px">
+    app.innerHTML=topo()+`<p class="mut" style="margin:0 2px 8px">A fábrica faz de cima pra baixo.${podeMexer?' Mude a ordem com ↑ ↓ ou arrastando. Clique no prazo comercial pra mudar.':''}</p>
+      <div id="fl">${ordem.map((n,i)=>{ const p=P[n]; return `<div class="card fcard" draggable="${podeMexer}" data-n="${esc(n)}" style="display:grid;grid-template-columns:${podeMexer?'54px ':''}34px 1fr 190px;gap:10px;align-items:center;margin-bottom:6px;padding:10px 12px">
         ${podeMexer?`<div style="display:flex;flex-direction:column;gap:2px"><button class="btn sec sm" data-up="${i}" ${i?'':'disabled'} style="padding:2px 8px">↑</button><button class="btn sec sm" data-dn="${i}" ${i<ordem.length-1?'':'disabled'} style="padding:2px 8px">↓</button></div>`:''}
         <div style="font-size:22px;font-weight:800;color:var(--amb)">${i+1}</div>
         <div style="min-width:0"><div><span class="link" data-ab="${esc(n)}"><b>${esc(n)}</b></span> · ${esc(p.cliente||'')} ${p.pos_venda?'<span class="tag" style="background:#d8c6f2">pós-venda</span>':''}${p.sem_madeira?' <span class="tag" style="background:#cfc8dc">sem madeira</span>':''}</div>
           <div style="margin-top:5px">${barra(p)}</div>${etapasTxt(p)}</div>
-        <div><div class="mut" style="font-size:11px">PRAZO COMERCIAL</div>${podeMexer?`<input type="date" data-pz="${esc(n)}" value="${p.prazo_combinado||''}" title="Prazo comercial (vazio = usa o padrão)" style="padding:4px 6px;font-weight:700;${p.prazo_combinado?'':'color:var(--mut)'}" placeholder=""><div class="mut" style="font-size:11px">padrão ${brData(p.prazo_padrao)||'–'}</div>`:`<b>${brData(p.prazo_comercial)||'–'}</b>`}</div>
+        <div style="display:flex;gap:18px;text-align:center">
+          <div><div class="mut" style="font-size:11px">PADRÃO</div><div style="font-size:17px;font-weight:700;color:var(--mut)">${ddmm(p.prazo_padrao)||'–'}</div></div>
+          <div ${podeMexer?`data-pz="${esc(n)}" title="Mudar o prazo comercial" style="cursor:pointer"`:''}><div class="mut" style="font-size:11px">COMERCIAL</div>${p.prazo_combinado?`<div style="font-size:17px;font-weight:800;color:var(--amb)">${ddmm(p.prazo_combinado)}${podeMexer?' ✎':''}</div>`:podeMexer?'<div class="btn sec sm" style="margin-top:2px">+ definir</div>':'<div style="font-size:17px;color:var(--mut)">–</div>'}</div></div>
 </div>`; }).join('')||'<div class="card vazio">Nenhum pedido em produção</div>'}</div>
 `;
     ligaTopo();
@@ -484,7 +486,12 @@ async function tFilaPed(){
     app.querySelectorAll('[data-ce]').forEach(b=>b.onclick=()=>comEditar(P[b.dataset.ce]));
     app.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.up; mover(i,i-1); });
     app.querySelectorAll('[data-dn]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.dn; mover(i,i+1); });
-    app.querySelectorAll('[data-pz]').forEach(e=>e.onchange=tenta(async()=>{ const n=e.dataset.pz; await api('/api/comercial/pedido/'+encodeURIComponent(n),{prazo_combinado:e.value}); P[n].prazo_combinado=e.value||null; if(e.value) P[n].prazo_comercial=e.value; toast('✓ Prazo do '+n+': '+(e.value?brData(e.value):'padrão')); desenha(); }));
+    app.querySelectorAll('[data-pz]').forEach(e=>e.onclick=()=>{ const n=e.dataset.pz, p=P[n];
+      modal(`<h2 style="margin-top:0">Prazo comercial · ${esc(n)}</h2><p class="mut" style="margin-top:0">${esc(p.cliente||'')} · prazo padrão ${brData(p.prazo_padrao)||'–'}</p>
+        <input type="date" id="pzd" value="${p.prazo_combinado||p.prazo_padrao||''}" style="font-size:18px"><br><br>
+        <div class="row"><button class="btn" id="pzok">Salvar</button>${p.prazo_combinado?'<button class="btn sec" id="pzx">Tirar (usar o padrão)</button>':''}<button class="btn sec" id="mx">Cancelar</button></div>`);
+      const salva=tenta(async v=>{ await api('/api/comercial/pedido/'+encodeURIComponent(n),{prazo_combinado:v}); p.prazo_combinado=v||null; p.prazo_comercial=v||p.prazo_padrao; modal(''); toast('✓ Prazo comercial do '+n+': '+(v?brData(v):'usa o padrão')); desenha(); });
+      $('#mx').onclick=()=>modal(''); $('#pzok').onclick=()=>salva($('#pzd').value); if($('#pzx')) $('#pzx').onclick=()=>salva(''); });
     let arr=null; app.querySelectorAll('.fcard').forEach(c=>{ c.ondragstart=()=>{arr=ordem.indexOf(c.dataset.n); c.style.opacity=.4;}; c.ondragend=()=>c.style.opacity=1; c.ondragover=e=>e.preventDefault(); c.ondrop=e=>{ e.preventDefault(); const para=ordem.indexOf(c.dataset.n); if(arr!=null&&arr!==para) mover(arr,para); }; });
   };
   const mover=(de,para)=>{ const nova=ordem.slice(); const [n]=nova.splice(de,1); nova.splice(para,0,n);
