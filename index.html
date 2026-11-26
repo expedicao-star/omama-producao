@@ -107,7 +107,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_ped','com_acomp','com_est'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_acomp','com_est'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -156,9 +156,9 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Comercial',[['com','◆','Quadro do dia'],['com_ped','✉','Pedidos e prioridade'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Comercial',[['com','◆','Quadro do dia'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
-const MENU_PERM=[['Comercial',[['com','◆','Comercial (as 4 telas)']]],...MENU.slice(1),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
+const MENU_PERM=[['Comercial',[['com','◆','Quadro, acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
 const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
@@ -177,7 +177,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tPedidos, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tComercial, com_ped:tComercial, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tComercial, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -345,7 +345,7 @@ const abrirOp = tenta(async codigo=>{
 async function tPedidos(){
   app.innerHTML = `<div class="row"><input id="bp" placeholder="Buscar pedido ou cliente" value="${esc(S.bp||'')}" style="flex:1"><button class="btn" id="novo">+ Novo pedido</button></div><div class="mut" id="sv8" style="margin-top:6px"></div><br><div id="pl" class="vazio">Carregando…</div>`;
   $('#novo').onclick=novoPedido;
-  api('/api/sync/v8').then(s=>{ if(s&&s.data&&$('#sv8')){ const r=JSON.parse(s.resumo||'{}'); $('#sv8').textContent='Ligado à v.8 · última atualização '+brHora(s.data)+(r.sem_cadastro&&r.sem_cadastro.length?' · sem cadastro: '+r.sem_cadastro.join(', '):''); } }).catch(()=>{});
+  
   const l=await api('/api/pedidos');
   const desenha=()=>{ const b=(S.bp||'').toLowerCase(); const f=l.filter(p=>!b||String(p.numero).includes(b)||(p.cliente||'').toLowerCase().includes(b)); $('#pl').className='';
     $('#pl').innerHTML=f.map(p=>{ const cli=(p.tipo||'cliente')==='cliente', d=cli?diasAte(p.prazo):null; const pc=p.pecas?Math.min(100,p.com_op/p.pecas*100):0;
@@ -368,7 +368,7 @@ const abrirPedido = tenta(async numero=>{
   const est = id => (B.estagios.find(e=>e.id===id)||{}).nome||'';
   modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Pedido ${esc(p.numero)}</h2><div style="font-size:20px;font-weight:800">${esc(p.cliente||'')}</div>
       <div class="mut">${p.prazo?'prazo '+brData(p.prazo)+' · <b class="'+(d<0?'bad':'')+'">'+(d<0?Math.abs(d)+' dias atrasado':d+' dias')+'</b>':'sem prazo'}${p.data_pagamento?' · pago em '+brData(p.data_pagamento):''}</div></div>
-      <div class="row"><select id="ptp" title="Tipo do pedido (prazo e lead time só contam Cliente)">${TIPOS_PED.map(([v,n])=>`<option value="${v}" ${v===(p.tipo||'cliente')?'selected':''}>${n}</option>`).join('')}</select><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select><button class="btn sec sm" id="mx">Fechar</button></div></div>
+      <div class="row"><select id="ptp" title="Tipo do pedido (prazo e lead time só contam Cliente)">${TIPOS_PED.map(([v,n])=>`<option value="${v}" ${v===(p.tipo||'cliente')?'selected':''}>${n}</option>`).join('')}</select><select id="pst">${['Em produção','Pronto / embalagem','Transportadora','Entregue','Cancelado'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select>${pode('ped')?'<button class="btn sm" id="pedit">Editar pedido</button>':''}<button class="btn sec sm" id="mx">Fechar</button></div></div>
     <div id="pcli"></div><div id="pfin"></div><h2>Peças do pedido e suas OPs</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th>Etapa na v.8</th><th>OPs</th><th>Fotos</th><th></th></tr>
     ${p.itens.map(x=>{ const os=opsDe(x.id); const falta=x.qtd-x.com_op; return `<tr><td>${esc(x.descricao)}${x.item_id?'':' <span class="bad mut">(não cadastrado)</span>'}</td><td class="n">${fmt(x.qtd)}</td><td class="mut">${esc(x.etapa_v8||'')}</td>
       <td>${os.map(o=>`<div><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${fmt(o.qtd)} un · <span class="mut">${o.status==='finalizada'?'<b class="ok">FINALIZADA</b>':esc(est(o.estagio_id))}</span></div>`).join('')||'<span class="mut">—</span>'}</td>
@@ -385,6 +385,7 @@ const abrirPedido = tenta(async numero=>{
     el.innerHTML=`<h2>Financeiro do pedido</h2><div class="card">${f.lancs.length?`<div class="row" style="gap:18px;margin-bottom:6px"><span>Total <b>${brl(f.total)}</b></span><span class="ok">Recebido <b>${brl(f.pago)}</b></span><span>Em aberto <b>${brl(f.aberto)}</b></span>${f.vencido?`<span class="bad">Vencido <b>${brl(f.vencido)}</b></span>`:''}</div>
       <table>${f.lancs.map(l=>`<tr><td>${brData(l.vencimento)}</td><td>${esc(l.descricao)}${l.nf?' · NF '+esc(l.nf):''}</td><td class="n">${brl(l.valor)}</td><td>${l.status==='quitado'?'<span class="tag t-produzindo">Recebido</span>':l.vencido?'<span class="tag" style="background:var(--bad);color:#fff">Vencido</span>':'<span class="tag t-pausado">Em aberto</span>'}</td></tr>`).join('')}</table>`:'<span class="mut">Nenhum lançamento ligado a este pedido. No lançamento a receber, preencha "Pedido (nº)" pra ligar (os do Sensio com "Pedido N" na descrição já ligam sozinhos).</span>'}</div>`; }).catch(()=>{});
   $('#mx').onclick=()=>{ modal(''); render(); };
+  if($('#pedit')) $('#pedit').onclick=()=>{ modal(''); pedidoForm(numero); };
   $('#pst').onchange=tenta(async e=>{ await api('/api/pedidos/'+encodeURIComponent(numero)+'/status',{status:e.target.value}); toast('Status: '+e.target.value); });
   document.querySelectorAll('#modal [data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
   document.querySelectorAll('#modal [data-cria]').forEach(b=>b.onclick=()=>{ const x=p.itens.find(i=>i.id===+b.dataset.cria); novaOp({item_id:x.item_id,nome:x.descricao,qtd:x.qtd-x.com_op,pedido_item_id:x.id}); });
@@ -447,7 +448,7 @@ const leg = l => `<div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">$
 const TIPOS_COM = [['cliente','Venda'],['troca','Troca'],['reposicao','Reposição (falta na entrega)'],['devolucao','Devolução'],['outros','Outros'],['showroom','Showroom'],['brinde','Brinde'],['consignado','Consignado']];
 const ST_MANUAL = ['Transportadora','Entregue','Cancelada','Em revisão','Avaliando estoque','Em Avaliação'];
 async function tComercial(){
-  S.csub = ({com:'quadro',com_ped:'ped',com_acomp:'acomp',com_est:'est'})[S.tab]||'quadro';
+  S.csub = ({com:'quadro',ped:'ped',com_acomp:'acomp',com_est:'est'})[S.tab]||'quadro';
   app.innerHTML=`<div class="row noprint"><span style="flex:1"></span><button class="btn sec sm" id="cimp">Imprimir</button></div><div id="cc" class="card vazio" style="margin-top:10px">Carregando…</div>`;
   $('#cimp').onclick=()=>window.print();
   if(S.csub==='est') return comEstoque();
@@ -485,18 +486,88 @@ function comPedidos(d,P){
   const desenha=()=>{ const b=($('#cb').value||'').toLowerCase();
     const L=P.filter(fil[S.cfil]).filter(p=>!b||(p.numero+' '+(p.cliente||'')).toLowerCase().includes(b)).sort((a,b)=>(+b.numero)-(+a.numero));
     $('#cl').innerHTML=`<table class="quadro"><tr><th>Pedido</th><th>Prioridade</th><th>Pagamento</th><th>Prazo</th><th>Dias úteis</th><th>Cliente</th><th>Status</th><th>Env. / Total</th><th>Coleta</th><th>Gargalo</th><th>Tipo</th><th>Meta da fábrica</th><th>Observações</th></tr>
-      ${L.map(p=>`<tr><td><span class="link" data-cped="${esc(p.numero)}"><b>${esc(p.numero)}</b></span></td>
+      ${L.map(p=>`<tr><td style="white-space:nowrap"><span class="link" data-aped="${esc(p.numero)}"><b>${esc(p.numero)}</b></span> <button class="btn sec sm" data-cped="${esc(p.numero)}" title="Prioridade, coleta, entrega, observações">✎</button></td>
         <td><select data-pri="${esc(p.numero)}" style="padding:4px 6px"><option value="">–</option><option value="1" ${p.prioridade===1?'selected':''}>1</option><option value="2" ${p.prioridade===2?'selected':''}>2</option></select></td>
         <td>${brData(p.data_pagamento)}</td><td>${brData(p.prazo)}</td><td class="n" style="${p.dias!=null&&p.dias<0?'color:var(--bad);font-weight:700':''}">${p.dias??''}</td>
         <td>${esc(p.cliente||'')}</td><td>${esc(p.status)}</td><td>${esc(p.env_total)}</td><td>${brData(p.coleta)}</td><td>${esc(p.gargalo)}</td><td>${esc(p.tipo_v8)}${p.pedido_origem?' · orig. '+esc(p.pedido_origem):''}</td>
         <td>${p.meta?brData(p.meta)+' ('+p.dias_meta+')':''}</td><td style="font-size:12px">${esc((p.obs||'').replace(/\s+/g,' ').trim())}</td></tr>`).join('')||'<tr><td colspan="13" class="vazio">Nada aqui</td></tr>'}</table>`;
     $('#cl').querySelectorAll('[data-cped]').forEach(b=>b.onclick=()=>comEditar(P.find(p=>p.numero===b.dataset.cped)));
+    $('#cl').querySelectorAll('[data-aped]').forEach(b=>b.onclick=()=>abrirPedido(b.dataset.aped));
     $('#cl').querySelectorAll('[data-pri]').forEach(s=>s.onchange=tenta(async()=>{ await api('/api/comercial/pedido/'+encodeURIComponent(s.dataset.pri),{prioridade:s.value}); const p=P.find(x=>x.numero===s.dataset.pri); p.prioridade=s.value?+s.value:null; toast('✓ Prioridade do pedido '+s.dataset.pri+(s.value?': '+s.value:' tirada')); })); };
   $('#cc').className='card'; $('#cc').style.overflowX='auto';
-  $('#cc').innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap"><input id="cb" placeholder="Buscar pedido ou cliente" style="flex:1;min-width:160px">${[['abertos','Em aberto'],['p1','Prioridade 1'],['todos','Todos']].map(([k,n])=>`<button class="st ${S.cfil===k?'on blue':''}" data-cf="${k}">${n}</button>`).join('')}</div>
-    <p class="mut">Prioridade 1 passa na frente na fila dos setores. Clique no número do pedido para editar coleta, prazo combinado, tipo, entrega e observações.</p><div id="cl"></div>`;
+  $('#cc').innerHTML=`<div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn" id="cnovo">+ Novo pedido</button><input id="cb" placeholder="Buscar pedido ou cliente" style="flex:1;min-width:160px">${[['abertos','Em aberto'],['p1','Prioridade 1'],['todos','Todos']].map(([k,n])=>`<button class="st ${S.cfil===k?'on blue':''}" data-cf="${k}">${n}</button>`).join('')}</div>
+    <p class="mut">Prioridade 1 passa na frente na fila dos setores. Clique no número pra abrir o pedido (lá tem \"Editar pedido\"); no ✎ muda coleta, prazo combinado, entrega e observações.</p><div id="cl"></div>`;
   $('#cc').querySelectorAll('[data-cf]').forEach(b=>b.onclick=()=>{ S.cfil=b.dataset.cf; comPedidos(d,P); });
-  $('#cb').oninput=desenha; desenha();
+  $('#cb').oninput=desenha; $('#cnovo').onclick=()=>pedidoForm(); desenha();
+}
+// ===== Lançar / editar pedido (como no Sensio): cliente, peças com preço, desconto, frete, parcelas → Financeiro
+const brl2 = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const FORMAS = ['PIX','Boleto','Cartão de crédito','Transferência','Link de pagamento','Dinheiro'];
+async function pedidoForm(numero){
+  const [fb, P] = await Promise.all([api('/api/pedidos/form-base'), numero?api('/api/pedidos/'+encodeURIComponent(numero)+'/form'):Promise.resolve(null)]);
+  const F = P ? {...P, itens:P.itens.map(x=>({...x})), parcelas:P.parcelas.map(x=>({vencimento:x.vencimento,valor:x.valor,pago:x.pago}))}
+    : {data_venda:fb.hoje, tipo:'cliente', prioridade:1, frete:0, desconto:0, forma_pagamento:'PIX', categoria_id:(fb.categorias.find(c=>/B2B/.test(c.nome))||fb.categorias[0]||{}).id, itens:[], parcelas:[]};
+  let cliNome = F.cliente||'';
+  const travado = F.parcelas.some(x=>x.pago>0);
+  const sub = ()=>F.itens.reduce((s,x)=>s+(+x.qtd||0)*(+x.preco||0)*(1-(+x.desconto||0)/100),0);
+  const total = ()=>Math.round((sub()-(+F.desconto||0)+(+F.frete||0))*100)/100;
+  const inp=(k,t='text',extra='')=>`<input id="f_${k}" type="${t}" value="${esc(F[k]??'')}" ${extra} style="width:100%">`;
+  app.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${P?'Editar pedido '+esc(P.numero):'Novo pedido · nº '+esc(fb.proximo)}</h2><button class="btn sec" id="fvolta">Voltar</button></div>
+  <div class="card" style="margin-top:10px"><div class="grid" style="grid-template-columns:2fr 1fr 1fr 1fr;gap:8px">
+    <label>Cliente<div class="row" style="gap:6px;flex-wrap:nowrap"><input id="f_cli" value="${esc(cliNome)}" readonly placeholder="Escolha no cadastro" style="flex:1;background:var(--card2)"><button class="btn sec sm" id="fcli">${F.cliente_id||cliNome?'Trocar':'Escolher'}</button></div></label>
+    <label>Data da venda${inp('data_venda','date')}</label>
+    <label>Tipo<select id="f_tipo" style="width:100%">${TIPOS_COM.map(([v,n])=>`<option value="${v}" ${F.tipo===v?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label>Prioridade<select id="f_prioridade" style="width:100%"><option value="1" ${F.prioridade==1?'selected':''}>1</option><option value="2" ${F.prioridade==2?'selected':''}>2</option></select></label>
+    <label>Vendedor / especificador${inp('vendedor')}</label><label>Pedido de origem <span class="mut">(pós-venda)</span>${inp('pedido_origem')}</label>
+    <label>Prazo combinado <span class="mut">(se diferente do padrão)</span>${inp('prazo_combinado','date')}</label><label>Coleta prevista${inp('coleta','date')}</label>
+  </div></div>
+  <h2>Peças</h2><div class="card" style="overflow-x:auto"><table><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Preço un.</th><th class="n">Desc. %</th><th class="n">Total</th><th></th></tr><tbody id="fit"></tbody></table>
+    <div class="row" style="margin-top:8px"><input id="fbus" placeholder="Buscar peça pra adicionar (nome ou código)" style="flex:1"></div><div id="fres" class="grid" style="margin-top:6px;max-height:34vh;overflow:auto"></div></div>
+  <h2>Valores e pagamento</h2><div class="card"><div class="grid" style="grid-template-columns:repeat(4,1fr);gap:8px">
+    <label>Desconto no pedido (R$)${inp('desconto','number','step="0.01" min="0"')}</label><label>Frete (R$)${inp('frete','number','step="0.01" min="0"')}</label>
+    <label>Forma de pagamento<select id="f_forma_pagamento" style="width:100%">${FORMAS.map(f=>`<option ${F.forma_pagamento===f?'selected':''}>${f}</option>`).join('')}</select></label>
+    <label>Categoria (Financeiro)<select id="f_categoria_id" style="width:100%"><option value="">–</option>${fb.categorias.map(c=>`<option value="${c.id}" ${F.categoria_id==c.id?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></label>
+    <label>Data do pagamento <span class="mut">(quando pagou / entrada)</span>${inp('data_pagamento','date')}</label>
+    <label>Parcelas<input id="fnp" type="number" min="1" max="24" value="${F.parcelas.length||1}" style="width:100%" ${travado?'disabled':''}></label>
+    <label>1º vencimento<input id="fv1" type="date" value="${(F.parcelas[0]||{}).vencimento||F.data_venda||fb.hoje}" style="width:100%" ${travado?'disabled':''}></label>
+    <label>&nbsp;<button class="btn sec" id="fger" style="width:100%" ${travado?'disabled':''}>Dividir o total</button></label></div>
+    <div class="row" style="justify-content:space-between;margin-top:10px;flex-wrap:wrap"><div id="ftot" style="font-size:18px"></div></div>
+    <div id="fpar" style="margin-top:8px"></div>${travado?'<p class="mut">Já tem parcela recebida: parcelas só mudam no Financeiro.</p>':'<p class="mut">As parcelas viram contas a receber no Financeiro (Pedido N - cliente).</p>'}</div>
+  <h2>Observações</h2><textarea id="f_obs" rows="3" style="width:100%">${esc(F.obs||'')}</textarea>
+  <br><br><div class="row"><button class="btn" id="fsalva">${P?'Salvar pedido':'Lançar pedido'}</button><button class="btn sec" id="fcanc">Cancelar</button></div><br>`;
+  const pega=()=>{ ['data_venda','vendedor','pedido_origem','prazo_combinado','coleta','desconto','frete','data_pagamento','obs','tipo','prioridade','forma_pagamento','categoria_id'].forEach(k=>{ const e=$('#f_'+k); if(e) F[k]=e.value; }); };
+  const desTot=()=>{ pega(); $('#ftot').innerHTML=`Peças <b>${brl2(sub())}</b>${+F.desconto?` · desconto <b>−${brl2(F.desconto)}</b>`:''}${+F.frete?` · frete <b>${brl2(F.frete)}</b>`:''} · <b style="font-size:22px">Total ${brl2(total())}</b>`;
+    const sp=F.parcelas.reduce((s,x)=>s+(+x.valor||0),0); if(F.parcelas.length&&Math.abs(sp-total())>0.009) $('#ftot').innerHTML+=` <span class="bad">· parcelas somam ${brl2(sp)}</span>`; };
+  const desPar=()=>{ $('#fpar').innerHTML=F.parcelas.length?`<table><tr><th>Parcela</th><th>Vencimento</th><th class="n">Valor</th></tr>${F.parcelas.map((x,i)=>`<tr><td>${i+1}/${F.parcelas.length}${x.pago>0?' <span class="tag t-produzindo">recebida</span>':''}</td><td><input type="date" data-pv="${i}" value="${x.vencimento||''}" ${travado?'disabled':''}></td><td class="n"><input type="number" step="0.01" data-pval="${i}" value="${x.valor}" style="width:130px;text-align:right" ${travado?'disabled':''}></td></tr>`).join('')}</table>`:'<span class="mut">Nenhuma parcela ainda. Coloque as peças e clique "Dividir o total".</span>';
+    $('#fpar').querySelectorAll('[data-pv]').forEach(e=>e.onchange=()=>{F.parcelas[+e.dataset.pv].vencimento=e.value;});
+    $('#fpar').querySelectorAll('[data-pval]').forEach(e=>e.oninput=()=>{F.parcelas[+e.dataset.pval].valor=+e.value; desTot();}); };
+  const desIt=()=>{ $('#fit').innerHTML=F.itens.map((x,i)=>`<tr><td>${esc(x.descricao)}<br><span class="mut" style="font-size:12px">${esc(x.codigo||'')}${x.com_op?' · '+x.com_op+' com OP':''}${x.disp!=null?' · disponível Manaus '+x.disp:''}</span></td>
+      <td class="n"><input type="number" min="1" data-q="${i}" value="${x.qtd}" style="width:70px;text-align:right"></td><td class="n"><input type="number" step="0.01" min="0" data-p="${i}" value="${x.preco??''}" style="width:110px;text-align:right"></td>
+      <td class="n"><input type="number" step="0.1" min="0" max="100" data-d="${i}" value="${x.desconto||''}" style="width:70px;text-align:right"></td><td class="n">${brl2((+x.qtd||0)*(+x.preco||0)*(1-(+x.desconto||0)/100))}</td>
+      <td>${x.com_op||x.conferida||x.enviada?'':`<button class="btn sec sm" data-x="${i}">✕</button>`}</td></tr>`).join('')||'<tr><td colspan="6" class="vazio">Nenhuma peça ainda. Busque abaixo.</td></tr>';
+    const up=(sel,k)=>$('#fit').querySelectorAll(sel).forEach(e=>e.onchange=()=>{F.itens[+e.dataset[k]][{q:'qtd',p:'preco',d:'desconto'}[k]]=+e.value; desIt();});
+    up('[data-q]','q'); up('[data-p]','p'); up('[data-d]','d');
+    $('#fit').querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{F.itens.splice(+b.dataset.x,1); desIt();}); desTot(); };
+  let estq=null, t;
+  const busca=async()=>{ const q=$('#fbus').value.trim(); if(!q){ $('#fres').innerHTML=''; return; }
+    if(!estq) estq=await api('/api/comercial/estoque').catch(()=>[]);
+    const l=await api('/api/itens?tipo=Produto&q='+encodeURIComponent(q));
+    $('#fres').innerHTML=l.filter(i=>i.ativo).slice(0,40).map(i=>{ const e=estq.find(x=>x.id===i.id); return `<div class="chip" data-add="${i.id}">${esc(i.nome)}<small>${i.codigo}${i.preco?' · '+brl2(i.preco):''} · ${e?`disp. ${e.disponivel}${e.sp>0?' · SP '+e.sp:''}`:'sem estoque'}</small></div>`; }).join('')||'<span class="mut">Nada</span>';
+    $('#fres').querySelectorAll('[data-add]').forEach(c=>c.onclick=()=>{ const i=l.find(x=>x.id===+c.dataset.add), e=estq.find(x=>x.id===i.id);
+      F.itens.push({item_id:i.id, descricao:i.nome, codigo:i.codigo, qtd:1, preco:i.preco||0, desconto:0, disp:e?e.disponivel:0}); $('#fbus').value=''; $('#fres').innerHTML=''; desIt(); }); };
+  $('#fbus').oninput=()=>{clearTimeout(t);t=setTimeout(busca,300)};
+  app.querySelectorAll('input[id^="f_"],select[id^="f_"]').forEach(e=>e.addEventListener('input',desTot));
+  $('#fger').onclick=()=>{ pega(); const nP=Math.max(1,Math.min(24,+$('#fnp').value||1)), v1=$('#fv1').value||fb.hoje, tot=total(), base=Math.floor(tot/nP*100)/100;
+    F.parcelas=Array.from({length:nP},(_,i)=>{ const d=new Date(v1+'T12:00'); d.setMonth(d.getMonth()+i); return {vencimento:d.toISOString().slice(0,10), valor:i===nP-1?Math.round((tot-base*(nP-1))*100)/100:base}; }); desPar(); desTot(); };
+  $('#fcli').onclick=tenta(async()=>{ const id=await escolherCliente(''); if(!id) return; const c=await api('/api/clientes/'+id); F.cliente_id=id; cliNome=c.nome; F.cliente=c.nome; $('#f_cli').value=c.nome; if(!$('#f_vendedor').value&&c.vendedor) $('#f_vendedor').value=c.vendedor; });
+  $('#fvolta').onclick=$('#fcanc').onclick=()=>render();
+  $('#fsalva').onclick=tenta(async()=>{ pega(); if(!F.cliente_id&&!cliNome) return toast('Escolha o cliente',1); if(!F.itens.length) return toast('Coloque pelo menos uma peça',1);
+    if(F.itens.some(x=>!(+x.preco>0))&&!confirm('Tem peça sem preço. Lançar assim mesmo?')) return;
+    const sp=F.parcelas.reduce((s,x)=>s+(+x.valor||0),0); if(F.parcelas.length&&Math.abs(sp-total())>0.009&&!confirm(`As parcelas somam ${brl2(sp)} e o total é ${brl2(total())}. Salvar assim mesmo?`)) return;
+    const r=await api('/api/pedidos/salvar',{...F, numero:P?P.numero:null, cliente:cliNome, itens:F.itens.map(x=>({id:x.id,item_id:x.item_id,qtd:x.qtd,preco:x.preco,desconto:x.desconto})), parcelas:travado?undefined:F.parcelas});
+    toast('✓ Pedido '+r.numero+(P?' salvo':' lançado')); if(r.avisos&&r.avisos.length) setTimeout(()=>toast(r.avisos.join(' · '),1),2900);
+    render(); setTimeout(()=>abrirPedido(r.numero),300); });
+  desIt(); desPar();
 }
 function comAcomp(d,P){
   const menos14=new Date(new Date(d.hoje+'T12:00')-14*864e5).toISOString().slice(0,10);
