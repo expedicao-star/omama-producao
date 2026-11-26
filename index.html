@@ -107,7 +107,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_acomp','com_est'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_acomp','com_est','mapa'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -156,11 +156,11 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Comercial',[['com','◆','Fila de pedidos'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Comercial',[['com','◆','Fila de pedidos'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['mapa','⇢','Mapa da fábrica'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade'],['pcp','☷','PCP']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
-const MENU_PERM=[['Comercial',[['com','◆','Fila de pedidos (mudar ordem e prazo), acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
+const MENU_PERM=[['Comercial',[['com','◆','Fila de pedidos (mudar ordem e prazo), acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1).map(([g,its])=>[g,its.filter(x=>x[0]!=='mapa')]),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
-const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
+const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='mapa'&&(t='painel'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
   const fin=S.tab==='fin'; document.body.classList.toggle('fin',fin); if(fin&&!S.fsub) S.fsub=ls.get('fsub')||'resumo';
   const mb=$('#modo'); mb.textContent=fin?'FINANCEIRO':'PRODUÇÃO'; mb.classList.toggle('troca',pode('fin'));
@@ -177,7 +177,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tFilaPed, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, mapa:tMapa, com:tFilaPed, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -441,6 +441,43 @@ async function tInsumos(){
     $('#xl').querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>movInsumo(l.find(i=>i.id==b.dataset.i),b.dataset.m));
     $('#xl').querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>histInsumo(+b.dataset.h)); };
   $('#xb').oninput=desenha; $('#xn').onclick=()=>editarInsumo({}); $('#xh').onclick=()=>histInsumo(0); desenha();
+}
+// ===== Mapa da fábrica: fluxo do processo com quantas peças estão em cada etapa agora
+async function tMapa(){
+  app.innerHTML='<div class="card vazio">Carregando…</div>';
+  const d=await api('/api/mapa');
+  const ordE=id=>((B.estagios.find(e=>e.id===id)||{}).ordem)||0;
+  const tipos=B.tipos.filter(t=>t.id!==10).slice().sort((a,b)=>ordE(a.estagio_id)-ordE(b.estagio_id)||a.id-b.id);
+  const dias=s=>{ if(!s) return null; const t=new Date(s.replace(' ','T')+(s.length>10?'Z':'T12:00:00Z')); return Math.max(0,Math.floor((Date.now()-t)/864e5)); };
+  const caixas=[{k:'mad',nome:'Sem madeira',tipo:'ped',n:d.sem_madeira,lista:d.sem_madeira_pedidos,cor:'#cfc8dc'}];
+  tipos.forEach(t=>{ const os=d.ops.filter(o=>o.operacao_tipo_id===t.id); const n=os.reduce((s,o)=>s+o.qtd,0);
+    const trab=os.filter(o=>o.status==='produzindo'||o.status==='pausado').reduce((s,o)=>s+o.qtd,0);
+    const velha=os.reduce((m,o)=>Math.max(m,dias(o.status==='pendente'?(o.desde||o.criado_em):(o.inicio_atual||o.desde||o.criado_em))||0),0);
+    caixas.push({k:'t'+t.id,nome:t.nome,tipo:t.espera?'esp':'trab',n,trab,velha,ops:os}); });
+  caixas.push({k:'cq',nome:'Controle de qualidade',tipo:'ped',n:d.qualidade,lista:d.qualidade_pedidos,cor:'#f0c75e'},{k:'pr',nome:'Prontas',tipo:'ped',n:d.prontas,lista:d.prontas_pedidos,cor:'#6cc68a'});
+  const maxT=Math.max(1,...caixas.filter(c=>c.tipo==='trab').map(c=>c.n)), garg=caixas.filter(c=>c.tipo==='trab'&&c.n>0).sort((a,b)=>b.n-a.n)[0];
+  const fundo=c=>c.tipo==='esp'?'#eef3fb':c.tipo==='ped'?'#fff':`rgba(232,122,45,${0.08+0.5*c.n/maxT})`;
+  const desenha=()=>{
+    app.innerHTML=`<p class="mut" style="margin:0 2px 10px">Onde estão as peças agora. Quanto mais forte a cor, mais peça parada ali. Clique numa etapa pra ver as OPs.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">${caixas.map((c,i)=>`${i?'<div style="align-self:center;color:var(--mut);font-size:20px">→</div>':''}
+        <div class="card" data-cx="${c.k}" style="cursor:pointer;width:138px;padding:10px;background:${fundo(c)};${c.tipo==='esp'?'border:2px dashed #9db6e0;':''}${S.mcx===c.k?'outline:3px solid var(--amb);':''}${c.tipo==='ped'?'border-top:5px solid '+c.cor+';':''}">
+          <div style="font-size:12px;font-weight:700;min-height:30px">${esc(c.nome)}</div>
+          <div style="font-size:30px;font-weight:800;line-height:1.1">${fmt(c.n)}</div>
+          <div class="mut" style="font-size:11px">${c.tipo==='ped'?'peças de pedido':c.tipo==='esp'?'esperando':(c.trab?c.trab+' sendo feitas · ':'')+(c.n-c.trab)+' na fila'}</div>
+          ${c.velha?`<div style="font-size:11px;margin-top:2px;${c.velha>7?'color:var(--bad);font-weight:700':''}">mais antiga: ${c.velha} dia${c.velha>1?'s':''}</div>`:''}
+          ${garg&&garg.k===c.k?'<div class="tag" style="background:var(--bad);color:#fff;margin-top:4px">gargalo</div>':''}</div>`).join('')}</div>
+      <div id="mdet" style="margin-top:14px"></div>`;
+    app.querySelectorAll('[data-cx]').forEach(b=>b.onclick=()=>{ S.mcx=S.mcx===b.dataset.cx?null:b.dataset.cx; desenha(); });
+    const c=caixas.find(x=>x.k===S.mcx); if(!c) return;
+    $('#mdet').innerHTML=`<h2>${esc(c.nome)} · ${fmt(c.n)} peça${c.n===1?'':'s'}</h2><div class="card" style="overflow-x:auto">${c.tipo==='ped'
+      ?(c.lista.length?`<table>${c.lista.map(x=>`<tr><td><span class="link" data-ped="${esc(x.numero)}"><b>${esc(x.numero)}</b></span> · ${esc(x.cliente||'')}</td><td class="n">${x.n}</td><td style="font-size:12px;white-space:pre-line">${esc(x.texto||'')}</td></tr>`).join('')}</table>`:'<div class="vazio">Nenhuma.</div>')
+      :(c.ops.length?`<table><tr><th>OP</th><th>Peça</th><th class="n">Qtd</th><th>Pedido</th><th>Situação</th><th class="n">Há</th></tr>${c.ops.slice().sort((a,b)=>(a.posicao??1e9)-(b.posicao??1e9)).map(o=>{ const h=dias(o.status==='pendente'?(o.desde||o.criado_em):(o.inicio_atual||o.desde||o.criado_em));
+          return `<tr><td><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span></td><td>${esc(o.item)}</td><td class="n">${fmt(o.qtd)}</td><td>${o.pedido?`<span class="link" data-ped="${esc(o.pedido)}">${esc(o.pedido)}</span> · ${esc(o.cliente||'')}${o.posicao?' <span class="tag" style="background:var(--amb);color:#fff">fila '+o.posicao+'º</span>':''}`:'<span class="mut">estoque</span>'}</td>
+            <td>${tag(o.status)}${o.funcionario?' <span class="mut">'+esc(o.funcionario)+'</span>':''}</td><td class="n ${h>7?'bad':''}">${h??''} d</td></tr>`; }).join('')}</table>`:'<div class="vazio">Nenhuma OP aqui agora.</div>')}</div>`;
+    $('#mdet').querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
+    $('#mdet').querySelectorAll('[data-ped]').forEach(x=>x.onclick=()=>abrirPedido(x.dataset.ped));
+  };
+  desenha();
 }
 // ===== Fila de pedidos (Comercial): ordem 1, 2, 3…, prazo comercial, previsão e consequência de mudar a ordem
 const ETQ = [['Aguardando madeira','#cfc8dc','sem madeira'],['Produção','#7aa7e8','produção'],['Acabamento','#a98be8','acabamento'],['Controle de qualidade','#f0c75e','qualidade'],['Prontas','#6cc68a','prontas'],['Enviada','#3f8f5e','enviadas']];
