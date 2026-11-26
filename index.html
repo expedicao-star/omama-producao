@@ -177,7 +177,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tFila, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, com:tFilaPed, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -452,8 +452,12 @@ function previsoes(L, d){ const F=new Set(d.feriados), cap=Math.max(60,d.ritmo.m
     const ini=p.sem_madeira&&p.madeira_prevista&&p.madeira_prevista>d.hoje?p.madeira_prevista:d.hoje;
     const e=new Date(ini+'T00:00:00Z'); e.setUTCDate(e.getUTCDate()+(p.espera_dias||0)); const pelaEspera=maisUteis(proxUtil(e.toISOString().slice(0,10),F),Math.ceil((p.trabalho_min||0)/cap),F);
     out[p.numero]=(p.trabalho_min||p.espera_dias)?(pelaFila>pelaEspera?pelaFila:pelaEspera):d.hoje; }); return out; }
-async function tFila(){
-  app.innerHTML='<div class="card vazio">Carregando…</div>';
+async function tFilaPed(){
+  S.fsec=S.fsec||'fila';
+  const topo=()=>`<div class="row" style="gap:6px;margin-bottom:10px">${[['fila','Fila de pedidos'],['est','Estoque pra venda']].map(([k,n])=>`<button class="st ${S.fsec===k?'on blue':''}" data-fs="${k}">${n}</button>`).join('')}</div>`;
+  const ligaTopo=()=>app.querySelectorAll('[data-fs]').forEach(b=>b.onclick=()=>{ S.fsec=b.dataset.fs; tFilaPed(); });
+  if(S.fsec==='est'){ app.innerHTML=topo()+'<div id="cc" class="card vazio">Carregando…</div>'; ligaTopo(); return comEstoque(); }
+  app.innerHTML=topo()+'<div class="card vazio">Carregando…</div>'; ligaTopo();
   const d=await api('/api/comercial'), F=new Set(d.feriados), podeMexer=pode('com');
   const naFila=d.pedidos.filter(p=>p.status==='Em produção'||p.status==='Sem peças cadastradas'||p.status==='Em revisão'||p.status==='Avaliando estoque');
   naFila.sort((a,b)=>(a.posicao??1e9)-(b.posicao??1e9)||(a.prioridade??3)-(b.prioridade??3)||String(a.prazo_comercial||'9').localeCompare(String(b.prazo_comercial||'9'))||(+a.numero)-(+b.numero));
@@ -461,19 +465,22 @@ async function tFila(){
   let ordem=naFila.map(p=>p.numero); const P=Object.fromEntries(d.pedidos.map(p=>[p.numero,p]));
   const situ=(p,prev)=>{ const pz=p.prazo_comercial; if(!pz) return ['mut','sem prazo',null]; const k=difUteis(pz,prev,F); return k>0?['bad','atrasa '+k+' dia'+(k>1?'s':''),k]:k>=-3?['midc','no limite',k]:['ok','no prazo',k]; };
   const barra=p=>{ const t=ETQ.reduce((s,[e])=>s+(p.cont[e]||0),0)||1; return `<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--card2);min-width:140px">${ETQ.map(([e,c,n])=>p.cont[e]?`<div title="${p.cont[e]} ${n}" style="width:${p.cont[e]/t*100}%;background:${c}"></div>`:'').join('')}</div>`; };
+  const etapasTxt=p=>{ const L=ETQ.slice(0,5).filter(([e])=>p.etapas&&p.etapas[e]).map(([e,c,n])=>`<div style="display:flex;gap:6px;align-items:flex-start;font-size:12px;margin-top:3px"><i style="width:9px;height:9px;border-radius:3px;background:${c};display:inline-block;margin-top:3px;flex:none"></i><b style="white-space:nowrap;min-width:150px">${e}</b><span style="white-space:pre-line">${esc(p.etapas[e])}</span></div>`);
+    return L.length?L.join(''):'<div class="mut" style="font-size:12px;margin-top:3px">sem peças cadastradas</div>'; };
   const pecasTxt=p=>ETQ.filter(([e])=>p.cont[e]).map(([e,c,n])=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px"><i style="width:9px;height:9px;border-radius:3px;background:${c};display:inline-block"></i>${p.cont[e]} ${n}</span>`).join('');
   const desenha=()=>{
     const prev=previsoes(ordem.map(n=>P[n]),d);
-    app.innerHTML=`<p class="mut" style="margin:0 2px 8px">A fábrica faz de cima pra baixo.${podeMexer?' Mude a ordem com ↑ ↓ ou arrastando; antes de confirmar aparece quem atrasa.':''}</p>
+    app.innerHTML=topo()+`<p class="mut" style="margin:0 2px 8px">A fábrica faz de cima pra baixo.${podeMexer?' Mude a ordem com ↑ ↓ ou arrastando; antes de confirmar aparece quem atrasa.':''}</p>
       <div id="fl">${ordem.map((n,i)=>{ const p=P[n]; return `<div class="card fcard" draggable="${podeMexer}" data-n="${esc(n)}" style="display:grid;grid-template-columns:${podeMexer?'54px ':''}34px 1fr 160px 120px;gap:10px;align-items:center;margin-bottom:6px;padding:10px 12px">
         ${podeMexer?`<div style="display:flex;flex-direction:column;gap:2px"><button class="btn sec sm" data-up="${i}" ${i?'':'disabled'} style="padding:2px 8px">↑</button><button class="btn sec sm" data-dn="${i}" ${i<ordem.length-1?'':'disabled'} style="padding:2px 8px">↓</button></div>`:''}
         <div style="font-size:22px;font-weight:800;color:var(--amb)">${i+1}</div>
         <div style="min-width:0"><div><span class="link" data-ab="${esc(n)}"><b>${esc(n)}</b></span> · ${esc(p.cliente||'')} ${p.pos_venda?'<span class="tag" style="background:#d8c6f2">pós-venda</span>':''}${p.sem_madeira?' <span class="tag" style="background:#cfc8dc">sem madeira</span>':''}</div>
-          <div style="margin-top:5px">${barra(p)}</div><div class="mut" style="font-size:12px;margin-top:3px">${pecasTxt(p)}</div></div>
+          <div style="margin-top:5px">${barra(p)}</div>${etapasTxt(p)}</div>
         <div><div class="mut" style="font-size:11px">PRAZO</div>${podeMexer?`<input type="date" data-pz="${esc(n)}" value="${p.prazo_combinado||''}" title="${p.prazo_combinado?'Prazo comercial':'Sem prazo comercial: usando o padrão '+brData(p.prazo_comercial)}" style="padding:4px 6px;font-weight:700;${p.prazo_combinado?'':'color:var(--mut)'}" placeholder="">${p.prazo_combinado?'':`<div class="mut" style="font-size:11px">padrão ${brData(p.prazo_comercial)}</div>`}`:`<b>${brData(p.prazo_comercial)||'–'}</b>`}</div>
         <div><div class="mut" style="font-size:11px">PREVISÃO</div><b style="font-size:16px">${brData(prev[n])}</b></div>
 </div>`; }).join('')||'<div class="card vazio">Nenhum pedido em produção</div>'}</div>
 `;
+    ligaTopo();
     app.querySelectorAll('[data-ab]').forEach(b=>b.onclick=()=>abrirPedido(b.dataset.ab));
     app.querySelectorAll('[data-ce]').forEach(b=>b.onclick=()=>comEditar(P[b.dataset.ce]));
     app.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.up; mover(i,i-1); });
