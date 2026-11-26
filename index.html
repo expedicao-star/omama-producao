@@ -1551,12 +1551,15 @@ function etapaEditor(it){
 }
 // uma linha por peça: devolve [{txt, html}] pra cada unidade do item
 function unidadesEt(it){
-  const q=Math.round(it.qtd), env=Math.min(q,it.enviada||0), emb=Math.max(0,(it.embalada||0)-env), op=it.com_op||0, livre=Math.max(0,q-env-emb-op);
+  const q=Math.round(it.qtd), env=Math.min(q,it.enviada||0), emb=Math.max(0,(it.embalada||0)-env), livre=Math.max(0,q-env-emb);
   let v={}; const s=it.etapa_v8||''; if(s.startsWith('{')){ try{ v=JSON.parse(s); }catch(e){} } else if(s) v[s]=it.qtd;
   const manual=!!v.m; delete v.m; let L=[]; Object.entries(v).forEach(([e,n])=>{ if(RANK[e]!==undefined) for(let i=0;i<n;i++) L.push(e); }); L.sort((a,b)=>RANK[b]-RANK[a]);
-  if(!manual) L=L.slice(Math.min(env+emb+op,L.length)); while(L.length<livre) L.push('Aguardando madeira'); L=L.slice(0,livre);
+  if(!manual){ // peça com OP = em processo: a etapa vem da OP (finalizada = qualidade, acabamento, senão produção)
+    const opU=[...Array(it.op_fin||0).fill('Controle de qualidade'),...Array(it.op_acab||0).fill('Acabamento'),...Array(it.op_prod||0).fill('Produção')];
+    L=[...opU.slice(env+emb),...L.slice(Math.min(env+emb+opU.length,L.length))]; }
+  while(L.length<livre) L.push('Aguardando madeira'); L=L.slice(0,livre);
   const sel=e=>`<select data-et="${it.id}" style="padding:4px 6px">${ETAPAS_MAO.map(o=>`<option ${o===e?'selected':''}>${o}</option>`).join('')}</select>`;
-  return [...Array(env).fill('<span class="mut">enviada</span>'),...Array(emb).fill('<span class="mut">embalada</span>'),...Array(Math.min(op,q-env-emb)).fill('<span class="mut">pela OP</span>'),...L.map(sel)];
+  return [...Array(env).fill('<span class="mut">enviada</span>'),...Array(emb).fill('<span class="mut">embalada</span>'),...L.map(sel)];
 }
 // linhas da tabela: item com 1 peça = 1 linha; com várias = linha do item + uma linha por peça
 function linhasPecas(it, antes, depois, ncol){
