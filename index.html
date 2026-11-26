@@ -469,15 +469,14 @@ async function tFilaPed(){
     return L.length?L.join(''):'<div class="mut" style="font-size:12px;margin-top:3px">sem peças cadastradas</div>'; };
   const pecasTxt=p=>ETQ.filter(([e])=>p.cont[e]).map(([e,c,n])=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px"><i style="width:9px;height:9px;border-radius:3px;background:${c};display:inline-block"></i>${p.cont[e]} ${n}</span>`).join('');
   const desenha=()=>{
-    const prev=previsoes(ordem.map(n=>P[n]),d);
-    app.innerHTML=topo()+`<p class="mut" style="margin:0 2px 8px">A fábrica faz de cima pra baixo.${podeMexer?' Mude a ordem com ↑ ↓ ou arrastando; antes de confirmar aparece quem atrasa.':''}</p>
-      <div id="fl">${ordem.map((n,i)=>{ const p=P[n]; return `<div class="card fcard" draggable="${podeMexer}" data-n="${esc(n)}" style="display:grid;grid-template-columns:${podeMexer?'54px ':''}34px 1fr 160px 120px;gap:10px;align-items:center;margin-bottom:6px;padding:10px 12px">
+    
+    app.innerHTML=topo()+`<p class="mut" style="margin:0 2px 8px">A fábrica faz de cima pra baixo.${podeMexer?' Mude a ordem com ↑ ↓ ou arrastando; antes de confirmar aparece quem fica pra trás.':''}</p>
+      <div id="fl">${ordem.map((n,i)=>{ const p=P[n]; return `<div class="card fcard" draggable="${podeMexer}" data-n="${esc(n)}" style="display:grid;grid-template-columns:${podeMexer?'54px ':''}34px 1fr 160px;gap:10px;align-items:center;margin-bottom:6px;padding:10px 12px">
         ${podeMexer?`<div style="display:flex;flex-direction:column;gap:2px"><button class="btn sec sm" data-up="${i}" ${i?'':'disabled'} style="padding:2px 8px">↑</button><button class="btn sec sm" data-dn="${i}" ${i<ordem.length-1?'':'disabled'} style="padding:2px 8px">↓</button></div>`:''}
         <div style="font-size:22px;font-weight:800;color:var(--amb)">${i+1}</div>
         <div style="min-width:0"><div><span class="link" data-ab="${esc(n)}"><b>${esc(n)}</b></span> · ${esc(p.cliente||'')} ${p.pos_venda?'<span class="tag" style="background:#d8c6f2">pós-venda</span>':''}${p.sem_madeira?' <span class="tag" style="background:#cfc8dc">sem madeira</span>':''}</div>
           <div style="margin-top:5px">${barra(p)}</div>${etapasTxt(p)}</div>
         <div><div class="mut" style="font-size:11px">PRAZO</div>${podeMexer?`<input type="date" data-pz="${esc(n)}" value="${p.prazo_combinado||''}" title="${p.prazo_combinado?'Prazo comercial':'Sem prazo comercial: usando o padrão '+brData(p.prazo_comercial)}" style="padding:4px 6px;font-weight:700;${p.prazo_combinado?'':'color:var(--mut)'}" placeholder="">${p.prazo_combinado?'':`<div class="mut" style="font-size:11px">padrão ${brData(p.prazo_comercial)}</div>`}`:`<b>${brData(p.prazo_comercial)||'–'}</b>`}</div>
-        <div><div class="mut" style="font-size:11px">PREVISÃO</div><b style="font-size:16px">${brData(prev[n])}</b></div>
 </div>`; }).join('')||'<div class="card vazio">Nenhum pedido em produção</div>'}</div>
 `;
     ligaTopo();
@@ -489,14 +488,15 @@ async function tFilaPed(){
     let arr=null; app.querySelectorAll('.fcard').forEach(c=>{ c.ondragstart=()=>{arr=ordem.indexOf(c.dataset.n); c.style.opacity=.4;}; c.ondragend=()=>c.style.opacity=1; c.ondragover=e=>e.preventDefault(); c.ondrop=e=>{ e.preventDefault(); const para=ordem.indexOf(c.dataset.n); if(arr!=null&&arr!==para) mover(arr,para); }; });
   };
   const mover=(de,para)=>{ const nova=ordem.slice(); const [n]=nova.splice(de,1); nova.splice(para,0,n);
-    const a=previsoes(ordem.map(x=>P[x]),d), b=previsoes(nova.map(x=>P[x]),d);
-    const muda=nova.filter(x=>a[x]!==b[x]).map(x=>({n:x, antes:a[x], depois:b[x], d:difUteis(a[x],b[x],F), pz:P[x].prazo_comercial}));
-    const piora=muda.filter(m=>m.d>0), melhora=muda.filter(m=>m.d<0);
-    const lin=m=>{ const estoura=m.pz&&m.depois>m.pz&&!(m.antes>m.pz); return `<tr><td><b>${esc(m.n)}</b> · ${esc(P[m.n].cliente||'')}</td><td>${brData(m.antes)} → <b>${brData(m.depois)}</b></td><td class="${m.d>0?'bad':'ok'}"><b>${m.d>0?'+':''}${m.d} dia${Math.abs(m.d)>1?'s':''}</b></td><td>${estoura?'<span class="tag" style="background:var(--bad);color:#fff">passa do prazo '+ddmm(m.pz)+'</span>':m.pz&&m.depois>m.pz?'<span class="bad">continua atrasado</span>':''}</td></tr>`; };
-    modal(`<h2 style="margin-top:0">${esc(n)} vai pra posição ${para+1}</h2>
-      ${melhora.length?`<p class="ok" style="margin:6px 0"><b>Adianta</b></p><table>${melhora.map(lin).join('')}</table>`:''}
-      ${piora.length?`<p class="bad" style="margin:10px 0 6px"><b>Atrasa</b></p><table>${piora.map(lin).join('')}</table>`:''}
-      ${!muda.length?'<p>As previsões não mudam (peças sem madeira ou esperando estufa seguram as datas).</p>':''}
+    const pz=x=>P[x].prazo_comercial||'', sobe=para<de;
+    const afetados=sobe?ordem.slice(para,de):[]; // descem uma posição
+    const passou=sobe?[]:ordem.slice(de+1,para+1); // passam na frente dele
+    const lin=x=>{ const cedo=pz(x)&&pz(n)&&pz(x)<pz(n); return `<tr><td><b>${esc(x)}</b> · ${esc(P[x].cliente||'')}</td><td>${ordem.indexOf(x)+1}º → <b>${nova.indexOf(x)+1}º</b></td><td>prazo ${brData(pz(x))||'–'}</td><td>${cedo?'<span class="tag" style="background:var(--bad);color:#fff">prazo antes do '+esc(n)+'</span>':''}</td></tr>`; };
+    const linP=x=>{ const cedo=pz(x)&&pz(n)&&pz(x)>pz(n); return `<tr><td><b>${esc(x)}</b> · ${esc(P[x].cliente||'')}</td><td>${ordem.indexOf(x)+1}º → <b>${nova.indexOf(x)+1}º</b></td><td>prazo ${brData(pz(x))||'–'}</td><td>${cedo?'<span class="tag" style="background:var(--mid);color:#fff">prazo depois do '+esc(n)+'</span>':''}</td></tr>`; };
+    const ruins=afetados.filter(x=>pz(x)&&pz(n)&&pz(x)<pz(n)).length;
+    modal(`<h2 style="margin-top:0">${esc(n)} vai de ${de+1}º pra ${para+1}º</h2><p class="mut" style="margin-top:0">${esc(P[n].cliente||'')} · prazo ${brData(pz(n))||'–'}</p>
+      ${sobe?`<p style="margin:6px 0"><b>${afetados.length} pedido${afetados.length>1?'s ficam':' fica'} pra trás</b>${ruins?` <span class="bad">· ${ruins} com prazo antes do ${esc(n)}</span>`:''}</p><table>${afetados.map(lin).join('')}</table>`
+        :`<p style="margin:6px 0"><b>${passou.length} pedido${passou.length>1?'s passam':' passa'} na frente do ${esc(n)}</b></p><table>${passou.map(linP).join('')}</table>`}
       <br><div class="row"><button class="btn" id="mok">Confirmar nova ordem</button><button class="btn sec" id="mx">Cancelar</button></div>`);
     $('#mx').onclick=()=>modal('');
     $('#mok').onclick=tenta(async()=>{ await api('/api/comercial/fila',{numeros:nova}); ordem=nova; nova.forEach((x,i)=>P[x].posicao=i+1); modal(''); toast('✓ Fila atualizada · a fábrica já vê a nova ordem'); desenha(); }); };
