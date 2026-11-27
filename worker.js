@@ -397,6 +397,7 @@ async function comercial(DB) {
   const opsPor = {}; ops.forEach(o => (opsPor[o.pedido_item_id] = opsPor[o.pedido_item_id] || []).push(o));
   const itPor = {}; itens.forEach(i => (itPor[i.pedido_id] = itPor[i.pedido_id] || []).push(i));
   const pecasEstoque = {}; // peças prontas (CQ / prontas) que já são de pedido em aberto, por item
+  const semMad = []; // peças de pedido sem OP (aguardando madeira), pra saber que bloco falta
   const r = peds.map(p => {
     const its = itPor[p.id] || [], cont = {}, porEtapa = {};
     let trab = 0, esp = 0, semMadeira = 0;
@@ -405,7 +406,7 @@ async function comercial(DB) {
       { const r = R[pi.item_id] || { trab: 0, acab: 0, esp: 0 }, o = OR[pi.id];
         const prod = o && o.un ? o.trab / o.un : r.trab / 2;
         trab += (et['Aguardando madeira'] || 0) * r.trab + (et['Produção'] || 0) * prod + (et['Acabamento'] || 0) * r.acab;
-        if (et['Aguardando madeira']) { esp = Math.max(esp, r.esp); semMadeira += et['Aguardando madeira']; } else if (o) esp = Math.max(esp, o.esp || 0); }
+        if (et['Aguardando madeira']) { esp = Math.max(esp, r.esp); semMadeira += et['Aguardando madeira']; semMad.push({ numero: p.numero, cliente: p.cliente, posicao: p.posicao, item_id: pi.item_id, item: pi.item_nome || pi.descricao, n: et['Aguardando madeira'] }); } else if (o) esp = Math.max(esp, o.esp || 0); }
       for (const [e, n] of Object.entries(et)) {
         cont[e] = (cont[e] || 0) + n;
         const c = colecao(pi), nm = nomeCurto(pi.item_nome || pi.descricao);
@@ -447,7 +448,7 @@ async function comercial(DB) {
       meta, dias_meta: meta ? diasAte(hoje, meta, fer) : null, pecas: tot, cont,
       posicao: p.posicao, prazo_comercial: p.prazo_combinado || padrao, prazo_padrao: padrao, trabalho_min: Math.round(trab), espera_dias: Math.ceil(esp / 1440), sem_madeira: semMadeira };
   });
-  return { hoje, proximo_util: workday(hoje, 1, fer), pedidos: r, pecasEstoque, ritmo, feriados: [...fer] };
+  return { hoje, proximo_util: workday(hoje, 1, fer), pedidos: r, pecasEstoque, ritmo, feriados: [...fer], semMad };
 }
 
 const app = {
@@ -766,6 +767,9 @@ const app = {
         return json(req, { ok: true });
       }
 
+      // ---------- quem está com etapa rodando agora (pra tela de escolher pessoa)
+      if (p === '/api/ocupados') return json(req, await all(DB, `select x.funcionario_id, op.codigo, t.nome from op_operacao x join op on op.id=x.op_id join operacao_tipo t on t.id=x.operacao_tipo_id
+          where x.status='produzindo' and x.funcionario_id is not null`));
       // ---------- apontamentos que parecem errados (pra conferir com o apontador): finalizou sem iniciar, < 1 min, ou muito longe do padrão
       if (p === '/api/apontamentos-estranhos') {
         const de = (q('de') || hojeManaus()) + ' 04:00:00', ate = new Date(Date.parse((q('ate') || hojeManaus()) + 'T04:00:00Z') + 864e5).toISOString().slice(0, 19).replace('T', ' ');
@@ -929,10 +933,21 @@ const app = {
           comercial(DB)]);
         const abertos = c.pedidos.filter(x => !['Transportadora', 'Entregue', 'Cancelada'].includes(x.status));
         const soma = e => abertos.reduce((s, x) => s + ((x.cont || {})[e] || 0), 0);
+        // sem madeira: que bloco falta, pela ordem da fila (posição, depois prazo)
+        const abN = new Set(abertos.map(x => x.numero)), PZ = Object.fromEntries(abertos.map(x => [x.numero, x.prazo]));
+        const [comps, sal] = await Promise.all([all(DB, 'select c.item_id, c.insumo_id, c.qtd, i.nome from composicao c join item i on i.id=c.insumo_id'),
+          all(DB, 'select item_id, sum(qtd) q from estoque_mov where deposito_id=? group by item_id', DEP_PATIO)]);
+        const saldo = Object.fromEntries(sal.map(s => [s.item_id, s.q])), resto = { ...saldo }, precisa = {};
+        const sm = c.semMad.filter(x => abN.has(x.numero)).sort((a, b) => (a.posicao ?? 1e9) - (b.posicao ?? 1e9) || String(PZ[a.numero] || '9').localeCompare(String(PZ[b.numero] || '9')))
+          .map(x => { const cs = comps.filter(k => k.item_id === x.item_id);
+            let da = cs.length ? x.n : 0; for (const k of cs) da = Math.min(da, Math.floor(((resto[k.insumo_id] || 0) + 1e-9) / k.qtd)); da = Math.max(0, da);
+            for (const k of cs) { resto[k.insumo_id] = (resto[k.insumo_id] || 0) - k.qtd * da; const P = precisa[k.insumo_id] = precisa[k.insumo_id] || { nome: k.nome, q: 0, tem: +(saldo[k.insumo_id] || 0) }; P.q += k.qtd * x.n; }
+            return { ...x, prazo: PZ[x.numero] || null, da, sem_composicao: !cs.length, blocos: cs.map(k => `${+(k.qtd * x.n).toFixed(2)} × ${k.nome}`).join(' + ') }; });
+        const madeira = Object.values(precisa).map(x => ({ ...x, q: +x.q.toFixed(2), tem: +x.tem.toFixed(2), falta: +Math.max(0, x.q - x.tem).toFixed(2) })).sort((a, b) => b.falta - a.falta || a.nome.localeCompare(b.nome));
         const em7 = dIso(new Date(Date.parse(c.hoje + 'T12:00:00Z') + 7 * 864e5));
         const vencendo = abertos.filter(x => x.prazo && x.prazo <= em7 && ['Em produção', 'Pronto / embalagem'].includes(x.status)).sort((a, b) => a.prazo.localeCompare(b.prazo))
           .map(x => ({ numero: x.numero, cliente: x.cliente, prazo: x.prazo, status: x.status, cont: x.cont, posicao: x.posicao }));
-        return json(req, { hoje: c.hoje, vencendo, ops, sem_madeira: soma('Aguardando madeira'), qualidade: soma('Controle de qualidade'), prontas: soma('Prontas'),
+        return json(req, { hoje: c.hoje, vencendo, sem_madeira_itens: sm, madeira, ops, sem_madeira: soma('Aguardando madeira'), qualidade: soma('Controle de qualidade'), prontas: soma('Prontas'),
           sem_madeira_pedidos: abertos.filter(x => (x.cont || {})['Aguardando madeira']).map(x => ({ numero: x.numero, cliente: x.cliente, n: x.cont['Aguardando madeira'], texto: x.etapas['Aguardando madeira'] })),
           qualidade_pedidos: abertos.filter(x => (x.cont || {})['Controle de qualidade']).map(x => ({ numero: x.numero, cliente: x.cliente, n: x.cont['Controle de qualidade'], texto: x.etapas['Controle de qualidade'] })),
           prontas_pedidos: abertos.filter(x => (x.cont || {})['Prontas']).map(x => ({ numero: x.numero, cliente: x.cliente, n: x.cont['Prontas'], texto: x.etapas['Prontas'] })) });
