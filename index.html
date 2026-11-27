@@ -122,7 +122,7 @@ function modal(html){ $('#modal').innerHTML = html ? `<div class="modal" id="mbg
 function escolher(titulo, opcoes){ // opcoes: [{id,nome,sub}]
   return new Promise(res=>{
     modal(`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(titulo)}</h2><button class="btn sec sm" id="mx">Fechar</button></div><br>
-      <div class="grid">${opcoes.map(o=>`<div class="chip" data-id="${o.id}" ${o.id<0?'style="border-style:dashed"':''}>${esc(o.nome)}${o.sub?`<small>${esc(o.sub)}</small>`:''}</div>`).join('')}</div>`);
+      <div class="grid">${opcoes.map(o=>`<div class="chip" ${o.off?'data-off="1" style="opacity:.45;cursor:not-allowed"':`data-id="${o.id}" ${o.id<0?'style="border-style:dashed"':''}`}>${esc(o.nome)}${o.sub?`<small>${esc(o.sub)}</small>`:''}</div>`).join('')}</div>`);
     $('#mx').onclick=()=>{modal('');res(null)};
     document.querySelectorAll('#modal [data-id]').forEach(c=>c.onclick=()=>{modal('');res(+c.dataset.id)});
   });
@@ -185,7 +185,9 @@ const acao = tenta(async (o, tipo, depois) => {
   let funcionario_id = null;
   const precisa = o.setor_id && !soClique(o) && !o.funcionario_id && (tipo==='iniciar'||tipo==='finalizar');
   if (tipo==='iniciar' && o.setor_id && !soClique(o) || precisa) {
-    const ops = o.status==='pendente' ? [...pessoas(o.setor_id), {id:-1,nome:'Operador',sub:'Já foi feita: finaliza com o tempo padrão'}] : pessoas(o.setor_id);
+    let ocup=[]; if(tipo==='iniciar') try{ ocup=await api('/api/ocupados'); }catch(e){}
+    const marca=l=>l.map(p=>{ const x=ocup.find(k=>k.funcionario_id===p.id); return x?{...p,off:true,sub:`ocupado: ${x.nome} da ${nomeOp(x.codigo)}`}:p; });
+    const ops = o.status==='pendente' ? [...marca(pessoas(o.setor_id)), {id:-1,nome:'Operador',sub:'Já foi feita: finaliza com o tempo padrão'}] : marca(pessoas(o.setor_id));
     funcionario_id = await escolher(tipo==='iniciar'?'Quem vai fazer?':'Quem fez?', ops);
     if (!funcionario_id) return;
     if (funcionario_id===-1) {
@@ -499,6 +501,15 @@ async function tMapa(){
       <div id="mdet" style="margin-top:14px"></div>`;
     app.querySelectorAll('[data-cx]').forEach(b=>b.onclick=()=>{ S.mcx=S.mcx===b.dataset.cx?null:b.dataset.cx; desenha(); });
     const c=caixas.find(x=>x.k===S.mcx); if(!c) return;
+    if(c.k==='mad'&&d.madeira){ const sm=d.sem_madeira_itens||[], nDa=sm.reduce((s,x)=>s+x.da,0);
+      $('#mdet').innerHTML=`<h2>Sem madeira · ${fmt(c.n)} peça${c.n===1?'':'s'} de pedido sem OP</h2>
+        <div class="card" style="overflow-x:auto"><b>Blocos que essas peças precisam</b><table style="margin-top:6px"><tr><th>Bloco</th><th class="n">Precisa</th><th class="n">Tem no Pátio</th><th class="n">Falta</th></tr>
+          ${d.madeira.map(m=>`<tr><td>${esc(m.nome)}</td><td class="n">${fmt(m.q)}</td><td class="n">${fmt(m.tem)}</td><td class="n ${m.falta>0?'bad':'ok'}"><b>${m.falta>0?fmt(m.falta):'—'}</b></td></tr>`).join('')||'<tr><td colspan="4" class="mut">Nenhuma peça com composição cadastrada.</td></tr>'}</table>
+          <p class="mut" style="margin:8px 0 0">${nDa?`<b class="ok">${nDa} peça${nDa>1?'s':''} já ${nDa>1?'têm':'tem'} bloco no Pátio</b>: falta só abrir a OP.`:'Nenhuma peça dá pra começar com o bloco que tem no Pátio.'} A conta segue a ordem da fila de pedidos.</p></div>
+        <div class="card" style="overflow-x:auto;margin-top:10px"><table><tr><th>Fila</th><th>Pedido</th><th>Peça</th><th class="n">Qtd</th><th>Blocos</th><th>Situação</th></tr>
+          ${sm.map(x=>`<tr><td>${x.posicao?x.posicao+'º':'—'}</td><td><span class="link" data-ped="${esc(x.numero)}"><b>${esc(x.numero)}</b></span> · ${esc(x.cliente||'')}</td><td>${esc(x.item||'')}</td><td class="n">${fmt(x.n)}</td><td class="mut" style="font-size:12px">${esc(x.blocos||'sem composição')}</td>
+            <td class="${x.sem_composicao?'mut':x.da>=x.n?'ok':x.da?'midc':'bad'}">${x.sem_composicao?'sem composição':x.da>=x.n?'tem bloco · abrir OP':x.da?x.da+' de '+x.n+' tem bloco':'falta bloco'}</td></tr>`).join('')}</table></div>`;
+      $('#mdet').querySelectorAll('[data-ped]').forEach(x=>x.onclick=()=>abrirPedido(x.dataset.ped)); return; }
     $('#mdet').innerHTML=`<h2>${esc(c.nome)} · ${fmt(c.n)} peça${c.n===1?'':'s'}</h2><div class="card" style="overflow-x:auto">${c.tipo==='ped'
       ?(c.lista.length?`<table>${c.lista.map(x=>`<tr><td><span class="link" data-ped="${esc(x.numero)}"><b>${esc(x.numero)}</b></span> · ${esc(x.cliente||'')}</td><td class="n">${x.n}</td><td style="font-size:12px;white-space:pre-line">${esc(x.texto||'')}</td></tr>`).join('')}</table>`:'<div class="vazio">Nenhuma.</div>')
       :(c.ops.length?`<table><tr><th>OP</th><th>Peça</th><th class="n">Qtd</th><th>Pedido</th><th>Situação</th><th class="n">Há</th></tr>${c.ops.slice().sort((a,b)=>(a.posicao??1e9)-(b.posicao??1e9)).map(o=>{ const h=dias(o.status==='pendente'?(o.desde||o.criado_em):(o.inicio_atual||o.desde||o.criado_em));
