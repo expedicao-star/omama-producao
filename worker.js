@@ -345,7 +345,11 @@ async function capacidade(DB, de, ate) {
   let dias = 0; for (let d = new Date(de + 'T12:00:00Z'); dIso(d) <= lim; d.setUTCDate(d.getUTCDate() + 1)) if (util(d, F)) dias++;
   const faltas_h = pres.reduce((s, r) => s + (['falta_injustificada', 'falta_justificada', 'atestado', 'folga'].includes(r.status) ? hd : r.status === 'atraso' ? (r.minutos || 0) / 60 : 0), 0);
   const pessoas = pes ? pes.n : 0;
-  return { pessoas, dias, horas_dia: hd, eficiencia: ef, faltas_h: Math.round(faltas_h * 10) / 10, horas_disp: Math.round(Math.max(0, pessoas * dias * hd - faltas_h) * ef * 10) / 10 };
+  const [ps, fs] = await Promise.all([all(DB, 'select s.id, s.nome, count(*) n from funcionario f join setor s on s.id=f.setor_id where f.ativo=1 group by s.id'),
+    all(DB, "select f.setor_id, p.status, p.minutos from presenca p join funcionario f on f.id=p.funcionario_id where p.data between ? and ? and p.status is not null", de, ate)]).catch(() => [[], []]);
+  const por_setor = ps.map(s => { const fh = fs.filter(r => r.setor_id === s.id).reduce((a, r) => a + (['falta_injustificada', 'falta_justificada', 'atestado', 'folga'].includes(r.status) ? hd : r.status === 'atraso' ? (r.minutos || 0) / 60 : 0), 0);
+    return { setor_id: s.id, setor: s.nome, pessoas: s.n, horas_disp: Math.round(Math.max(0, s.n * dias * hd - fh) * ef * 10) / 10 }; });
+  return { pessoas, dias, horas_dia: hd, eficiencia: ef, faltas_h: Math.round(faltas_h * 10) / 10, horas_disp: Math.round(Math.max(0, pessoas * dias * hd - faltas_h) * ef * 10) / 10, por_setor };
 }
 // ---------- Comercial: mesma lógica da v.8 (abas Pedidos, Peças, Quadro do dia, Acompanhamento cliente)
 const ETAPAS_V8 = ['Aguardando madeira', 'Produção', 'Acabamento', 'Controle de qualidade', 'Prontas'];
@@ -407,7 +411,7 @@ async function comercial(DB) {
   const hoje = hojeManaus();
   const [peds, itens, ops, cqs, fers] = await Promise.all([
     all(DB, 'select * from pedido'),
-    all(DB, 'select pi.*, i.nome item_nome, i.familia from pedido_item pi left join item i on i.id=pi.item_id'),
+    all(DB, 'select pi.*, i.nome item_nome, i.familia, i.preco item_preco from pedido_item pi left join item i on i.id=pi.item_id'),
     all(DB, `select o.id, o.qtd, o.status, o.pedido_item_id, e.ordem from op o join estagio e on e.id=o.estagio_id where o.pedido_item_id is not null and o.status<>'cancelada' and o.tipo='OP'`),
     all(DB, 'select op_id, count(*) n from peca_qualidade group by op_id'),
     all(DB, 'select data from feriado')]);
@@ -430,7 +434,9 @@ async function comercial(DB) {
   const semMad = []; // peças de pedido sem OP (aguardando madeira), pra saber que bloco falta
   const r = peds.map(p => {
     const its = itPor[p.id] || [], cont = {}, porEtapa = {};
-    let trab = 0, esp = 0, semMadeira = 0;
+    let trab = 0, esp = 0, semMadeira = 0, valor = 0, aprox = 0;
+    for (const pi of its) { const pr = pi.preco != null ? Number(pi.preco) : (aprox++, Number(pi.item_preco) || 0); valor += (Number(pi.qtd) || 0) * pr * (1 - (Number(pi.desconto) || 0) / 100); }
+    valor = Math.max(0, Math.round((valor - (Number(p.desconto) || 0)) * 100) / 100);
     for (const pi of its) {
       const et = etapasDoItem(pi, opsPor[pi.id] || [], cq);
       { const r = R[pi.item_id] || { trab: 0, acab: 0, esp: 0 }, o = OR[pi.id];
@@ -476,7 +482,7 @@ async function comercial(DB) {
       pedido_origem: p.pedido_origem, previsao_entrega: p.previsao_entrega, data_entrega: p.data_entrega,
       pos_venda_dias: posVenda && p.data_pagamento && !['Entregue', 'Cancelada'].includes(status) ? networkdays(p.data_pagamento, hoje, fer) - 1 : null,
       meta, dias_meta: meta ? diasAte(hoje, meta, fer) : null, pecas: tot, cont,
-      posicao: p.posicao, prazo_comercial: p.prazo_combinado || padrao, prazo_padrao: padrao, trabalho_min: Math.round(trab), espera_dias: Math.ceil(esp / 1440), sem_madeira: semMadeira };
+      posicao: p.posicao, prazo_comercial: p.prazo_combinado || padrao, prazo_padrao: padrao, trabalho_min: Math.round(trab), espera_dias: Math.ceil(esp / 1440), sem_madeira: semMadeira, valor, valor_aprox: aprox > 0 };
   });
   return { hoje, proximo_util: workday(hoje, 1, fer), pedidos: r, pecasEstoque, ritmo, feriados: [...fer], semMad };
 }
@@ -1608,7 +1614,13 @@ const app = {
           join pedido_item pi on pi.id=em.pedido_item_id join pedido p on p.id=pi.pedido_id where date(em.data, '-4 hours') between ? and ? group by 1, 2 order by 1`, de, ate).catch(() => []);
         const [hsem, cap] = await Promise.all([horasPorSemana(DB, de), capacidade(DB, de, ate)]);
         const horas_entregues = hsem.reduce((s, x) => s + (x.inicio >= de && x.inicio <= ate ? x.horas : 0), 0);
-        return json(req, { horas_entregues: Math.round(horas_entregues * 10) / 10, capacidade: cap, finalizadas, criadas, envios, envios_manuais, entradas, inventarios, historico_sensio: { finalizadas: hf, faturamento: hn, entradas_pa_por_op: he } });
+        // horas de trabalho (tempo padrão) das etapas finalizadas na semana, por setor; e classes do controle de qualidade
+        const [setores, qualidade] = await Promise.all([
+          all(DB, `select t.setor_id, coalesce(s.nome, '—') setor, t.nome etapa, count(*) etapas, sum(o.qtd) pecas, round(sum(o.qtd * oo.tempo_unit_min) / 60.0, 1) horas from op_operacao oo join op o on o.id=oo.op_id
+            join operacao_tipo t on t.id=oo.operacao_tipo_id left join setor s on s.id=t.setor_id where oo.status='finalizado' and t.espera=0 and coalesce(t.so_clique,0)=0 and o.tipo='OP'
+            and date(oo.fim, '-4 hours') between ? and ? group by t.id order by s.nome, t.nome`, de, ate).catch(() => []),
+          all(DB, `select upper(classe) classe, count(*) n from peca_qualidade where date(criado_em, '-4 hours') between ? and ? group by upper(classe) order by 1`, de, ate).catch(() => [])]);
+        return json(req, { horas_entregues: Math.round(horas_entregues * 10) / 10, capacidade: cap, setores, qualidade, finalizadas, criadas, envios, envios_manuais, entradas, inventarios, historico_sensio: { finalizadas: hf, faturamento: hn, entradas_pa_por_op: he } });
       }
 
       // ---------- fotos (guardadas no banco já reduzidas pelo navegador)
