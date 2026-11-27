@@ -443,9 +443,7 @@ async function tInsumos(){
   $('#xb').oninput=desenha; $('#xn').onclick=()=>editarInsumo({}); $('#xh').onclick=()=>histInsumo(0); desenha();
 }
 // ===== Mapa da fábrica: fluxo do processo com quantas peças estão em cada etapa agora
-async function tMapa(){
-  app.innerHTML='<div class="card vazio">Carregando…</div>';
-  const d=await api('/api/mapa');
+function caixasMapa(d){
   const ordE=id=>((B.estagios.find(e=>e.id===id)||{}).ordem)||0;
   const tipos=B.tipos.filter(t=>t.id!==10).slice().sort((a,b)=>ordE(a.estagio_id)-ordE(b.estagio_id)||a.id-b.id);
   const dias=s=>{ if(!s) return null; const t=new Date(s.replace(' ','T')+(s.length>10?'Z':'T12:00:00Z')); return Math.max(0,Math.floor((Date.now()-t)/864e5)); };
@@ -457,6 +455,19 @@ async function tMapa(){
   caixas.push({k:'cq',nome:'Controle de qualidade',tipo:'ped',n:d.qualidade,lista:d.qualidade_pedidos,cor:'#f0c75e'},{k:'pr',nome:'Prontas',tipo:'ped',n:d.prontas,lista:d.prontas_pedidos,cor:'#6cc68a'});
   const maxT=Math.max(1,...caixas.filter(c=>c.tipo==='trab').map(c=>c.n)), garg=caixas.filter(c=>c.tipo==='trab'&&c.n>0).sort((a,b)=>b.n-a.n)[0];
   const fundo=c=>c.tipo==='esp'?'#eef3fb':c.tipo==='ped'?'#fff':`rgba(232,122,45,${0.08+0.5*c.n/maxT})`;
+  return {caixas,garg,fundo,dias};
+}
+// faixa do mapa (mesma conta do Mapa da fábrica) pra usar no Painel
+function faixaMapa(d,grande){
+  const {caixas,garg,fundo}=caixasMapa(d), w=grande?150:104;
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:stretch">${caixas.map((c,i)=>`${i?'<div style="align-self:center;color:var(--mut)">→</div>':''}<div class="card" data-mapa="${c.k}" style="cursor:pointer;width:${w}px;padding:8px;background:${fundo(c)};${c.tipo==='esp'?'border:2px dashed #9db6e0;':''}${c.tipo==='ped'?'border-top:5px solid '+c.cor+';':''}">
+    <div style="font-size:${grande?16:11}px;font-weight:700;min-height:${grande?40:28}px">${esc(c.nome)}</div><div style="font-size:${grande?40:24}px;font-weight:800;line-height:1.1">${fmt(c.n)}</div>
+    ${garg&&garg.k===c.k?'<div class="tag" style="background:var(--bad);color:#fff;margin-top:3px">gargalo</div>':''}</div>`).join('')}</div>`;
+}
+async function tMapa(){
+  app.innerHTML='<div class="card vazio">Carregando…</div>';
+  const d=await api('/api/mapa');
+  const {caixas,garg,fundo,dias}=caixasMapa(d);
   const desenha=()=>{
     app.innerHTML=`<p class="mut" style="margin:0 2px 10px">Onde estão as peças agora. Quanto mais forte a cor, mais peça parada ali. Clique numa etapa pra ver as OPs.</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">${caixas.map((c,i)=>`${i?'<div style="align-self:center;color:var(--mut);font-size:20px">→</div>':''}
@@ -1033,7 +1044,7 @@ function graficoEvol(sem,h){ if(!sem||!sem.length) return '<div class="mut">Sem 
 function graficoDias(d,h){ const dias=[]; for(let k=13;k>=0;k--){ const x=new Date(hojeISO()+'T12:00'); x.setDate(x.getDate()-k); if(x.getDay()!==0) dias.push(x.toISOString().slice(0,10)); }
   const set=B.setores; return barrasSVG(dias.map(x=>brData(x).slice(0,5)),set.map(st=>({nome:st.nome,cor:COR_SETOR[st.id]||'#999',vals:dias.map(di=>(d.dias.find(r=>r.dia===di&&r.setor_id===st.id)||{}).etapas||0)})),h,{destaque:dias.length-1}); }
 // Modo TV: apresentação que passa sozinha (troca a cada 15 s, dados a cada 60 s)
-function tTV(d,ef){
+function tTV(d,ef,mp){
   clearInterval(tvRot);
   const bg=p=>p===null?'var(--line)':p>=100?'#2e9e5b':p>=80?'#d89a1c':'#d14343';
   const prod=d.agoraProd||[], efl=ef?ef.lista.filter(f=>f.dias):[], mx=Math.max(130,...efl.map(f=>f.eficiencia||0));
@@ -1048,7 +1059,7 @@ function tTV(d,ef){
     ['Produção dos últimos dias · etapas finalizadas por setor',`<div class="card">${graficoDias(d,300)}</div>`],
     ['Pedidos e atrasos',`<div class="grid" style="grid-template-columns:1fr 1fr;gap:20px"><div class="card"><h2 style="margin-top:0">Pedidos vencendo em 7 dias</h2>${d.pedidos.map(p=>{ const x=diasAte(p.prazo); return `<div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:20px"><span><b>${esc(p.numero)}</b> · ${esc(p.cliente||'')}</span><b class="${x<0?'bad':x<=2?'midc':''}">${x<0?Math.abs(x)+' d atrasado':x===0?'hoje':x+' d'}</b></div>`; }).join('')||'<div class="mut">Nenhum.</div>'}</div>
       <div class="card"><h2 style="margin-top:0">OPs atrasadas (${d.atrasadas.length})</h2>${d.atrasadas.slice(0,10).map(o=>`<div style="padding:8px 0;border-bottom:1px solid var(--line);font-size:19px"><b>${nomeOp(o.codigo)}</b> · ${esc(o.nome)} <span class="mut">· ${esc(o.estagio)}</span></div>`).join('')||'<div class="mut">Nenhuma.</div>'}</div></div>`],
-    ['Peças por estágio',`<div class="card">${(()=>{ const m=Math.max(1,...d.estagios.map(e=>e.pecas)); return d.estagios.map(e=>`<div style="margin:10px 0"><div class="row" style="justify-content:space-between;font-size:20px"><span>${esc(e.nome)}</span><b>${fmt(e.pecas)}</b></div><div class="bar" style="height:14px"><i style="width:${e.pecas/m*100}%"></i></div></div>`).join(''); })()}</div>`],
+    ...(mp?[['Onde estão as peças agora',`<div class="card">${faixaMapa(mp,true)}</div>`]]:[]),
   ];
   S.tvIdx=(S.tvIdx||0)%slides.length;
   const mostra=()=>{ const [t,h]=slides[S.tvIdx];
@@ -1062,10 +1073,10 @@ function tTV(d,ef){
 }
 async function tPainel(tv){
   clearInterval(tvTimer); clearInterval(tvRot);
-  const hj=hojeISO(), [d,ef]=await Promise.all([api('/api/painel'),api(`/api/eficiencia?de=${hj}&ate=${hj}`).catch(()=>null)]);
+  const hj=hojeISO(), [d,ef,mp]=await Promise.all([api('/api/painel'),api(`/api/eficiencia?de=${hj}&ate=${hj}`).catch(()=>null),api('/api/mapa').catch(()=>null)]);
   const bgE=p=>p===null?'var(--line)':p>=100?'#2e9e5b':p>=80?'#d89a1c':'#d14343';
   const prod=d.agoraProd||[], efl=ef?ef.lista.filter(f=>f.dias):[], maxEf=Math.max(130,...efl.map(f=>f.eficiencia||0));
-  if(tv) return tTV(d,ef);
+  if(tv) return tTV(d,ef,mp);
   const k=(n,t,c)=>`<div class="card" style="text-align:center"><div style="font-size:34px;font-weight:800;color:${c||'var(--amb)'}">${n}</div><div class="mut">${t}</div></div>`;
   const maxE=Math.max(1,...d.estagios.map(e=>e.pecas));
   const ST={falta_injustificada:'falta',falta_justificada:'falta justificada',atestado:'atestado',atraso:'atraso',folga:'folga/férias'};
@@ -1080,12 +1091,13 @@ async function tPainel(tv){
       <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Eficiência de hoje (pela meta de peças/dia)</b><span class="mut">verde ≥ 100% · amarelo 80–99% · vermelho &lt; 80%</span></div>
         ${ef?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 18px;margin-top:8px">${efl.map(f=>`<div class="row" style="gap:8px;flex-wrap:nowrap"><span style="min-width:90px;font-weight:700">${esc(f.nome)}</span><div style="flex:1;height:14px;background:var(--line);border-radius:7px;overflow:hidden"><i style="display:block;height:100%;width:${f.eficiencia===null?0:Math.min(100,f.eficiencia/maxEf*100)}%;background:${bgE(f.eficiencia)}"></i></div><b style="min-width:52px;text-align:right;color:${bgE(f.eficiencia)}">${f.eficiencia===null?'–':f.eficiencia+'%'}</b></div>`).join('')||'<div class="mut">Ninguém finalizou etapa hoje ainda.</div>'}</div>`:'<div class="mut">Sem acesso à eficiência.</div>'}</div>
       <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Evolução da produção · peças que entraram no P.A. por semana</b><span class="mut">S39–S46 dos relatórios semanais do Drive · a partir da S47, medido no sistema</span></div>${graficoEvol(d.semanas,230)}</div>
-      <div class="card"><b>Peças por estágio</b>${d.estagios.map(e=>`<div style="margin-top:6px"><div class="row" style="justify-content:space-between"><span style="font-size:13px">${esc(e.nome)}</span><b>${fmt(e.pecas)}</b></div><div class="bar"><i style="width:${e.pecas/maxE*100}%"></i></div></div>`).join('')}</div>
+      ${mp?`<div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Onde estão as peças agora</b><span class="mut">mesma conta do Mapa da fábrica · clique pra abrir</span></div><div style="margin-top:8px">${faixaMapa(mp)}</div></div>`:''}
       <div class="card"><b>Pedidos vencendo em 7 dias</b>${d.pedidos.map(p=>{ const x=diasAte(p.prazo); return `<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span>${esc(p.numero)} · ${esc(p.cliente||'')}<br><span class="mut">${fmt(p.conferidas)}/${fmt(p.pecas)} conferidas</span></span><b class="${x<0?'bad':'midc'}">${x<0?Math.abs(x)+' d atrasado':x===0?'hoje':x+' d'}</b></div>`}).join('')||'<div class="mut" style="margin-top:6px">Nenhum.</div>'}</div>
       <div class="card"><b>OPs atrasadas</b>${d.atrasadas.map(o=>`<div style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="link" data-op="${o.codigo}">${nomeOp(o.codigo)}</span> · ${esc(o.nome)} · ${fmt(o.qtd)} un<br><span class="mut">${esc(o.estagio)} · previsto ${brData(o.previsao_fim)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nenhuma.</div>'}</div>
       <div class="card"><b>Parado na estufa há mais de 10 dias</b>${d.parados.map(o=>`<div style="padding:4px 0"><span class="link" data-op="${o.codigo}">OP ${o.codigo}</span> · ${esc(o.nome)} <span class="mut">· ${esc(o.operacao)} desde ${brData(o.inicio)}</span></div>`).join('')||'<div class="mut" style="margin-top:6px">Nada parado.</div>'}
         <br><b>Faltas e atrasos hoje</b>${d.faltas.map(f=>`<div>${esc(f.nome)} <span class="mut">· ${ST[f.status]||f.status}${f.minutos?' '+f.minutos+' min':''}</span></div>`).join('')||'<div class="mut">Ninguém.</div>'}</div></div>`;
   app.querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
+  app.querySelectorAll('[data-mapa]').forEach(x=>x.onclick=()=>{ S.mcx=x.dataset.mapa; const b=document.querySelector('[data-t="mapa"]'); if(b) b.click(); });
   $('#tv').onclick=()=>{ document.body.classList.toggle('tv',!tv); if(!tv&&document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); if(tv&&document.fullscreenElement) document.exitFullscreen(); tPainel(!tv); };
   if(tv) tvTimer=setInterval(()=>{ if(S.tab==='painel'&&!$('#mbg')) tPainel(true); else clearInterval(tvTimer); },30000);
 }
