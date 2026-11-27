@@ -15,6 +15,29 @@ const json = (req, data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(req) } });
 const agora = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const minDesde = (s) => Math.max(0, (Date.now() - Date.parse(s.replace(' ', 'T') + 'Z')) / 60000);
+// fim do expediente (Manaus, UTC-4): seg–qui 17h, sex 16h, sáb/dom 17h. Quem esquecer o cronômetro ligado é pausado nesse horário.
+const fimExpediente = (iniMs) => {
+  const l = new Date(iniMs - 4 * 3600e3), dia = [l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate()];
+  let lim = Date.UTC(...dia, l.getUTCDay() === 5 ? 16 : 17) + 4 * 3600e3;
+  if (iniMs >= lim) lim = Date.UTC(dia[0], dia[1], dia[2] + 1) + 4 * 3600e3; // começou depois do horário (hora extra): vale até meia-noite
+  return lim;
+};
+let ultAutoPausa = 0;
+async function autoPausa(DB) {
+  if (Date.now() - ultAutoPausa < 60000) return; ultAutoPausa = Date.now();
+  const rs = await all(DB, `select oo.id, oo.op_id, oo.inicio_atual, oo.funcionario_id, t.nome from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id
+    where oo.status='produzindo' and oo.inicio_atual is not null`);
+  const st = [];
+  for (const r of rs) {
+    const ini = Date.parse(r.inicio_atual.replace(' ', 'T') + 'Z'), lim = fimExpediente(ini);
+    if (!(Date.now() >= lim)) continue;
+    const fim = new Date(lim).toISOString().slice(0, 19).replace('T', ' ');
+    st.push(DB.prepare("update op_operacao set status='pausado', minutos=minutos+?, inicio_atual=null where id=? and status='produzindo'").bind((lim - ini) / 60000, r.id),
+      DB.prepare('insert into op_pausa(op_operacao_id, motivo, obs, funcionario_id, inicio) values(?,?,?,?,?)').bind(r.id, 'Fim do expediente', 'pausa automática do sistema', r.funcionario_id || null, fim),
+      evento(DB, r.op_id, `Sistema pausou ${r.nome} no fim do expediente (cronômetro tinha ficado ligado)`));
+  }
+  if (st.length) await DB.batch(st);
+}
 // ---------- sincronização com a v.8 (Google Sheets manda os dados por um Apps Script)
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
 const dataBR = s => { const m = String(s || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
@@ -465,6 +488,7 @@ const app = {
       basePronta = true;
     }
     try {
+      await autoPausa(DB).catch(e => console.log('autoPausa', e && e.message));
       // ---------- usuários
       if (p === '/api/eu') return json(req, usuario);
       if (p === '/api/auth/sair' && req.method === 'POST') {
