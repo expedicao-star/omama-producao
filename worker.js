@@ -326,6 +326,27 @@ async function mcp(req, env) {
   return erro(msg.id, -32601, 'Método não suportado');
 }
 
+// horas de trabalho entregues por semana (segunda a domingo, Manaus): peças que entraram no P.A. × minutos padrão do roteiro (planilha de capacidade), sem esperas e sem Finalização
+async function horasPorSemana(DB, desde) {
+  const sem = c => `date(date(${c}, '-4 hours'), '-' || ((cast(strftime('%w', date(${c}, '-4 hours')) as int) + 6) % 7) || ' days')`;
+  return all(DB, `select x.inicio, round(sum(x.qtd * coalesce(r.m, 0)) / 60.0, 1) horas, sum(x.qtd) pecas from (
+      select ${sem('o.finalizado_em')} inicio, o.item_id, o.qtd from op o where o.status='finalizada' and o.tipo='OP' and date(o.finalizado_em, '-4 hours') >= ?
+      union all
+      select ${sem('h.finalizado_em')} inicio, i.id item_id, h.qtd from hist_op h join item i on i.codigo=h.item_codigo
+        where h.status='FINALIZADO' and date(h.finalizado_em, '-4 hours') >= ? and not exists (select 1 from op where op.codigo=h.codigo)
+    ) x left join (select r.item_id, sum(r.tempo_min) m from roteiro r join operacao_tipo t on t.id=r.operacao_tipo_id where t.espera=0 and coalesce(t.so_clique,0)=0 group by r.item_id) r on r.item_id=x.item_id
+    group by x.inicio order by x.inicio`, desde, desde).catch(() => []);
+}
+// horas disponíveis num período: pessoas da produção × dias úteis × horas por dia − faltas/atestados/folgas/atrasos, × eficiência (parâmetros da planilha de custos)
+async function capacidade(DB, de, ate) {
+  const [P, pes, fer, pres] = await Promise.all([all(DB, 'select k, v from custo_param').catch(() => []), one(DB, 'select count(*) n from funcionario where ativo=1 and setor_id is not null'),
+    all(DB, 'select data from feriado'), all(DB, 'select status, minutos from presenca where data between ? and ? and status is not null', de, ate)]);
+  const prm = Object.fromEntries(P.map(x => [x.k, x.v])), hd = prm.horas_dia || 8, ef = prm.eficiencia || 0.8, F = new Set(fer.map(f => f.data)), lim = ate < hojeManaus() ? ate : hojeManaus();
+  let dias = 0; for (let d = new Date(de + 'T12:00:00Z'); dIso(d) <= lim; d.setUTCDate(d.getUTCDate() + 1)) if (util(d, F)) dias++;
+  const faltas_h = pres.reduce((s, r) => s + (['falta_injustificada', 'falta_justificada', 'atestado', 'folga'].includes(r.status) ? hd : r.status === 'atraso' ? (r.minutos || 0) / 60 : 0), 0);
+  const pessoas = pes ? pes.n : 0;
+  return { pessoas, dias, horas_dia: hd, eficiencia: ef, faltas_h: Math.round(faltas_h * 10) / 10, horas_disp: Math.round(Math.max(0, pessoas * dias * hd - faltas_h) * ef * 10) / 10 };
+}
 // ---------- Comercial: mesma lógica da v.8 (abas Pedidos, Peças, Quadro do dia, Acompanhamento cliente)
 const ETAPAS_V8 = ['Aguardando madeira', 'Produção', 'Acabamento', 'Controle de qualidade', 'Prontas'];
 const AVANCO = { 'Cancelado': -1, 'Aguardando madeira': 0, 'Produção': 1, 'Acabamento': 2, 'Controle de qualidade': 3, 'Em Separação': 4, 'Prontas': 5, 'Enviada': 6, 'Entregue': 7 };
@@ -1512,6 +1533,8 @@ const app = {
           semanas.push({ semana: n, inicio: x.inicio, pecas: x.pecas || 0, bancos: x.bancos || 0, regularizacao: 0, fonte: 'sistema' }); });
         if (ultimo) { const segAtual = new Date(Date.now() - 4 * 36e5); segAtual.setUTCDate(segAtual.getUTCDate() - ((segAtual.getUTCDay() + 6) % 7)); const ini = segAtual.toISOString().slice(0, 10);
           if (ini > ultimo.inicio && !semanas.find(x => x.inicio === ini)) semanas.push({ semana: ultimo.semana + Math.round((Date.parse(ini) - Date.parse(ultimo.inicio)) / 6048e5), inicio: ini, pecas: 0, bancos: 0, regularizacao: 0, fonte: 'sistema' }); }
+        const HS = Object.fromEntries((await horasPorSemana(DB, semanas.length ? semanas[0].inicio : '2026-09-01')).map(x => [x.inicio, x.horas]));
+        semanas.forEach(s => { s.horas = HS[s.inicio] ?? null; });
         return json(req, { hoje, seg, ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos: defeitos.n, faltas, parados, envios, agoraProd, semanas, dias });
       }
 
@@ -1583,7 +1606,9 @@ const app = {
           one(DB, `select count(*) movs, coalesce(sum(qtd),0) pecas from hist_estoque_mov where deposito='P.A.' and tipo='Entrada' and documento like 'OP %' and coalesce(cancelado,0)=0 and date(data,'-4 hours') between ? and ?`, de, ate)]);
         const envios_manuais = await all(DB, `select date(em.data, '-4 hours') data, p.numero, p.cliente, coalesce(p.tipo,'cliente') tipo_pedido, sum(em.qtd) pecas from envio_manual em
           join pedido_item pi on pi.id=em.pedido_item_id join pedido p on p.id=pi.pedido_id where date(em.data, '-4 hours') between ? and ? group by 1, 2 order by 1`, de, ate).catch(() => []);
-        return json(req, { finalizadas, criadas, envios, envios_manuais, entradas, inventarios, historico_sensio: { finalizadas: hf, faturamento: hn, entradas_pa_por_op: he } });
+        const [hsem, cap] = await Promise.all([horasPorSemana(DB, de), capacidade(DB, de, ate)]);
+        const horas_entregues = hsem.reduce((s, x) => s + (x.inicio >= de && x.inicio <= ate ? x.horas : 0), 0);
+        return json(req, { horas_entregues: Math.round(horas_entregues * 10) / 10, capacidade: cap, finalizadas, criadas, envios, envios_manuais, entradas, inventarios, historico_sensio: { finalizadas: hf, faturamento: hn, entradas_pa_por_op: he } });
       }
 
       // ---------- fotos (guardadas no banco já reduzidas pelo navegador)
