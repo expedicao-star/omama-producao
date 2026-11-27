@@ -262,17 +262,34 @@ async function tApont(){
     :'<div class="card vazio">Nada estranho nesse período.</div>';
   $('#apl').querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
 }
-// ===== OPs: lista pra buscar e abrir (a visão geral fica no Mapa da fábrica)
+// ===== OPs: kanban pela etapa em que a OP está de verdade (mesma conta do Mapa) ou lista com busca
 async function tOps(){
-  app.innerHTML = `<div class="row"><input id="busca" placeholder="Buscar OP, peça, pedido ou cliente" value="${esc(S.busca)}" style="flex:1;min-width:180px"><button class="btn" id="nova">+ Nova OP</button><button class="btn mid" id="novort">+ Novo RT</button></div><p class="mut" style="margin:8px 2px">Pra ver onde estão as peças, use o Mapa da fábrica. Aqui é pra achar e abrir uma OP.</p><div id="kb" class="vazio">Carregando…</div>`;
+  S.opv=S.opv||'kanban';
+  app.innerHTML = `<div class="row"><div class="row" style="gap:4px">${[['kanban','Kanban'],['lista','Lista']].map(([k,n])=>`<button class="st ${S.opv===k?'on blue':''}" data-v="${k}">${n}</button>`).join('')}</div><input id="busca" placeholder="Buscar OP, peça, pedido ou cliente" value="${esc(S.busca)}" style="flex:1;min-width:180px"><button class="btn" id="nova">+ Nova OP</button><button class="btn mid" id="novort">+ Novo RT</button></div><br><div id="kb" class="vazio">Carregando…</div>`;
   $('#nova').onclick=novaOp; $('#novort').onclick=()=>novoRt({});
+  app.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ S.opv=b.dataset.v; tOps(); });
   const ops = await api('/api/ops');
+  const ordE=id=>((B.estagios.find(e=>e.id===id)||{}).ordem)||0;
+  const cols=B.tipos.filter(t=>!t.so_clique).slice().sort((a,b)=>(a.id===10)-(b.id===10)||ordE(a.estagio_id)-ordE(b.estagio_id)||a.id-b.id).map(t=>t.nome);
+  const etapa=o=>(o.atual||'').split('|')[0]||'Sem etapa';
+  const late=o=>o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO();
+  const pedOuRt=o=>o.tipo==='RT'?`<span class="ped" style="background:#fde8e8;color:#b42318">${esc(o.motivo||'Retrabalho')}</span>`:pedTag(o);
   const desenha = ()=>{
-    const b=S.busca.toLowerCase(), f=ops.filter(o=>!b||String(o.codigo).includes(b)||o.item_nome.toLowerCase().includes(b)||String(o.pedido_numero||'').includes(b)||(o.pedido_cliente||'').toLowerCase().includes(b)).sort((x,y)=>y.codigo-x.codigo);
-    $('#kb').className='card'; $('#kb').style.overflowX='auto';
-    $('#kb').innerHTML = f.length?`<table><tr><th>OP</th><th>Peça</th><th>Pedido</th><th>Onde está</th><th>Entrega</th></tr>${f.map(o=>{ const a=(o.atual||'').split('|'), late=o.previsao_fim&&o.previsao_fim.slice(0,10)<hojeISO();
-      return `<tr data-op="${o.codigo}" style="cursor:pointer"><td><b>${nomeOp(o.codigo)}</b> <span class="mut">${fmt(o.qtd)} un</span></td><td>${esc(o.item_nome)}</td><td>${o.tipo==='RT'?`<span class="ped" style="background:#fde8e8;color:#b42318">${esc(o.motivo||'Retrabalho')}</span>`:pedTag(o)}</td>
-        <td>${a[0]?esc(a[0])+' · '+a[1]+(a[2]?' · '+esc(a[2]):''):'<span class="mut">'+esc((B.estagios.find(e=>e.id===o.estagio_id)||{}).nome||'')+'</span>'}</td><td class="${late?'bad':''}">${o.previsao_fim?brData(o.previsao_fim):''}</td></tr>`}).join('')}</table>`:'<div class="vazio">Nenhuma OP encontrada.</div>';
+    const b=S.busca.toLowerCase(), f=ops.filter(o=>!b||String(o.codigo).includes(b)||o.item_nome.toLowerCase().includes(b)||String(o.pedido_numero||'').includes(b)||(o.pedido_cliente||'').toLowerCase().includes(b)).sort((x,y)=>(x.posicao??1e9)-(y.posicao??1e9)||String(x.previsao_fim||'9').localeCompare(String(y.previsao_fim||'9'))||x.codigo-y.codigo);
+    if(S.opv==='kanban'){
+      const extra=[...new Set(f.map(etapa))].filter(e=>!cols.includes(e)), todas=[...cols,...extra];
+      $('#kb').className='kanban'; $('#kb').style.overflowX='';
+      $('#kb').innerHTML = todas.map(e=>{ const l=f.filter(o=>etapa(o)===e);
+        return `<div class="col ${l.length?'':'vz'}"><h3><span>${esc(e)}</span><span>${l.reduce((s,o)=>s+o.qtd,0)}</span></h3>${l.map(o=>{ const a=(o.atual||'').split('|');
+          return `<div class="op ${late(o)?'late':''}" data-op="${o.codigo}"><b>${nomeOp(o.codigo)} · ${fmt(o.qtd)} un</b>${esc(o.item_nome)}<div style="margin:3px 0">${pedOuRt(o)}</div>
+            <div class="mut">${a[1]?esc(a[1])+(a[2]?' · '+esc(a[2]):''):''}${o.previsao_fim?'<br>entrega '+brData(o.previsao_fim):''}</div></div>`}).join('')||'<div class="mut" style="padding:6px">—</div>'}</div>`}).join('');
+    } else {
+      f.sort((x,y)=>y.codigo-x.codigo);
+      $('#kb').className='card'; $('#kb').style.overflowX='auto';
+      $('#kb').innerHTML = f.length?`<table><tr><th>OP</th><th>Peça</th><th>Pedido</th><th>Onde está</th><th>Entrega</th></tr>${f.map(o=>{ const a=(o.atual||'').split('|');
+        return `<tr data-op="${o.codigo}" style="cursor:pointer"><td><b>${nomeOp(o.codigo)}</b> <span class="mut">${fmt(o.qtd)} un</span></td><td>${esc(o.item_nome)}</td><td>${pedOuRt(o)}</td>
+          <td>${a[0]?esc(a[0])+' · '+a[1]+(a[2]?' · '+esc(a[2]):''):'<span class="mut">sem etapa</span>'}</td><td class="${late(o)?'bad':''}">${o.previsao_fim?brData(o.previsao_fim):''}</td></tr>`}).join('')}</table>`:'<div class="vazio">Nenhuma OP encontrada.</div>';
+    }
     $('#kb').querySelectorAll('[data-op]').forEach(c=>c.onclick=e=>{ if(e.target.closest('[data-ped],.ped')) return; abrirOp(+c.dataset.op); }); ligaPed($('#kb'));
   };
   $('#busca').oninput=e=>{S.busca=e.target.value; desenha();};
