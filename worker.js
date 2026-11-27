@@ -236,7 +236,7 @@ const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem', 'fin', 'com'];
 const PERM = [
   [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']], [/^\/api\/mapa/, null, ['painel', 'ops', 'fila']],
-  [/^\/api\/operacoes\/\d+\/(tempo|revisado)$/, 'POST', ['ops']], [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
+  [/^\/api\/operacoes\/\d+\/(tempo|revisado)$/, 'POST', ['ops']], [/^\/api\/apontamentos-estranhos/, null, ['rel', 'ops']], [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/etapa/, 'POST', ['exp', 'com', 'ped']], [/^\/api\/pedidos/, 'POST', ['ped', 'com']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/insumos/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
   [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped', 'exp']],
@@ -766,6 +766,15 @@ const app = {
         return json(req, { ok: true });
       }
 
+      // ---------- apontamentos que parecem errados (pra conferir com o apontador): finalizou sem iniciar, < 1 min, ou muito longe do padrão
+      if (p === '/api/apontamentos-estranhos') {
+        const de = (q('de') || hojeManaus()) + ' 04:00:00', ate = new Date(Date.parse((q('ate') || hojeManaus()) + 'T04:00:00Z') + 864e5).toISOString().slice(0, 19).replace('T', ' ');
+        return json(req, await all(DB, `select oo.id, oo.minutos, oo.sem_registro, oo.tempo_unit_min*o.qtd padrao, oo.inicio, oo.fim, o.codigo, o.qtd, i.nome item, t.nome operacao, f.nome funcionario
+          from op_operacao oo join op o on o.id=oo.op_id join item i on i.id=o.item_id join operacao_tipo t on t.id=oo.operacao_tipo_id left join funcionario f on f.id=oo.funcionario_id
+          where oo.status='finalizado' and t.espera=0 and coalesce(t.so_clique,0)=0 and coalesce(oo.sem_registro,0)<>2 and oo.fim >= ? and oo.fim < ?
+            and (oo.sem_registro=1 or oo.minutos<1 or (oo.tempo_unit_min*o.qtd>0 and (oo.minutos>3*oo.tempo_unit_min*o.qtd or oo.minutos<0.3*oo.tempo_unit_min*o.qtd)))
+          order by oo.fim desc limit 500`, de, ate));
+      }
       // ---------- revisão de apontamento (Painel): corrigir o tempo ou marcar que está certo
       if ((m = p.match(/^\/api\/operacoes\/(\d+)\/(tempo|revisado)$/)) && req.method === 'POST') {
         const oo = await one(DB, 'select oo.*, t.nome from op_operacao oo join operacao_tipo t on t.id=oo.operacao_tipo_id where oo.id=?', Number(m[1]));
@@ -1458,12 +1467,7 @@ const app = {
           one(DB, `select (select coalesce(sum(ei.qtd),0) from envio e join envio_item ei on ei.envio_id=e.id where e.data >= ?)
             + (select coalesce(sum(qtd),0) from envio_manual where date(data, '-4 hours') >= ?) pecas`, seg, seg).catch(() => ({ pecas: 0 })),
         ]);
-        // apontamentos pra revisar (últimos 7 dias): finalizou sem iniciar, menos de 1 min, ou muito longe do padrão
-        const revisar = await all(DB, `select oo.id, oo.minutos, oo.sem_registro, oo.tempo_unit_min*o.qtd padrao, oo.fim, o.codigo, o.qtd, i.nome item, t.nome operacao, f.nome funcionario
-          from op_operacao oo join op o on o.id=oo.op_id join item i on i.id=o.item_id join operacao_tipo t on t.id=oo.operacao_tipo_id left join funcionario f on f.id=oo.funcionario_id
-          where oo.status='finalizado' and t.espera=0 and coalesce(t.so_clique,0)=0 and coalesce(oo.revisado,0)=0 and coalesce(oo.sem_registro,0)<>2 and oo.fim >= datetime('now','-7 days')
-            and (oo.sem_registro=1 or oo.minutos<1 or (oo.tempo_unit_min*o.qtd>0 and (oo.minutos>3*oo.tempo_unit_min*o.qtd or oo.minutos<0.3*oo.tempo_unit_min*o.qtd)))
-          order by oo.fim desc limit 60`).catch(() => []);
+
         // quem está produzindo agora (etapas iniciadas ou pausadas, fora as de espera)
         const agoraProd = await all(DB, `select oo.status, oo.minutos, oo.inicio_atual, (select x.motivo || coalesce(' – ' || x.obs, '') from op_pausa x where x.op_operacao_id=oo.id and x.fim is null order by x.id desc limit 1) pausa_motivo, (select x.inicio from op_pausa x where x.op_operacao_id=oo.id and x.fim is null order by x.id desc limit 1) pausa_inicio, oo.tempo_unit_min*o.qtd padrao, o.codigo, o.qtd, i.nome item, t.nome operacao, f.nome funcionario, s.nome setor
           from op_operacao oo join op o on o.id=oo.op_id join item i on i.id=o.item_id join operacao_tipo t on t.id=oo.operacao_tipo_id
@@ -1484,7 +1488,7 @@ const app = {
           semanas.push({ semana: n, inicio: x.inicio, pecas: x.pecas || 0, bancos: x.bancos || 0, regularizacao: 0, fonte: 'sistema' }); });
         if (ultimo) { const segAtual = new Date(Date.now() - 4 * 36e5); segAtual.setUTCDate(segAtual.getUTCDate() - ((segAtual.getUTCDay() + 6) % 7)); const ini = segAtual.toISOString().slice(0, 10);
           if (ini > ultimo.inicio && !semanas.find(x => x.inicio === ini)) semanas.push({ semana: ultimo.semana + Math.round((Date.parse(ini) - Date.parse(ultimo.inicio)) / 6048e5), inicio: ini, pecas: 0, bancos: 0, regularizacao: 0, fonte: 'sistema' }); }
-        return json(req, { hoje, seg, ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos: defeitos.n, faltas, parados, envios, agoraProd, semanas, dias, revisar });
+        return json(req, { hoje, seg, ops, atrasadas, pedidos, hojeProd, semanaProd, estagios, defeitos: defeitos.n, faltas, parados, envios, agoraProd, semanas, dias });
       }
 
       // ---------- relatório semanal (junta tudo da semana)
