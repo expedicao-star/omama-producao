@@ -1517,7 +1517,7 @@ const app = {
         const P = Object.fromEntries((await all(DB, 'select k, v from custo_param')).map(x => [x.k, x.v]));
         const horasMes = (P.funcionarios || 0) * (P.dias || 0) * (P.horas_dia || 0) * (P.eficiencia || 0), hora = horasMes ? (P.operacoes_mes || 0) / horasMes : 0;
         const custoBloco = n => { const m = /^Bloco ([A-F])/.exec(n || ''); return m ? (P['bloco_' + m[1]] || 0) : 0; };
-        const [comps, fin, abertas, opsAb, reais, gastos] = await Promise.all([
+        const [comps, fin, abertas, opsAb, reais, gastos, rot] = await Promise.all([
           all(DB, 'select c.item_id, c.qtd, i.nome from composicao c join item i on i.id=c.insumo_id'),
           all(DB, `select o.id, o.codigo, o.qtd, o.item_id, i.nome item, i.preco, o.finalizado_em from op o join item i on i.id=o.item_id where o.status='finalizada' and o.tipo='OP' and o.finalizado_em >= ? and o.finalizado_em < ?`, d0, d1),
           all(DB, `select o.id, o.codigo, o.qtd, o.item_id, i.nome item from op o join item i on i.id=o.item_id where o.status='aberta' and o.tipo='OP'`),
@@ -1527,13 +1527,15 @@ const app = {
               and oo.tempo_unit_min > 0 and oo.minutos between 0.3*oo.tempo_unit_min*o.qtd and 3*oo.tempo_unit_min*o.qtd`, d0, d1),
           all(DB, `select case when l.categoria_id in (9, 31) then 'madeira' when l.categoria_id = 8 then 'embalagem' when l.categoria_id = 14 then 'capex' when l.centro_id = 1 then 'operacoes' else 'outros' end grupo, round(sum(l.valor), 2) valor
             from fin_lancamento l where l.tipo='P' and l.status<>'cancelado' and coalesce(l.quitacao, l.vencimento) between ? and ? group by grupo`, de, ate).catch(() => []),
+          all(DB, 'select r.item_id, sum(r.tempo_min) m from roteiro r join operacao_tipo t on t.id=r.operacao_tipo_id where t.espera=0 and coalesce(t.so_clique,0)=0 group by r.item_id'),
         ]);
+        const ROT = Object.fromEntries(rot.map(x => [x.item_id, x.m]));
         const CP = {}; comps.forEach(c => (CP[c.item_id] = CP[c.item_id] || []).push(c));
         const madeiraUn = id => (CP[id] || []).reduce((s, c) => s + c.qtd * custoBloco(c.nome), 0);
         const OO = {}; opsAb.forEach(x => (OO[x.op_id] = OO[x.op_id] || []).push(x));
         const trab = x => !x.espera && !x.sc;
         const prodM = {};
-        fin.forEach(o => { const min = (OO[o.id] || []).filter(trab).reduce((s, x) => s + (x.tu || 0), 0), mad = madeiraUn(o.item_id), cu = mad + min / 60 * hora;
+        fin.forEach(o => { const min = ROT[o.item_id] ?? (OO[o.id] || []).filter(trab).reduce((s, x) => s + (x.tu || 0), 0), mad = madeiraUn(o.item_id), cu = mad + min / 60 * hora;
           const k = o.item; const r = prodM[k] = prodM[k] || { item: k, qtd: 0, madeira_un: mad, min_un: min, custo_un: cu, preco: o.preco || 0, total: 0 };
           r.qtd += o.qtd; r.total += cu * o.qtd; });
         const etapaAtual = id => { const x = (OO[id] || []).find(y => y.status !== 'finalizado'); return x ? x.etapa : 'Sem etapa'; };
