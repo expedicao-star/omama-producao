@@ -1162,7 +1162,7 @@ async function tSemana(){
   const ESP=['Sucupira Preta','Muirapiranga','Muiracatiara','Preciosa','Roxinho','Piquiá'], esp=n=>ESP.find(e=>(n||'').includes(e))||'outra';
   const sm=mp?mp.sem_madeira_itens||[]:[], porEsp={}; sm.forEach(x=>{ const k=esp(x.item); const o=porEsp[k]=porEsp[k]||{pecas:0,peds:new Set(),falta:0}; o.pecas+=x.n; o.peds.add(x.numero); });
   (mp?mp.madeira||[]:[]).forEach(m=>{ const k=esp(m.nome); if(porEsp[k]) porEsp[k].falta+=m.falta; });
-  const P=pecas(s), P0=pecas(s0), sa=saidas(s), sa0=saidas(s0);
+  const hs0=pn&&pn.semanas.find(x=>x.inicio===de0&&x.fonte!=='sistema'), P=pecas(s), P0=hs0?hs0.pecas:pecas(s0), B0=hs0?hs0.bancos:bancos(s0), sa=saidas(s), sa0=saidas(s0);
   const garg=mp?(()=>{ const {caixas,garg}=caixasMapa(mp); return garg?garg.nome+' ('+garg.n+' peças)':null; })():null;
   const titulo=`${fmt(P)} peça${P===1?'':'s'} entr${P===1?'ou':'aram'} no P.A.${s0?` (${P>P0?'mais':P<P0?'menos':'o mesmo'} que as ${fmt(P0)} da semana anterior)`:''}${vencidos.length?` e ${vencidos.length} pedido${vencidos.length>1?'s estão':' está'} com prazo vencido`:''}.`;
   const vSemMad=vencidos.filter(p=>(p.cont||{})['Aguardando madeira']);
@@ -1175,7 +1175,7 @@ async function tSemana(){
   $('#sr').className='';
   $('#sr').innerHTML=`<style>.pgsem{margin-bottom:26px}.pgsem h3{font-size:13px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}@media print{.pgsem{break-after:page;margin:0}.pgsem:last-child{break-after:auto}.pgsem .card{break-inside:auto;padding:8px}.pgsem td,.pgsem th{padding:3px 6px;font-size:11px}.pgsem h3{break-after:avoid;margin:10px 0 4px}}</style>
     ${pg(1,esc(titulo),`
-      <div class="grid" style="grid-template-columns:repeat(5,1fr)">${caixa(fmt(P),'peças no P.A. (via OP)',cmp(P,P0))}${caixa(fmt(bancos(s)),'bancos no P.A.',cmp(bancos(s),bancos(s0)))}${caixa(sa.length,'pedidos que saíram',cmp(sa.length,sa0.length))}${caixa(novos(de,ate).length,'pedidos novos (pagos)',cmp(novos(de,ate).length,novos(de0,ate0).length))}${caixa(trocas.length,'trocas e reposições abertas','<div class="mut" style="font-size:11px">hoje</div>')}</div>
+      <div class="grid" style="grid-template-columns:repeat(5,1fr)">${caixa(fmt(P),'peças no P.A. (via OP)',cmp(P,P0))}${caixa(fmt(bancos(s)),'bancos no P.A.',cmp(bancos(s),B0))}${caixa(sa.length,'pedidos que saíram',cmp(sa.length,sa0.length))}${caixa(novos(de,ate).length,'pedidos novos (pagos)',cmp(novos(de,ate).length,novos(de0,ate0).length))}${caixa(trocas.length,'trocas e reposições abertas','<div class="mut" style="font-size:11px">hoje</div>')}</div>
       <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
         <div><h3>Produção</h3><div class="card">${(()=>{ const f={}; opsDe(s).forEach(o=>{ const k=o.nome.split(' ').slice(0,2).join(' '); f[k]=(f[k]||0)+o.qtd; }); return Object.entries(f).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<div>${esc(k)}: <b>${fmt(n)}</b></div>`).join('')||'<span class="mut">Nenhuma OP finalizada.</span>'; })()}<div class="mut" style="margin-top:4px">${opsDe(s).length} OPs finalizadas · ${s.criadas.n} OPs criadas</div></div>
           <h3>Saída</h3><div class="card">${sa.map(e=>`<div><b>${esc(e.numero)}</b> · ${esc(e.cliente||'')} · ${fmt(e.pecas)} peça(s)</div>`).join('')||'<span class="mut">Nenhum envio lançado no sistema.</span>'}</div></div>
