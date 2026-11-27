@@ -235,12 +235,12 @@ const loginOk = l => /^[a-z0-9._-]{3,30}$/.test(l);
 // permissões: quais telas o usuário usa. Leitura é livre (as telas compartilham dados); gravar e ver dados de pessoas pede a tela.
 const TELAS = ['painel', 'fila', 'ops', 'ped', 'exp', 'pcp', 'estoque', 'ent', 'inv', 'defeitos', 'itens', 'func', 'assid', 'rel', 'efic', 'qual', 'sem', 'fin', 'com'];
 const PERM = [
-  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel']], [/^\/api\/mapa/, null, ['painel', 'ops', 'fila']],
-  [/^\/api\/operacoes\/\d+\/(tempo|revisado)$/, 'POST', ['ops']], [/^\/api\/apontamentos-estranhos/, null, ['rel', 'ops']], [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
+  [/^\/api\/presenca/, null, ['assid', 'sem']], [/^\/api\/relatorio/, null, ['rel', 'sem']], [/^\/api\/eficiencia/, null, ['efic', 'rel', 'painel']], [/^\/api\/metas/, 'POST', ['efic']], [/^\/api\/semana/, null, ['sem']], [/^\/api\/painel/, null, ['painel', 'sem']], [/^\/api\/mapa/, null, ['painel', 'ops', 'fila', 'sem']],
+  [/^\/api\/operacoes\/\d+\/(tempo|revisado)$/, 'POST', ['ops']], [/^\/api\/apontamentos-estranhos/, null, ['rel', 'ops', 'sem']], [/^\/api\/operacoes\//, 'POST', ['fila', 'ops']], [/^\/api\/ops/, 'POST', ['ops', 'ped', 'pcp']],
   [/^\/api\/pedidos\/[^/]+\/envio/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/exp/, 'POST', ['exp']], [/^\/api\/pedido-itens\/\d+\/etapa/, 'POST', ['exp', 'com', 'ped']], [/^\/api\/pedidos/, 'POST', ['ped', 'com']], [/^\/api\/clientes/, 'POST', ['ped', 'fin']], [/^\/api\/itens\/\d+\/fiscal/, 'POST', ['itens']],
   [/^\/api\/pcp/, 'POST', ['pcp']], [/^\/api\/estoque\/mov/, 'POST', ['estoque']], [/^\/api\/estoque\/transferir/, 'POST', ['estoque', 'exp']], [/^\/api\/insumos/, 'POST', ['estoque']], [/^\/api\/entradas/, 'POST', ['ent']], [/^\/api\/inventarios/, 'POST', ['inv']],
   [/^\/api\/defeitos/, 'POST', ['defeitos', 'ops']], [/^\/api\/rt/, 'POST', ['ops', 'defeitos']], [/^\/api\/qualidade/, 'POST', ['qual']], [/^\/api\/itens/, 'POST', ['itens']], [/^\/api\/funcionarios/, 'POST', ['func']], [/^\/api\/fotos/, 'POST', ['ops', 'defeitos', 'qual', 'ped', 'exp']],
-  [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/comercial\/(importar|mover)/, 'POST', ['admin']], [/^\/api\/comercial\/fila/, 'POST', ['com']], [/^\/api\/comercial\/estoque/, null, ['com', 'ped']], [/^\/api\/comercial$/, 'GET', ['com', 'ped', 'exp']], [/^\/api\/comercial/, null, ['com', 'ped']], [/^\/api\/fin\//, null, ['fin']],
+  [/^\/api\/sync\//, 'POST', ['admin']], [/^\/api\/comercial\/(importar|mover)/, 'POST', ['admin']], [/^\/api\/comercial\/fila/, 'POST', ['com']], [/^\/api\/comercial\/estoque/, null, ['com', 'ped']], [/^\/api\/comercial$/, 'GET', ['com', 'ped', 'exp', 'sem']], [/^\/api\/comercial/, null, ['com', 'ped']], [/^\/api\/fin\//, null, ['fin']],
 ];
 // grava quem lançou: todo insert em op_evento / estoque_mov ganha usuario_nome do login da requisição
 const comQuem = (db, u) => { const nome = u.nome || u.login || 'Sistema';
@@ -406,7 +406,7 @@ async function comercial(DB) {
       { const r = R[pi.item_id] || { trab: 0, acab: 0, esp: 0 }, o = OR[pi.id];
         const prod = o && o.un ? o.trab / o.un : r.trab / 2;
         trab += (et['Aguardando madeira'] || 0) * r.trab + (et['Produção'] || 0) * prod + (et['Acabamento'] || 0) * r.acab;
-        if (et['Aguardando madeira']) { esp = Math.max(esp, r.esp); semMadeira += et['Aguardando madeira']; semMad.push({ numero: p.numero, cliente: p.cliente, posicao: p.posicao, item_id: pi.item_id, item: pi.item_nome || pi.descricao, n: et['Aguardando madeira'] }); } else if (o) esp = Math.max(esp, o.esp || 0); }
+        if (et['Aguardando madeira']) { esp = Math.max(esp, r.esp); semMadeira += et['Aguardando madeira']; semMad.push({ numero: p.numero, cliente: p.cliente, posicao: p.posicao, item_id: pi.item_id, pedido_item_id: pi.id, item: pi.item_nome || pi.descricao, n: et['Aguardando madeira'] }); } else if (o) esp = Math.max(esp, o.esp || 0); }
       for (const [e, n] of Object.entries(et)) {
         cont[e] = (cont[e] || 0) + n;
         const c = colecao(pi), nm = nomeCurto(pi.item_nome || pi.descricao);
@@ -1527,7 +1527,9 @@ const app = {
           all(DB, `select n.numero nf, date(n.data,'-4 hours') data, n.valor, n.cliente, n.venda_codigo numero, v.tipo tipo_pedido, 'sensio' origem from hist_nfe n left join hist_venda v on v.sensio_id=n.venda_sensio_id
             where n.status='Autorizada' and date(n.data,'-4 hours') between ? and ? order by n.data`, de, ate),
           one(DB, `select count(*) movs, coalesce(sum(qtd),0) pecas from hist_estoque_mov where deposito='P.A.' and tipo='Entrada' and documento like 'OP %' and coalesce(cancelado,0)=0 and date(data,'-4 hours') between ? and ?`, de, ate)]);
-        return json(req, { finalizadas, criadas, envios, entradas, inventarios, historico_sensio: { finalizadas: hf, faturamento: hn, entradas_pa_por_op: he } });
+        const envios_manuais = await all(DB, `select date(em.data, '-4 hours') data, p.numero, p.cliente, coalesce(p.tipo,'cliente') tipo_pedido, sum(em.qtd) pecas from envio_manual em
+          join pedido_item pi on pi.id=em.pedido_item_id join pedido p on p.id=pi.pedido_id where date(em.data, '-4 hours') between ? and ? group by 1, 2 order by 1`, de, ate).catch(() => []);
+        return json(req, { finalizadas, criadas, envios, envios_manuais, entradas, inventarios, historico_sensio: { finalizadas: hf, faturamento: hn, entradas_pa_por_op: he } });
       }
 
       // ---------- fotos (guardadas no banco já reduzidas pelo navegador)
