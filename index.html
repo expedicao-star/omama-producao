@@ -107,7 +107,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_acomp','com_est','mapa'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_acomp','com_est','mapa','apont'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -156,11 +156,11 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Comercial',[['com','◆','Fila de pedidos'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['mapa','⇢','Mapa da fábrica'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Comercial',[['com','◆','Fila de pedidos'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['mapa','⇢','Mapa da fábrica'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['apont','?','Apontamentos estranhos'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
-const MENU_PERM=[['Comercial',[['com','◆','Fila de pedidos (mudar ordem e prazo), acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1).map(([g,its])=>[g,its.filter(x=>x[0]!=='mapa')]),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
+const MENU_PERM=[['Comercial',[['com','◆','Fila de pedidos (mudar ordem e prazo), acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1).map(([g,its])=>[g,its.filter(x=>x[0]!=='mapa'&&x[0]!=='apont')]),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
-const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='mapa'&&(t='painel'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
+const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='mapa'&&(t='painel'),t==='apont'&&(t='rel'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
   const fin=S.tab==='fin'; document.body.classList.toggle('fin',fin); if(fin&&!S.fsub) S.fsub=ls.get('fsub')||'resumo';
   const mb=$('#modo'); mb.textContent=fin?'FINANCEIRO':'PRODUÇÃO'; mb.classList.toggle('troca',pode('fin'));
@@ -177,7 +177,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, mapa:tMapa, com:tFilaPed, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, mapa:tMapa, apont:tApont, com:tFilaPed, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -241,6 +241,25 @@ async function tFila(){
   $('#fila').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
 }
 
+// ===== Apontamentos estranhos: pra conferir com o apontador o que houve (só olhar, não corrige)
+async function tApont(){
+  S.apDe=S.apDe||(()=>{ const d=new Date(hojeISO()+'T12:00'); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })(); S.apAte=S.apAte||hojeISO();
+  app.innerHTML=`<p class="mut" style="margin:0 2px 10px">Etapas que parecem apontadas errado: finalizou sem ter iniciado, menos de 1 minuto, ou muito longe do tempo padrão. Use pra conversar com o apontador. Clique na OP pra ver o histórico.</p>
+    <div class="row"><input type="date" id="apd" value="${S.apDe}"> até <input type="date" id="apa" value="${S.apAte}"></div><div id="apl" class="vazio" style="margin-top:10px">Carregando…</div>`;
+  const ir=()=>{ S.apDe=$('#apd').value; S.apAte=$('#apa').value; tApont(); }; $('#apd').onchange=ir; $('#apa').onchange=ir;
+  const l=await api(`/api/apontamentos-estranhos?de=${S.apDe}&ate=${S.apAte}`);
+  const prob=x=>x.sem_registro==1?'finalizou sem iniciar':x.minutos<1?'menos de 1 min':x.minutos>3*x.padrao?'mais de 3× o padrão':'menos de 30% do padrão';
+  const pp={}; l.forEach(x=>{ const k=x.funcionario||'—'; pp[k]=pp[k]||{}; const p=prob(x); pp[k][p]=(pp[k][p]||0)+1; pp[k].n=(pp[k].n||0)+1; });
+  const P=['finalizou sem iniciar','menos de 1 min','menos de 30% do padrão','mais de 3× o padrão'];
+  $('#apl').className='';
+  $('#apl').innerHTML=l.length?`<h2>Por pessoa</h2><div class="card" style="overflow-x:auto"><table><tr><th>Pessoa</th>${P.map(p=>`<th class="n">${p}</th>`).join('')}<th class="n">Total</th></tr>
+      ${Object.entries(pp).sort((a,b)=>b[1].n-a[1].n).map(([k,v])=>`<tr><td><b>${esc(k)}</b></td>${P.map(p=>`<td class="n">${v[p]||''}</td>`).join('')}<td class="n"><b>${v.n}</b></td></tr>`).join('')}</table></div>
+    <h2>Uma por uma (${l.length})</h2><div class="card" style="overflow-x:auto"><table><tr><th>Finalizou</th><th>Quem</th><th>Etapa</th><th>OP</th><th class="n">Tempo</th><th class="n">Padrão</th><th>O que parece errado</th></tr>
+      ${l.map(x=>`<tr><td>${brHora(x.fim)}</td><td><b>${esc(x.funcionario||'—')}</b></td><td>${esc(x.operacao)}</td><td><span class="link" data-op="${x.codigo}">${nomeOp(x.codigo)}</span> <span class="mut">${esc(x.item)}${x.qtd>1?' · '+x.qtd+' un':''}</span></td>
+        <td class="n">${dur(x.minutos||0)}</td><td class="n">${x.padrao?dur(x.padrao):'—'}</td><td class="${x.sem_registro==1||x.minutos<1?'bad':'midc'}">${prob(x)}</td></tr>`).join('')}</table></div>`
+    :'<div class="card vazio">Nada estranho nesse período.</div>';
+  $('#apl').querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
+}
 // ===== OPs: lista pra buscar e abrir (a visão geral fica no Mapa da fábrica)
 async function tOps(){
   app.innerHTML = `<div class="row"><input id="busca" placeholder="Buscar OP, peça, pedido ou cliente" value="${esc(S.busca)}" style="flex:1;min-width:180px"><button class="btn" id="nova">+ Nova OP</button><button class="btn mid" id="novort">+ Novo RT</button></div><p class="mut" style="margin:8px 2px">Pra ver onde estão as peças, use o Mapa da fábrica. Aqui é pra achar e abrir uma OP.</p><div id="kb" class="vazio">Carregando…</div>`;
@@ -1090,10 +1109,6 @@ async function tPainel(tv){
             <div style="margin-top:4px"><b style="font-size:1.2em" data-tempo='${JSON.stringify({minutos:x.minutos,status:x.status,inicio_atual:x.inicio_atual})}'>${dur(t)}</b> <span class="mut">/ padrão ${x.padrao?dur(x.padrao):'—'}</span></div></div>`; }).join('')||'<div class="mut">Ninguém com etapa iniciada agora.</div>'}</div></div>
       <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Eficiência de hoje (pela meta de peças/dia)</b><span class="mut">verde ≥ 100% · amarelo 80–99% · vermelho &lt; 80%</span></div>
         ${ef?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 18px;margin-top:8px">${efl.map(f=>`<div class="row" style="gap:8px;flex-wrap:nowrap"><span style="min-width:90px;font-weight:700">${esc(f.nome)}</span><div style="flex:1;height:14px;background:var(--line);border-radius:7px;overflow:hidden"><i style="display:block;height:100%;width:${f.eficiencia===null?0:Math.min(100,f.eficiencia/maxEf*100)}%;background:${bgE(f.eficiencia)}"></i></div><b style="min-width:52px;text-align:right;color:${bgE(f.eficiencia)}">${f.eficiencia===null?'–':f.eficiencia+'%'}</b></div>`).join('')||'<div class="mut">Ninguém finalizou etapa hoje ainda.</div>'}</div>`:'<div class="mut">Sem acesso à eficiência.</div>'}</div>
-      ${(d.revisar||[]).length?`<div class="card" style="grid-column:1/-1;border-left:5px solid var(--mid)"><div class="row" style="justify-content:space-between"><b>Apontamentos pra revisar (${d.revisar.length})</b><span class="mut">últimos 7 dias · ${pode('ops')?'corrija o tempo ou confirme que está certo':'só o líder corrige'}</span></div>
-        <div style="overflow-x:auto;margin-top:6px"><table><tr><th>Quando</th><th>Quem</th><th>Etapa</th><th>OP</th><th class="n">Tempo</th><th class="n">Padrão</th><th>Problema</th>${pode('ops')?'<th></th>':''}</tr>${d.revisar.map(x=>`<tr><td>${brHora(x.fim)}</td><td><b>${esc(x.funcionario||'—')}</b></td><td>${esc(x.operacao)}</td><td><span class="link" data-op="${x.codigo}">${nomeOp(x.codigo)}</span> <span class="mut">${esc(x.item)}${x.qtd>1?' · '+x.qtd+' un':''}</span></td>
-          <td class="n">${dur(x.minutos||0)}</td><td class="n">${x.padrao?dur(x.padrao):'—'}</td><td class="${x.sem_registro==1||x.minutos<1?'bad':'midc'}">${x.sem_registro==1?'finalizou sem iniciar':x.minutos<1?'menos de 1 min':x.minutos>3*x.padrao?'mais de 3× o padrão':'menos de 30% do padrão'}</td>
-          ${pode('ops')?`<td style="white-space:nowrap"><button class="btn sm" data-rc="${x.id}">Corrigir tempo</button> <button class="btn sec sm" data-rk="${x.id}">Tá certo</button></td>`:''}</tr>`).join('')}</table></div></div>`:''}
       <div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Evolução da produção · peças que entraram no P.A. por semana</b><span class="mut">S39–S46 dos relatórios semanais do Drive · a partir da S47, medido no sistema</span></div>${graficoEvol(d.semanas,230)}</div>
       ${mp?`<div class="card" style="grid-column:1/-1"><div class="row" style="justify-content:space-between"><b>Onde estão as peças agora</b><span class="mut">mesma conta do Mapa da fábrica · clique pra abrir</span></div><div style="margin-top:8px">${faixaMapa(mp)}</div></div>`:''}
       <div class="card"><b>Pedidos vencendo em 7 dias</b>${(mp?mp.vencendo:[]).map(p=>{ const x=diasAte(p.prazo); return `<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="link" data-ped="${esc(p.numero)}"><b>${esc(p.numero)}</b> · ${esc(p.cliente||'')}</span><b class="${x<0?'bad':'midc'}" style="white-space:nowrap">${x<0?Math.abs(x)+' d atrasado':x===0?'hoje':x+' d'}</b></div><div style="margin-top:4px">${barraEt(p)}</div><div class="mut" style="font-size:12px;margin-top:2px">${ETQ.filter(([e])=>(p.cont||{})[e]).map(([e,c,n])=>p.cont[e]+' '+n).join(' · ')}</div></div>`}).join('')||'<div class="mut" style="margin-top:6px">Nenhum.</div>'}</div>
@@ -1102,14 +1117,6 @@ async function tPainel(tv){
         <br><b>Faltas e atrasos hoje</b>${d.faltas.map(f=>`<div>${esc(f.nome)} <span class="mut">· ${ST[f.status]||f.status}${f.minutos?' '+f.minutos+' min':''}</span></div>`).join('')||'<div class="mut">Ninguém.</div>'}</div></div>`;
   app.querySelectorAll('[data-op]').forEach(x=>x.onclick=()=>abrirOp(+x.dataset.op));
   app.querySelectorAll('[data-ped]').forEach(x=>x.onclick=()=>abrirPedido(x.dataset.ped));
-  app.querySelectorAll('[data-rk]').forEach(b=>b.onclick=tenta(async()=>{ await api(`/api/operacoes/${b.dataset.rk}/revisado`,{}); toast('✓ Conferido'); tPainel(false); }));
-  app.querySelectorAll('[data-rc]').forEach(b=>b.onclick=()=>{ const x=d.revisar.find(r=>r.id===+b.dataset.rc);
-    modal(`<h2 style="margin-top:0">Corrigir tempo</h2><p>${esc(x.funcionario||'—')} · ${esc(x.operacao)} · ${nomeOp(x.codigo)} ${esc(x.item)}${x.qtd>1?' · '+x.qtd+' un':''}<br><span class="mut">Registrado: ${dur(x.minutos||0)} · padrão: ${x.padrao?dur(x.padrao):'—'}</span></p>
-      <div class="row"><input id="rh" type="number" min="0" inputmode="numeric" placeholder="horas" style="width:90px"> h <input id="rm" type="number" min="0" max="59" inputmode="numeric" placeholder="min" style="width:90px"> min</div>
-      <p class="mut">Quanto tempo a pessoa levou de verdade nessa etapa.</p><div class="row"><button class="btn" id="rok">Salvar</button><button class="btn sec" id="rv">Voltar</button></div>`);
-    $('#rv').onclick=()=>modal('');
-    $('#rok').onclick=tenta(async()=>{ const min=(+$('#rh').value||0)*60+(+$('#rm').value||0); if(!(min>0)) throw new Error('Coloque o tempo');
-      await api(`/api/operacoes/${x.id}/tempo`,{minutos:min}); modal(''); toast('✓ Tempo corrigido'); tPainel(false); }); });
   app.querySelectorAll('[data-mapa]').forEach(x=>x.onclick=()=>{ S.mcx=x.dataset.mapa; const b=document.querySelector('[data-t="mapa"]'); if(b) b.click(); });
   $('#tv').onclick=()=>{ document.body.classList.toggle('tv',!tv); if(!tv&&document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); if(tv&&document.fullscreenElement) document.exitFullscreen(); tPainel(!tv); };
   if(tv) tvTimer=setInterval(()=>{ if(S.tab==='painel'&&!$('#mbg')) tPainel(true); else clearInterval(tvTimer); },30000);
