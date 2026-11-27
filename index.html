@@ -107,7 +107,7 @@ const brHora = s => s ? new Date(s.replace(' ','T')+'Z').toLocaleString('pt-BR',
 const dur = m => { m=Math.round(m||0); if(m<60) return m+' min'; const h=Math.floor(m/60); if(h<48) return h+'h'+String(m%60).padStart(2,'0'); return fmt(m/1440,1)+' dias'; };
 const decorrido = o => (o.minutos||0) + (o.status==='produzindo'&&o.inicio_atual ? Math.max(0,(Date.now()-Date.parse(o.inicio_atual.replace(' ','T')+'Z'))/6e4) : 0);
 let B = null; const S = { tab:'fila', setor:3, busca:'', dep:11, per:'semana', dia:null, defHist:false };
-try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_acomp','com_est','mapa','apont'].includes(a)) S.tab=a; }catch(e){}
+try{ const a=localStorage.getItem('aba'); if(['painel','fila','ops','ped','exp','pcp','itens','estoque','ent','inv','defeitos','func','assid','rel','sem','usu','perm','efic','qual','fin','cli','ins','com','com_acomp','com_est','mapa','apont','custo'].includes(a)) S.tab=a; }catch(e){}
 
 function toast(msg, err){ const t=$('#toast'); t.textContent=msg; t.className='toast'+(err?' err':''); t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',2800); }
 async function api(path, body){
@@ -156,11 +156,11 @@ async function iniciar(){
   document.body.classList.add('logado'); menu(); render();
 }
 // ===== menu lateral em grupos que abrem e fecham (igual Sensio)
-const MENU=[['Comercial',[['com','◆','Fila de pedidos'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['mapa','⇢','Mapa da fábrica'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['apont','?','Apontamentos estranhos'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
+const MENU=[['Comercial',[['com','◆','Fila de pedidos'],['ped','✉','Pedidos'],['cli','☺','Clientes'],['exp','⇪','Expedição'],['com_acomp','☎','Acompanhamento cliente'],['com_est','▤','Estoque pra venda']]],['Produção',[['painel','◉','Painel'],['mapa','⇢','Mapa da fábrica'],['custo','$','Custo e output'],['fila','⚒','Setores'],['ops','▦','OPs'],['qual','★','Qualidade']]],['Estoque',[['estoque','▤','Estoque'],['ent','⇩','Entrada de madeira'],['inv','☑','Inventário'],['ins','◍','Insumos'],['defeitos','⚠','Defeitos'],['itens','◫','Itens']]],['Pessoas',[['func','☺','Funcionários'],['assid','✓','Assiduidade']]],['Relatórios',[['rel','▮▮','Produção'],['apont','?','Apontamentos estranhos'],['efic','↗','Eficiência'],['sem','▤','Semana']]]];
 const MENU_FIN=[['Financeiro',[['resumo','◉','Resumo'],['cob','☎','Cobrança'],['lanc','☰','Lançamentos'],['fluxo','↗','Fluxo de caixa'],['dre','▤','DRE'],['conc','⇆','Conciliação'],['cad','◫','Contas e categorias']]]];
-const MENU_PERM=[['Comercial',[['com','◆','Fila de pedidos (mudar ordem e prazo), acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1).map(([g,its])=>[g,its.filter(x=>x[0]!=='mapa'&&x[0]!=='apont')]),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
+const MENU_PERM=[['Comercial',[['com','◆','Fila de pedidos (mudar ordem e prazo), acompanhamento e estoque pra venda'],['ped','✉','Pedidos e clientes'],['exp','⇪','Expedição']]],...MENU.slice(1).map(([g,its])=>[g,its.filter(x=>!['mapa','apont','custo'].includes(x[0]))]),['Financeiro',[['fin','$','Financeiro (tudo)']]]];
 let fechados=[]; try{ fechados=JSON.parse(ls.get('menuFechado')||'[]'); }catch(e){}
-const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='mapa'&&(t='painel'),t==='apont'&&(t='rel'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
+const pode=t=>!!EU&&(/^com_/.test(t)&&(t='com'),t==='mapa'&&(t='painel'),t==='apont'&&(t='rel'),t==='custo'&&(t='rel'),t==='cli'&&(t='ped'),t==='ins'&&(t='estoque'),EU.admin||(['usu','perm'].includes(t)?false:(EU.permissoes||[]).includes(t)));
 function menu(){
   const fin=S.tab==='fin'; document.body.classList.toggle('fin',fin); if(fin&&!S.fsub) S.fsub=ls.get('fsub')||'resumo';
   const mb=$('#modo'); mb.textContent=fin?'FINANCEIRO':'PRODUÇÃO'; mb.classList.toggle('troca',pode('fin'));
@@ -177,7 +177,7 @@ function menu(){
 }
 $('#hamb').onclick=()=>document.body.classList.toggle('menu');
 $('#sideBg').onclick=()=>document.body.classList.remove('menu');
-function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, mapa:tMapa, apont:tApont, com:tFilaPed, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
+function render(){ if(!B) return; modal(''); if(!pode(S.tab)){ app.innerHTML='<div class="card vazio">Você ainda não tem acesso a nenhuma tela. Peça ao administrador para liberar em Permissões.</div>'; return; } ({perm:tPerm, painel:()=>tPainel(document.body.classList.contains('tv')), pcp:tPcp, ent:tEntrada, sem:tSemana, usu:tUsuarios, fila:tFila, ops:tOps, ped:tComercial, exp:tExped, itens:tItens, estoque:tEstoque, inv:tInvent, defeitos:tDefeitos, func:tFuncionarios, assid:tAssid, rel:tRel, efic:tEfic, qual:tQual, fin:tFin, cli:tClientes, ins:tInsumos, mapa:tMapa, apont:tApont, custo:tCusto, com:tFilaPed, com_acomp:tComercial, com_est:tComercial})[S.tab](); }
 setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); document.querySelectorAll('[data-tempo]').forEach(el=>{ const o=JSON.parse(el.dataset.tempo); el.textContent=dur(decorrido(o)); }); }, 15000);
 
 // ===== ações de operação (usadas na fila e na OP)
@@ -243,6 +243,44 @@ async function tFila(){
   $('#fila').querySelectorAll('[data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
 }
 
+// ===== Custo e output da produção (alinhado às planilhas CAPACIDADE e CUSTOS DE PRODUÇÃO 2026-11)
+async function tCusto(){
+  S.cuP=S.cuP||'mes'; const hj=new Date(hojeISO()+'T12:00'); S.cuB=S.cuB||hojeISO();
+  const b=new Date(S.cuB+'T12:00'); let de, ate;
+  if(S.cuP==='mes'){ de=new Date(b.getFullYear(),b.getMonth(),1,12); ate=new Date(b.getFullYear(),b.getMonth()+1,0,12); }
+  else { de=new Date(b); de.setDate(de.getDate()-((de.getDay()+6)%7)); ate=new Date(de); ate.setDate(ate.getDate()+6); }
+  const iso=d=>d.toISOString().slice(0,10), D=iso(de), A=iso(ate);
+  const mv=n=>{ const x=new Date(S.cuB+'T12:00'); if(S.cuP==='mes') x.setMonth(x.getMonth()+n,1); else x.setDate(x.getDate()+7*n); S.cuB=iso(x); tCusto(); };
+  const titulo=S.cuP==='mes'?de.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}):`${brData(D)} a ${brData(A)}`;
+  app.innerHTML=`<div class="row noprint"><div class="row" style="gap:4px">${[['mes','Mês'],['sem','Semana']].map(([k,n])=>`<button class="st ${S.cuP===k?'on blue':''}" data-p="${k}">${n}</button>`).join('')}</div>
+    <button class="btn sec sm" id="cp">◀</button><b style="min-width:150px;text-align:center">${titulo}</b><button class="btn sec sm" id="cn" ${A>=hojeISO()?'disabled':''}>▶</button></div><div id="cu" class="vazio" style="margin-top:10px">Carregando…</div>`;
+  app.querySelectorAll('[data-p]').forEach(x=>x.onclick=()=>{ S.cuP=x.dataset.p; S.cuB=hojeISO(); tCusto(); }); $('#cp').onclick=()=>mv(-1); $('#cn').onclick=()=>mv(1);
+  const d=await api(`/api/custos?de=${D}&ate=${A}`);
+  const pr=d.produzido, qt=pr.reduce((s,r)=>s+r.qtd,0), tot=pr.reduce((s,r)=>s+r.total,0), fat=pr.reduce((s,r)=>s+r.preco*r.qtd,0), e=d.encaminhado;
+  const G=Object.fromEntries((d.gastos||[]).map(x=>[x.grupo,x.valor])), hh=m=>dur(m);
+  const card=(n,t,sub)=>`<div class="card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--amb)">${n}</div><div>${t}</div>${sub?`<div class="mut" style="font-size:12px;margin-top:2px">${sub}</div>`:''}</div>`;
+  const tab=(cab,lin,vz)=>`<div class="card" style="overflow-x:auto"><table><tr>${cab.map(h=>`<th${/^n:/.test(h)?' class="n"':''}>${h.replace(/^n:/,'')}</th>`).join('')}</tr>${lin.join('')||`<tr><td colspan="${cab.length}" class="mut">${vz}</td></tr>`}</table></div>`;
+  $('#cu').className='';
+  $('#cu').innerHTML=`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
+      ${card(brl(d.hora),'custo da hora produtiva',`<span class="link" id="cpar">${fmt(d.horas_mes,0)} h efetivas/mês · ver parâmetros</span>`)}
+      ${card(fmt(qt),'peças produzidas',`custo ${brl(tot)}${fat?' · preço de tabela '+brl(fat):''}`)}
+      ${card(fmt(e.pecas),'peças encaminhadas (em processo)',`${brl(e.total)} já investido · madeira ${brl(e.madeira)} + mão de obra ${brl(e.mao_obra)}`)}
+      ${card(brl((G.operacoes||0)+(G.madeira||0)+(G.embalagem||0)),'gasto no Financeiro',`operações ${brl(G.operacoes||0)} · madeira ${brl(G.madeira||0)} · embalagem ${brl(G.embalagem||0)}`)}</div>
+    <div id="cpb"></div>
+    <h2>O que produziu e quanto custou</h2><p class="mut" style="margin:0 2px 6px">Custo da peça = madeira (blocos da composição) + horas padrão da planilha de capacidade × custo da hora. Despesas fixas e de Adm/Marketing/Comercial não entram.</p>
+    ${tab(['Peça','n:Qtd','n:Madeira/pç','n:Horas/pç','n:Custo/pç','n:Preço','n:Margem','n:Custo total'],pr.map(r=>{ const m=r.preco?(r.preco-r.custo_un)/r.preco*100:null; return `<tr><td>${esc(r.item)}</td><td class="n">${fmt(r.qtd)}</td><td class="n">${brl(r.madeira_un)}</td><td class="n">${hh(r.min_un)}</td><td class="n"><b>${brl(r.custo_un)}</b></td><td class="n">${r.preco?brl(r.preco):'—'}</td><td class="n ${m===null?'':m<50?'bad':'ok'}">${m===null?'—':fmt(m,0)+'%'}</td><td class="n">${brl(r.total)}</td></tr>`; }),'Nenhuma OP finalizada no período.')}
+    <h2>Encaminhado: onde está o dinheiro em processo</h2>
+    ${tab(['Etapa atual','n:Peças','n:Madeira','n:Mão de obra já feita','n:Total'],e.por_etapa.sort((a,b)=>(b.madeira+b.mao_obra)-(a.madeira+a.mao_obra)).map(r=>`<tr><td>${esc(r.etapa)}</td><td class="n">${fmt(r.pecas)}</td><td class="n">${brl(r.madeira)}</td><td class="n">${brl(r.mao_obra)}</td><td class="n"><b>${brl(r.madeira+r.mao_obra)}</b></td></tr>`),'Nenhuma OP aberta.')}
+    <h2>Tempo real × padrão por etapa</h2><p class="mut" style="margin:0 2px 6px">Só apontamentos confiáveis do período (entre 30% e 3× o padrão, com início e fim). Apontamento estranho fica de fora.</p>
+    ${tab(['Produto','Etapa','n:Peças medidas','n:Real/pç','n:Padrão/pç','n:Diferença'],d.tempos.map(r=>{ const df=r.padrao_un?(r.real_un-r.padrao_un)/r.padrao_un*100:null; return `<tr><td>${esc(r.produto)}</td><td>${esc(r.etapa)}</td><td class="n">${fmt(r.n)}</td><td class="n">${hh(r.real_un)}</td><td class="n">${hh(r.padrao_un)}</td><td class="n ${df===null?'':df>15?'bad':df<-15?'ok':''}">${df===null?'—':(df>0?'+':'')+fmt(df,0)+'%'}</td></tr>`; }),'Nenhum apontamento confiável no período.')}`;
+  $('#cpar').onclick=()=>{ const P=d.param, ed=EU&&EU.admin, f=(k,t,st)=>`<label style="display:block;margin:4px 0">${t}<br><input data-k="${k}" type="number" step="${st||'any'}" value="${P[k]??''}" ${ed?'':'disabled'} style="width:160px"></label>`;
+    $('#cpb').innerHTML=`<div class="card" style="margin-top:10px"><b>Parâmetros (planilha CUSTOS DE PRODUÇÃO)</b><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-top:6px">
+      ${f('operacoes_mes','Custo médio mensal de Operações (R$)')}${f('funcionarios','Funcionários da produção')}${f('dias','Dias úteis por mês')}${f('horas_dia','Horas por dia')}${f('eficiencia','Eficiência (0,8 = 80%)')}
+      ${['A','B','C','D','E','F'].map(x=>f('bloco_'+x,x==='F'?'Bloco F - Avulso (R$/peça)':'Bloco '+x+' (R$/peça)')).join('')}</div>
+      <p class="mut">Custo da hora = Operações ÷ (funcionários × dias × horas × eficiência) = ${brl(P.operacoes_mes)} ÷ ${fmt(d.horas_mes,0)} h = <b>${brl(d.hora)}</b>.</p>
+      ${ed?'<button class="btn" id="cps">Salvar parâmetros</button>':'<p class="mut">Só o administrador muda os parâmetros.</p>'}</div>`;
+    if($('#cps')) $('#cps').onclick=tenta(async()=>{ const b={}; $('#cpb').querySelectorAll('[data-k]').forEach(x=>{ if(x.value!=='') b[x.dataset.k]=+x.value; }); await api('/api/custos/param',b); toast('Parâmetros salvos'); tCusto(); }); };
+}
 // ===== Apontamentos estranhos: pra conferir com o apontador o que houve (só olhar, não corrige)
 async function tApont(){
   S.apDe=S.apDe||(()=>{ const d=new Date(hojeISO()+'T12:00'); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })(); S.apAte=S.apAte||hojeISO();
