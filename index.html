@@ -407,7 +407,7 @@ const abrirPedido = tenta(async numero=>{
       <table>${f.lancs.map(l=>`<tr><td>${brData(l.vencimento)}</td><td>${esc(l.descricao)}${l.nf?' · NF '+esc(l.nf):''}</td><td class="n">${brl(l.valor)}</td><td>${l.status==='quitado'?'<span class="tag t-produzindo">Recebido</span>':l.vencido?'<span class="tag" style="background:var(--bad);color:#fff">Vencido</span>':'<span class="tag t-pausado">Em aberto</span>'}</td></tr>`).join('')}</table>`:'<span class="mut">Nenhum lançamento ligado a este pedido. No lançamento a receber, preencha "Pedido (nº)" pra ligar (os do Sensio com "Pedido N" na descrição já ligam sozinhos).</span>'}</div>`; }).catch(()=>{});
   $('#mx').onclick=()=>{ modal(''); render(); };
   if($('#pedit')) $('#pedit').onclick=()=>{ modal(''); pedidoForm(numero); };
-  ligaEtapas($('#modal'),()=>abrirPedido(numero));
+  ligaEtapas($('#modal'),()=>abrirPedido(numero),numero);
   $('#pst').onchange=tenta(async e=>{ await api('/api/pedidos/'+encodeURIComponent(numero)+'/status',{status:e.target.value}); toast('Status: '+e.target.value); });
   document.querySelectorAll('#modal [data-op]').forEach(c=>c.onclick=()=>abrirOp(+c.dataset.op));
   document.querySelectorAll('#modal [data-cria]').forEach(b=>b.onclick=()=>{ const x=p.itens.find(i=>i.id===+b.dataset.cria); novaOp({item_id:x.item_id,nome:x.descricao,qtd:x.qtd-x.com_op,pedido_item_id:x.id}); });
@@ -1665,7 +1665,8 @@ function unidades(it){
   return out;
 }
 // troca de etapa à mão (peças sem OP e que ainda não saíram na expedição), igual à aba Peças da v.8
-const ETAPAS_MAO=['Aguardando madeira','Produção','Acabamento','Controle de qualidade','Prontas','Enviada','Cancelado'];
+const ETAPAS_MAO=['Aguardando madeira','Produção','Acabamento','Controle de qualidade','Cancelado']; // pronta/embalada e enviada saem pelos botões da expedição
+const opcoesEt=e=>(ETAPAS_MAO.includes(e)?ETAPAS_MAO:[...ETAPAS_MAO,e]).map(o=>`<option ${o===e?'selected':''}>${o}</option>`).join('');
 const RANK={'Cancelado':-1,'Aguardando madeira':0,'Produção':1,'Acabamento':2,'Controle de qualidade':3,'Em Separação':4,'Prontas':5,'Enviada':6,'Entregue':7};
 function etapaEditor(it){
   const env=Math.min(it.qtd,it.enviada||0), emb=Math.max(0,(it.embalada||0)-env), op=it.com_op||0, livre=Math.max(0,Math.round(it.qtd-env-emb-op));
@@ -1684,15 +1685,19 @@ function unidadesEt(it){
     const opU=[...Array(it.op_fin||0).fill('Controle de qualidade'),...Array(it.op_acab||0).fill('Acabamento'),...Array(it.op_prod||0).fill('Produção')];
     L=[...opU.slice(env+emb),...L.slice(Math.min(env+emb+opU.length,L.length))]; }
   while(L.length<livre) L.push('Aguardando madeira'); L=L.slice(0,livre);
-  const sel=e=>`<select data-et="${it.id}" style="padding:4px 6px">${ETAPAS_MAO.map(o=>`<option ${o===e?'selected':''}>${o}</option>`).join('')}</select>`;
-  return [...Array(env).fill('<span class="mut">enviada</span>'),...Array(emb).fill('<span class="mut">embalada</span>'),...L.map(sel)];
+  const sel=e=>`<select data-et="${it.id}" style="padding:4px 6px">${opcoesEt(e)}</select>`;
+  return [...Array(env).fill('<span class="mut">enviada</span>'),...Array(emb).fill(`<span class="mut">embalada</span> <button class="btn ok sm" data-envia="${it.id}" title="Registra o envio desta peça (sai do P.A. Manaus hoje)">✓ Enviada</button>`),...L.map(sel)];
 }
 // linhas da tabela: item com 1 peça = 1 linha; com várias = linha do item + uma linha por peça
 function linhasPecas(it, antes, depois, ncol){
   const u=unidadesEt(it); if(u.length<=1) return `<tr>${antes}<td>${u[0]||''}</td>${depois}</tr>`;
   return `<tr>${antes}<td class="mut" style="font-size:12px">${u.length} peças ↓</td>${depois}</tr>`+u.map((h,i)=>`<tr style="background:var(--card2)"><td style="padding-left:22px;font-size:13px">↳ peça ${i+1} de ${u.length}</td><td></td><td>${h}</td><td colspan="${ncol-3}"></td></tr>`).join('');
 }
-function ligaEtapas(root,depois){ root.querySelectorAll('[data-et]').forEach(sel=>sel.onchange=tenta(async()=>{ const id=sel.dataset.et, c={};
+function ligaEtapas(root,depois,numero){
+  if(numero) root.querySelectorAll('[data-envia]').forEach(b=>b.onclick=tenta(async()=>{ b.disabled=true;
+    try{ await api(`/api/pedidos/${encodeURIComponent(numero)}/envio`,{itens:[{pedido_item_id:+b.dataset.envia,qtd:1}],deposito_id:1,data:hojeISO()}); }catch(e){ b.disabled=false; throw e; }
+    toast('✓ Peça enviada'); depois&&depois(); }));
+  root.querySelectorAll('[data-et]').forEach(sel=>sel.onchange=tenta(async()=>{ const id=sel.dataset.et, c={};
   root.querySelectorAll(`[data-et="${id}"]`).forEach(x=>c[x.value]=(c[x.value]||0)+1);
   await api('/api/pedido-itens/'+id+'/etapa',{etapas:c}); toast('✓ Etapa trocada'); depois&&depois(); })); }
 const resumoUn=un=>{ const c={}; un.forEach(k=>c[k]=(c[k]||0)+1); return Object.keys(ETAPA).filter(k=>c[k]).map(k=>`<span style="color:${ETAPA[k][2]};font-weight:700">${c[k]} ${ETAPA[k][0].toLowerCase()}</span>`).join(' · '); };
@@ -1729,7 +1734,7 @@ const abrirExp=tenta(async numero=>{
     <h2>Envios</h2><div class="card">${p.envios.map(e=>`<div style="padding:4px 0"><button class="btn ${e.fotos?'sec':'mid'} sm" data-fe="${e.id}" style="float:right" title="Foto da coleta / envio">📷 ${e.fotos||'foto da coleta'}</button><b>${brData(e.data)}</b> · ${esc(e.itens||'')}<br><span class="mut">${[e.transportadora,e.nf?'NF '+e.nf:'',e.volumes?e.volumes+' volume(s)':'',e.obs].filter(Boolean).map(esc).join(' · ')}</span></div>`).join('')||'<span class="mut">Nenhum envio ainda.</span>'}</div>`);
   $('#mx').onclick=()=>{ modal(''); render(); };
   $('#modal').querySelectorAll('[data-c][data-i]').forEach(b=>b.onclick=tenta(async()=>{ await api(`/api/pedido-itens/${b.dataset.i}/exp`,{[b.dataset.c]:+b.dataset.v}); re(); }));
-  ligaEtapas($('#modal'),re);
+  ligaEtapas($('#modal'),re,p.numero);
   $('#modal').querySelectorAll('[data-fe]').forEach(b=>b.onclick=()=>{ const e=p.envios.find(x=>x.id===+b.dataset.fe);
     modal(`<div class="row" style="justify-content:space-between"><div><h2 style="margin:0">Fotos do envio · Pedido ${esc(p.numero)}</h2><div class="mut">${brData(e.data)}${e.transportadora?' · '+esc(e.transportadora):''} · ${esc(e.itens||'')}</div></div><button class="btn sec sm" id="fv">Voltar</button></div><br><div class="card" id="fts">Carregando…</div>`);
     $('#fv').onclick=re; galeria($('#fts'),{envio_id:e.id}); });
