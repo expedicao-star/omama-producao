@@ -783,6 +783,10 @@ const app = {
         } else if (acao === 'iniciar') {
           if (!['pendente', 'pausado'].includes(oo.status)) return json(req, { erro: 'Operação já está ' + oo.status }, 400);
           if (oo.setor_id && !func && !oo.funcionario_id) return json(req, { erro: 'Escolha quem vai fazer' }, 400);
+          const fid = func ? func.id : oo.funcionario_id;
+          const ocup = fid ? await one(DB, `select op.codigo, t.nome, f.nome func from op_operacao x join op on op.id=x.op_id join operacao_tipo t on t.id=x.operacao_tipo_id
+            join funcionario f on f.id=x.funcionario_id where x.funcionario_id=? and x.status='produzindo' and x.id<>? limit 1`, fid, oo.id) : null;
+          if (ocup) return json(req, { erro: `${ocup.func} já está fazendo ${ocup.nome} da OP ${ocup.codigo}. Pause ou finalize essa antes de iniciar outra.` }, 400);
           upd = DB.prepare("update op_operacao set status='produzindo', funcionario_id=coalesce(?,funcionario_id), inicio=coalesce(inicio,?), inicio_atual=? where id=?")
             .bind(func ? func.id : null, now, now, oo.id);
         } else if (acao === 'pausar') {
