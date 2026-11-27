@@ -1814,11 +1814,21 @@ async function tAssid(){
   $('#al').className='';
   $('#al').innerHTML=l.length?`<div class="card" style="overflow-x:auto"><table><tr><th>Dia</th><th>Pessoa</th><th>O quê</th><th>Detalhe</th><th></th></tr>
     ${l.map(r=>{ const [n,c]=PRES[r.status]||[r.status,'mut']; return `<tr><td>${new Date(r.data+'T12:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}</td><td><b>${esc(r.nome)}</b> <span class="mut">${esc(r.setor||'')}</span></td>
-      <td><span class="tag" style="${TAGC[c]}">${n}</span></td><td class="mut">${r.minutos?r.minutos+' min':''}${r.minutos&&r.obs?' · ':''}${esc(r.obs||'')}</td><td class="n"><button class="btn sec sm" data-x="${r.id}">Apagar</button></td></tr>`}).join('')}</table></div>
+      <td><span class="tag" style="${TAGC[c]}">${n}</span></td><td class="mut">${r.minutos?r.minutos+' min':''}${r.minutos&&r.obs?' · ':''}${esc(r.obs||'')}</td><td class="n" style="white-space:nowrap"><button class="btn sec sm" data-ed="${r.id}">Editar</button> <button class="btn sec sm" data-x="${r.id}">Apagar</button></td></tr>`}).join('')}</table></div>
     <h2>Resumo da semana</h2><div class="card" style="overflow-x:auto"><table><tr><th>Pessoa</th><th class="n">Falta não just.</th><th class="n">Falta just.</th><th class="n">Atestado</th><th class="n">Atrasos / saídas</th><th class="n">Folga / férias</th></tr>
     ${Object.values(res).sort((a,b)=>a.nome.localeCompare(b.nome)).map(p=>`<tr><td>${esc(p.nome)}</td><td class="n ${p.falta_injustificada?'bad':''}"><b>${p.falta_injustificada||''}</b></td><td class="n">${p.falta_justificada||''}</td><td class="n">${p.atestado||''}</td><td class="n">${p.atraso?p.atraso+' ('+dur(p.min)+')':''}</td><td class="n">${p.folga||''}</td></tr>`).join('')}</table>
     <p class="mut">Quem não aparece aqui não teve falta nem atraso na semana. Folga e férias não contam como falta.</p></div>`
     :'<div class="card vazio">Nenhuma falta ou atraso lançado nesta semana.</div>';
+  $('#al').querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{ const r=l.find(x=>x.id===+b.dataset.ed); let st=r.status;
+    modal(`<h2 style="margin-top:0">Editar · ${esc(r.nome)} · ${brData(r.data)}</h2>
+      <div class="row" id="et">${Object.entries(PRES).map(([k,[n,c]])=>`<button class="st ${c} ${k===st?'on':''}" data-s="${k}">${n}</button>`).join('')}</div>
+      <div class="row" style="margin-top:10px"><input id="emin" type="number" min="1" inputmode="numeric" placeholder="Minutos" value="${r.minutos||''}" style="width:110px;${st==='atraso'?'':'display:none'}"><input id="eo" placeholder="Motivo / observação (ex.: trouxe atestado)" value="${esc(r.obs||'')}" style="flex:1;min-width:200px"></div>
+      <div class="row" style="margin-top:12px"><button class="btn" id="eok">Salvar</button><button class="btn sec" id="ev">Voltar</button></div>`);
+    $('#et').querySelectorAll('[data-s]').forEach(x=>x.onclick=()=>{ st=x.dataset.s; $('#et').querySelectorAll('[data-s]').forEach(y=>y.classList.toggle('on',y===x)); $('#emin').style.display=st==='atraso'?'':'none'; });
+    $('#ev').onclick=()=>modal('');
+    $('#eok').onclick=tenta(async()=>{ const minutos=st==='atraso'?+$('#emin').value:null; if(st==='atraso'&&!(minutos>0)) throw new Error('Informe os minutos');
+      const obs=$('#eo').value.trim(); if(st==='falta_justificada'&&!obs) throw new Error('Escreva o motivo da falta');
+      await api('/api/presenca',{data:r.data,funcionario_id:r.funcionario_id,status:st,minutos,obs:obs||null}); modal(''); toast(r.nome+': '+PRES[st][0]); tAssid(); }); });
   $('#al').querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{ const r=l.find(x=>x.id===+b.dataset.x);
     modal(`<h2 style="margin-top:0">Apagar lançamento?</h2><p>${esc(r.nome)} · ${(PRES[r.status]||[r.status])[0]} · ${brData(r.data)}</p><div class="row"><button class="btn bad" id="xc">Apagar</button><button class="btn sec" id="xv">Voltar</button></div>`);
     $('#xv').onclick=()=>modal('');
