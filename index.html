@@ -183,8 +183,8 @@ setInterval(()=>{ $('#relogio').textContent=new Date().toLocaleString('pt-BR',{w
 // ===== ações de operação (usadas na fila e na OP)
 const acao = tenta(async (o, tipo, depois) => {
   let funcionario_id = null;
-  const precisa = o.setor_id && !o.funcionario_id && (tipo==='iniciar'||tipo==='finalizar');
-  if (tipo==='iniciar' && o.setor_id || precisa) {
+  const precisa = o.setor_id && !soClique(o) && !o.funcionario_id && (tipo==='iniciar'||tipo==='finalizar');
+  if (tipo==='iniciar' && o.setor_id && !soClique(o) || precisa) {
     const ops = o.status==='pendente' ? [...pessoas(o.setor_id), {id:-1,nome:'Operador',sub:'Já foi feita: finaliza com o tempo padrão'}] : pessoas(o.setor_id);
     funcionario_id = await escolher(tipo==='iniciar'?'Quem vai fazer?':'Quem fez?', ops);
     if (!funcionario_id) return;
@@ -215,7 +215,8 @@ function motivoPausa(o){
     $('#pok').onclick=()=>{ const obs=$('#pobs').value.trim(); if(sel==='Outro'&&!obs) return toast('Escreva o motivo',1); modal(''); res({motivo:sel,obs:obs||null}); };
   });
 }
-const botoes = o => o.status==='finalizado' ? `<button class="btn sec sm" data-a="reabrir">Reabrir</button>`
+const soClique = o => !!(o.so_clique||((B.tipos||[]).find(t=>t.id===o.operacao_tipo_id)||{}).so_clique);
+const botoes = o => o.status==='finalizado' ? `<button class="btn sec sm" data-a="reabrir">Reabrir</button>` : soClique(o) ? `<button class="btn ok sm" data-a="finalizar">✓ Finalizar</button>` : o.status==='finalizado' ? `<button class="btn sec sm" data-a="reabrir">Reabrir</button>`
   : o.status==='produzindo' ? `<button class="btn mid sm" data-a="pausar">⏸ Pausar</button> <button class="btn ok sm" data-a="finalizar">✓ Finalizar</button>`
   : `<button class="btn sm" data-a="iniciar">▶ Iniciar</button> <button class="btn sec sm" data-a="finalizar">✓ Finalizar</button>`;
 const tag = s => `<span class="tag t-${s}">${s}</span>`;
