@@ -1144,6 +1144,8 @@ async function tSemana(){
   const nS=47+Math.round((Date.parse(de)-Date.parse('2026-11-23'))/6048e5);
   app.innerHTML=`<div class="row noprint"><button class="btn sec sm" id="sp">◀</button><button class="btn sec sm" id="sh">Esta semana</button><button class="btn sec sm" id="sn">▶</button><div class="sp" style="flex:1"></div><button class="btn" id="si">Imprimir / PDF</button></div><div id="sr" class="vazio">Carregando…</div>`;
   $('#sp').onclick=()=>mv(-1); $('#sn').onclick=()=>mv(1); $('#sh').onclick=()=>{S.semana=null;tSemana();}; $('#si').onclick=()=>print();
+  if(ate>=hojeISO()) $('#sn').disabled=true;
+  if(de>hojeISO()){ $('#sr').className='card vazio'; $('#sr').textContent=`A semana ${nS} (${brData(de)} a ${brData(ate)}) ainda não começou.`; return; }
   const nada=()=>null;
   const [s,s0,r,df,pr,c,mp,pn,ap]=await Promise.all([api(`/api/semana?de=${de}&ate=${ate}`),api(`/api/semana?de=${de0}&ate=${ate0}`),api(`/api/relatorio?de=${de}&ate=${ate}`),api(`/api/defeitos/resumo?de=${de}&ate=${ate}`),api(`/api/presenca?de=${de}&ate=${ate}`),
     api('/api/comercial').catch(nada),api('/api/mapa').catch(nada),api('/api/painel').catch(nada),api(`/api/apontamentos-estranhos?de=${de}&ate=${ate}`).catch(nada)]);
